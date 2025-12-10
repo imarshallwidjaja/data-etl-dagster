@@ -103,4 +103,8 @@ def minio_resource(context) -> MinIOResource:
 - The `user-code` container is separate to allow hot-reloading during development
 - GDAL libraries are only installed in the `user-code` container
 - Use `dagster dev` locally for faster iteration (requires local GDAL install)
+- Code location lives at `services/dagster/etl_pipelines`
+  - Dev: bind mount via docker-compose hot-reloads code changes
+  - Prod: `Dockerfile.user-code` copies code into the image; rebuild required for changes
+  - Add new assets/jobs/resources/sensors to `definitions.py` (`defs`) so Dagster loads them
 

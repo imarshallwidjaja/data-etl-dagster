@@ -48,19 +48,30 @@ docker compose up -d
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Docker Network                            │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│   User ──► MinIO (Landing) ──► Dagster ──► MinIO (Lake)     │
-│                                    │                         │
-│                              ┌─────┴─────┐                  │
-│                              ▼           ▼                  │
-│                          PostGIS     MongoDB                │
-│                         (Compute)    (Ledger)               │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph "Docker Network"
+        %% Dagster Components
+        Daemon[Dagster Daemon]
+        Sensor[Dagster Sensor]
+        CodeLoc["User Code Container (Python + GDAL Libs)"]
+        
+        %% Storage & Compute
+        Landing[(MinIO: Landing Zone)]
+        Lake[(MinIO: Data Lake)]
+        Mongo[(MongoDB: Ledger)]
+        PostGIS[(PostGIS: Compute)]
+        
+        %% Data Flow
+        User -->|1. Upload Files + Manifest| Landing
+        Landing -->|2. Manifest detected| Sensor
+        Sensor -->|3. Signal run| Daemon
+        Daemon -->|4. Launch Run| CodeLoc
+        CodeLoc -->|5. Read Raw Data| Landing
+        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
+        CodeLoc -->|7. Write GeoParquet| Lake
+        CodeLoc -->|8. Log Lineage| Mongo
+    end
 ```
 
 ## Repository Structure

@@ -42,12 +42,13 @@ graph TD
         
         %% Data Flow
         User -->|1. Upload Files + Manifest| Landing
-        Sensor -->|2. Detect Manifest| Daemon
-        Daemon -->|3. Launch Run| CodeLoc
-        CodeLoc -->|4. Read Raw Data| Landing
-        CodeLoc -->|5. Spatial Ops - SQL| PostGIS
-        CodeLoc -->|6. Write GeoParquet| Lake
-        CodeLoc -->|7. Log Lineage| Mongo
+        Landing -->|2. Manifest detected| Sensor
+        Sensor -->|3. Signal run| Daemon
+        Daemon -->|4. Launch Run| CodeLoc
+        CodeLoc -->|5. Read Raw Data| Landing
+        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
+        CodeLoc -->|7. Write GeoParquet| Lake
+        CodeLoc -->|8. Log Lineage| Mongo
     end
 ```
 
@@ -133,6 +134,19 @@ All secrets/hosts defined via `.env` file and loaded into Dagster configuration.
 - **Error Handling:** Fail fast. Implement try/finally blocks to ensure ephemeral PostGIS schemas are dropped even if the pipeline fails.
 - **Testing:** Use pytest. The architecture must allow GDALResource and S3Resource to be mocked so logic can be tested without a running Docker stack.
 
+## 8. Development Workflow (Dagster user code)
+
+- Edit code under `services/dagster/etl_pipelines`.
+- Development: `docker-compose up` uses a bind mount; code reloads without rebuilding the user-code image.
+- Production: rebuild the user-code image (COPY in `Dockerfile.user-code` includes code).
+- Keep Dagster packages pinned to the same patch level across `requirements.txt` and `requirements-user-code.txt`.
+
+## 9. Common Mistakes / Gotchas
+
+- Dagster package drift (e.g., `dagster-postgres` not matching `dagster` patch) leads to runtime/import errors—pin all Dagster packages to the same patch.
+- Overly broad dependency ranges (`>=` without upper bounds) can break reproducibility—prefer pinning and review quarterly.
+- Forgetting to register new assets/jobs/resources/sensors in `services/dagster/etl_pipelines/definitions.py` (`defs`) means Dagster will not load them.
+- For production, changing code without rebuilding the user-code image leaves stale code running—always rebuild before deploy.
 ## 7. Repository Structure
 
 This is a Git monorepo with the following layout:
