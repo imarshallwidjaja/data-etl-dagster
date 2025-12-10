@@ -263,43 +263,48 @@ The `asset.py` module provides `ContentHash` type for validated SHA256 hashes:
 
 ### Pydantic Settings
 
-All configuration models use `pydantic-settings` with `BaseSettings` and environment variable prefixes.
+All configuration models use `pydantic-settings` with `BaseSettings` and explicit environment variable mappings using `validation_alias`.
 
 #### MinIO Settings
 
 ```python
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 class MinIOSettings(BaseSettings):
-    endpoint: str
-    access_key: str  # Maps from MINIO_ROOT_USER
-    secret_key: str  # Maps from MINIO_ROOT_PASSWORD
-    use_ssl: bool = False
-    landing_bucket: str = "landing-zone"
-    lake_bucket: str = "data-lake"
+    endpoint: str = Field(..., validation_alias="MINIO_ENDPOINT")
+    access_key: str = Field(..., validation_alias="MINIO_ROOT_USER")
+    secret_key: str = Field(..., validation_alias="MINIO_ROOT_PASSWORD")
+    use_ssl: bool = Field(False, validation_alias="MINIO_USE_SSL")
+    landing_bucket: str = Field("landing-zone", validation_alias="MINIO_LANDING_BUCKET")
+    lake_bucket: str = Field("data-lake", validation_alias="MINIO_LAKE_BUCKET")
     
-    class Config:
-        env_prefix = "MINIO_"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+    )
 ```
 
 #### MongoDB Settings
 
 ```python
 class MongoSettings(BaseSettings):
-    host: str = "mongodb"
-    port: int = 27017
-    username: str  # Maps from MONGO_INITDB_ROOT_USERNAME
-    password: str  # Maps from MONGO_INITDB_ROOT_PASSWORD
-    database: str = "spatial_etl"  # Maps from MONGO_INITDB_DATABASE
-    auth_source: str = "admin"
+    host: str = Field("mongodb", validation_alias="MONGO_HOST")
+    port: int = Field(27017, validation_alias="MONGO_PORT")
+    username: str = Field(..., validation_alias="MONGO_INITDB_ROOT_USERNAME")
+    password: str = Field(..., validation_alias="MONGO_INITDB_ROOT_PASSWORD")
+    database: str = Field("spatial_etl", validation_alias="MONGO_DATABASE")
+    auth_source: str = Field("admin", validation_alias="MONGO_AUTH_SOURCE")
     
-    class Config:
-        env_prefix = "MONGO_"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+    )
     
     @property
     def connection_string(self) -> str:
         """Build MongoDB connection URI."""
-        ...
+        return f"mongodb://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}?authSource={self.auth_source}"
 ```
 
 #### PostGIS Settings (Spatial Compute Engine)
@@ -307,19 +312,21 @@ class MongoSettings(BaseSettings):
 ```python
 class PostGISSettings(BaseSettings):
     """Settings for the transient PostGIS compute engine (port 5432)."""
-    host: str = "postgis"
-    port: int = 5432
-    user: str
-    password: str
-    database: str = "spatial_compute"
+    host: str = Field("postgis", validation_alias="POSTGRES_HOST")
+    port: int = Field(5432, validation_alias="POSTGRES_PORT")
+    user: str = Field(..., validation_alias="POSTGRES_USER")
+    password: str = Field(..., validation_alias="POSTGRES_PASSWORD")
+    database: str = Field("spatial_compute", validation_alias="POSTGRES_DB")
     
-    class Config:
-        env_prefix = "POSTGRES_"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+    )
     
     @property
     def connection_string(self) -> str:
         """Build PostgreSQL connection URI."""
-        ...
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
 ```
 
 #### Dagster Postgres Settings (Internal Metadata DB)
@@ -327,14 +334,21 @@ class PostGISSettings(BaseSettings):
 ```python
 class DagsterPostgresSettings(BaseSettings):
     """Settings for Dagster's internal metadata database (port 5433)."""
-    host: str
-    port: int = 5433
-    user: str
-    password: str
-    database: str
+    host: str = Field(..., validation_alias="DAGSTER_POSTGRES_HOST")
+    port: int = Field(5433, validation_alias="DAGSTER_POSTGRES_PORT")
+    user: str = Field(..., validation_alias="DAGSTER_POSTGRES_USER")
+    password: str = Field(..., validation_alias="DAGSTER_POSTGRES_PASSWORD")
+    database: str = Field(..., validation_alias="DAGSTER_POSTGRES_DB")
     
-    class Config:
-        env_prefix = "DAGSTER_POSTGRES_"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+    )
+    
+    @property
+    def connection_string(self) -> str:
+        """Build PostgreSQL connection URI."""
+        return f"postgresql://{self.user}:{self.password}@{self.host}:{self.port}/{self.database}"
 ```
 
 **Note:** These are two separate PostgreSQL databases:

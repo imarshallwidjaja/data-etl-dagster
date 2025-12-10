@@ -48,5 +48,5 @@ See `libs/models/CONTEXT.md` for detailed model definitions and usage examples.
 - Environment-specific values should use environment variables
 - Secrets should NEVER be stored in this directory
 - Use `.env` files for local development secrets
-- Configuration models automatically load from environment variables using their `env_prefix`
+- Configuration models use explicit `validation_alias` mappings to load from environment variables (see `libs/models/config.py`)
 
