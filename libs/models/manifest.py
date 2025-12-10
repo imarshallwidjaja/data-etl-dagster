@@ -9,7 +9,7 @@
 # =============================================================================
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
@@ -294,7 +294,7 @@ class ManifestRecord(Manifest):
             ManifestRecord instance ready for MongoDB storage
         """
         if ingested_at is None:
-            ingested_at = datetime.utcnow()
+            ingested_at = datetime.now(timezone.utc)
         
         return cls(
             **manifest.model_dump(),
@@ -308,8 +308,18 @@ class ManifestRecord(Manifest):
                 "batch_id": "batch_001",
                 "uploader": "system",
                 "intent": "ingest_vector",
-                "files": [...],
-                "metadata": {...},
+                "files": [
+                    {
+                        "path": "s3://landing-zone/batch_001/file.gpkg",
+                        "type": "vector",
+                        "format": "GPKG",
+                        "crs": "EPSG:4326"
+                    }
+                ],
+                "metadata": {
+                    "project": "ALPHA",
+                    "description": "Test dataset"
+                },
                 "status": "completed",
                 "dagster_run_id": "run_12345",
                 "error_message": None,

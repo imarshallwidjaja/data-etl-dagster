@@ -108,6 +108,34 @@ def test_valid_manifest(valid_manifest_dict):
     assert model.batch_id == "..."
 ```
 
+**Test Implementation Notes:**
+
+1. **Validator Testing:** Since Pydantic validators (using `BeforeValidator`) only run during model instantiation, tests for custom validators (CRS, ContentHash, S3Path, S3Key) call the validator functions directly or test via model instances.
+
+2. **Test Coverage:** All validation logic is covered:
+   - CRS validation (EPSG, WKT, PROJ formats)
+   - Bounds validation (min/max constraints)
+   - Manifest validation (required fields, unique paths, empty arrays)
+   - ManifestRecord creation and status enum validation
+   - Asset validation (content hash, version constraints, optional fields)
+   - ContentHash validation (prefix, length, character validation)
+   - S3Path/S3Key validation (format, normalization)
+   - Config settings (environment variable loading, defaults, connection strings)
+
+3. **Running Tests:**
+   ```bash
+   # Run all tests
+   pytest tests/ -v
+   
+   # Run with coverage
+   pytest tests/ --cov=libs/models --cov-report=term-missing
+   
+   # Type checking
+   mypy libs/models/ --ignore-missing-imports
+   ```
+
+4. **Dependencies:** Tests require `pytest` and `pydantic-settings`. These should be added to project requirements if not already present.
+
 ### Provenance Models (Deferred)
 
 The `provenance.py` module is a placeholder for future `Run` and `Lineage` models. Implementation is deferred until the Dagster run/lineage schema integration approach is determined. See MongoDB collections `runs` and `lineage` in `services/mongodb/init/01-init-db.js` for the target schema.

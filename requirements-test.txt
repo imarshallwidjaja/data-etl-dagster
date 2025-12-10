@@ -1,0 +1,12 @@
+# =============================================================================
+# Test Dependencies
+# =============================================================================
+# Dependencies required for running tests
+# =============================================================================
+
+# Testing framework
+pytest>=7.4.0
+
+# Pydantic settings (for config model tests)
+pydantic-settings>=2.2.0
+

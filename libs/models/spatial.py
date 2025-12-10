@@ -128,7 +128,7 @@ class Bounds(BaseModel):
     Geographic bounding box defining a rectangular area.
     
     Represents a bounding box with minimum and maximum X/Y coordinates.
-    Validates that minx < maxx and miny < maxy.
+    Validates that minx <= maxx and miny <= maxy (allows point bounds).
     
     Attributes:
         minx: Minimum X coordinate (west)
@@ -145,18 +145,20 @@ class Bounds(BaseModel):
     @model_validator(mode='after')
     def validate_bounds(self) -> 'Bounds':
         """
-        Validate that minx < maxx and miny < maxy.
+        Validate that minx <= maxx and miny <= maxy.
+        
+        Allows point bounds (minx == maxx and/or miny == maxy).
         
         Raises:
-            ValueError: If bounds are invalid (min >= max)
+            ValueError: If bounds are invalid (min > max)
         """
-        if self.minx >= self.maxx:
+        if self.minx > self.maxx:
             raise ValueError(
-                f"Invalid bounds: minx ({self.minx}) must be less than maxx ({self.maxx})"
+                f"Invalid bounds: minx ({self.minx}) must be less than or equal to maxx ({self.maxx})"
             )
-        if self.miny >= self.maxy:
+        if self.miny > self.maxy:
             raise ValueError(
-                f"Invalid bounds: miny ({self.miny}) must be less than maxy ({self.maxy})"
+                f"Invalid bounds: miny ({self.miny}) must be less than or equal to maxy ({self.maxy})"
             )
         return self
     
