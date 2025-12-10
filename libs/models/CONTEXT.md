@@ -105,6 +105,7 @@ class ManifestRecord(Manifest):
 
 ```python
 from .spatial import Bounds, CRS, OutputFormat
+from .asset import S3Key, ContentHash
 
 class AssetMetadata(BaseModel):
     title: str
@@ -113,18 +114,32 @@ class AssetMetadata(BaseModel):
     license: str | None = None
 
 class Asset(BaseModel):
-    s3_key: str
+    s3_key: S3Key  # Validated S3 object key (no leading/trailing slashes)
     dataset_id: str
     version: int  # Field(ge=1)
-    content_hash: str  # Validated: ^sha256:[a-f0-9]{64}$
+    content_hash: ContentHash  # Validated: sha256:<64 hex chars>
     dagster_run_id: str
-    format: OutputFormat  # Literal["geoparquet", "cog", "geojson"]
+    format: OutputFormat  # Enum: GEOPARQUET, COG, GEOJSON
     crs: CRS  # Validated CRS type
     bounds: Bounds  # From spatial.py
     metadata: AssetMetadata
     created_at: datetime
     updated_at: datetime | None = None
+    
+    def get_full_s3_path(self, bucket: str) -> str:
+        """Get full S3 path: s3://{bucket}/{s3_key}"""
+        ...
+    
+    def get_s3_key_pattern(self) -> str:
+        """Get expected S3 key pattern: {dataset_id}/v{version}/..."""
+        ...
 ```
+
+**Key Features:**
+- `S3Key` type validates object key format (non-empty, no leading/trailing slashes)
+- `ContentHash` type validates SHA256 hash format (`sha256:<64 hex chars>`), normalizes to lowercase
+- `version` must be >= 1
+- Helper methods: `get_full_s3_path()` and `get_s3_key_pattern()`
 
 ### Spatial Types
 
@@ -193,14 +208,35 @@ class OutputFormat(str, Enum):
     GEOJSON = "geojson"
 ```
 
-### S3 Path Type
+### S3 Path Types
 
-The `manifest.py` module provides `S3Path` type for validated S3 object paths:
+#### S3Path (Full Path)
+
+The `manifest.py` module provides `S3Path` type for validated full S3 object paths:
 
 - Validates bucket name format (3-63 chars, lowercase alphanumeric)
 - Normalizes paths to include `s3://` prefix
 - Validates that both bucket name and object key are present
-- Used by `FileEntry.path` and can be reused in other models (e.g., `Asset.s3_key`)
+- Used by `FileEntry.path` for input file references
+
+#### S3Key (Object Key Only)
+
+The `asset.py` module provides `S3Key` type for validated S3 object keys (without bucket):
+
+- Validates that key is non-empty
+- Ensures no leading or trailing slashes
+- Used by `Asset.s3_key` for data lake object keys
+- Example: `"data-lake/dataset_001/v1/data.parquet"`
+
+### Content Hash Type
+
+The `asset.py` module provides `ContentHash` type for validated SHA256 hashes:
+
+- Validates format: `sha256:<64 hexadecimal characters>`
+- Automatically normalizes to lowercase
+- Raises `TypeError` for non-string inputs
+- Raises `ValueError` for invalid format
+- Used by `Asset.content_hash`
 
 ## Relation to Global Architecture
 
