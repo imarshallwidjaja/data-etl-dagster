@@ -138,22 +138,47 @@ The `CRS` type is a validated string that supports multiple CRS formats:
 - **WKT strings**: `PROJCS[...]`, `GEOGCS[...]`, `COMPD_CS[...]`, `GEOCCS[...]`
 - **PROJ strings**: `+proj=utm +zone=55 +south ...`
 
-Invalid formats raise `ValueError` with a descriptive message.
+**Validation:**
+- Uses `BeforeValidator` to validate before type coercion
+- Raises `TypeError` if input is not a string
+- Raises `ValueError` with descriptive message if format is invalid
+- EPSG codes are automatically normalized to uppercase (e.g., `epsg:4326` → `EPSG:4326`)
 
 #### Bounds
 
 ```python
 class Bounds(BaseModel):
-    minx: float
-    miny: float
-    maxx: float
-    maxy: float
+    minx: float  # Minimum X coordinate (west)
+    miny: float  # Minimum Y coordinate (south)
+    maxx: float  # Maximum X coordinate (east)
+    maxy: float  # Maximum Y coordinate (north)
     
     @model_validator(mode='after')
     def validate_bounds(self) -> 'Bounds':
         # Ensures minx < maxx and miny < maxy
+        # Raises ValueError if validation fails
         ...
+    
+    @property
+    def width(self) -> float:
+        """Calculate the width (east-west extent) of the bounding box."""
+        return self.maxx - self.minx
+    
+    @property
+    def height(self) -> float:
+        """Calculate the height (north-south extent) of the bounding box."""
+        return self.maxy - self.miny
+    
+    @property
+    def area(self) -> float:
+        """Calculate the area of the bounding box (width × height)."""
+        return self.width * self.height
 ```
+
+**Key Features:**
+- Validates that `minx < maxx` and `miny < maxy` (strict, no zero-area bounds)
+- Provides helper properties: `width`, `height`, `area`
+- All coordinates are `float` values
 
 #### FileType and OutputFormat Enums
 
