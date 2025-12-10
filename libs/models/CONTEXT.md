@@ -33,15 +33,15 @@ The system distinguishes between **input manifests** (what users upload) and **p
 #### Manifest (Input Contract)
 
 ```python
-from pydantic import BaseModel, Field
-from typing import Literal
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime
 from .spatial import CRS, FileType
+from .manifest import S3Path  # Validated S3 path type
 
 class FileEntry(BaseModel):
-    path: str
-    type: FileType  # Literal["raster", "vector"]
-    format: str
+    path: S3Path  # Validated S3 path (normalized with s3:// prefix)
+    type: FileType  # Enum: RASTER or VECTOR
+    format: str  # Input format (e.g., "GTiff", "GPKG", "SHP")
     crs: CRS  # Validated CRS type (EPSG, WKT, or PROJ)
 
 class ManifestMetadata(BaseModel):
@@ -53,20 +53,20 @@ class Manifest(BaseModel):
     batch_id: str
     uploader: str
     intent: str
-    files: list[FileEntry]
+    files: list[FileEntry]  # min_length=1, validated for unique paths
     metadata: ManifestMetadata
     
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "batch_id": "batch_001",
-                "uploader": "system",
-                "intent": "ingest_vector",
-                "files": [{"path": "s3://landing-zone/batch_001/file.gpkg", "type": "vector", "format": "GPKG", "crs": "EPSG:4326"}],
-                "metadata": {"project": "ALPHA"}
-            }
-        }
+    @model_validator(mode='after')
+    def validate_unique_paths(self) -> 'Manifest':
+        """Ensures all file paths in the manifest are unique."""
+        ...
 ```
+
+**Key Features:**
+- `S3Path` type validates and normalizes S3 paths (adds `s3://` prefix if missing)
+- `FileEntry.path` uses validated `S3Path` type
+- `Manifest.files` validates that all paths are unique (prevents duplicate processing)
+- All file paths must be unique within a manifest
 
 #### ManifestRecord (Persisted Contract)
 
@@ -84,7 +84,22 @@ class ManifestRecord(Manifest):
     error_message: str | None = None
     ingested_at: datetime
     completed_at: datetime | None = None
+    
+    @classmethod
+    def from_manifest(
+        cls,
+        manifest: Manifest,
+        status: ManifestStatus = ManifestStatus.PENDING,
+        ingested_at: datetime | None = None
+    ) -> 'ManifestRecord':
+        """Convenience method to create a ManifestRecord from a Manifest."""
+        ...
 ```
+
+**Key Features:**
+- Extends `Manifest` (inherits all fields)
+- Adds runtime tracking: `status`, `dagster_run_id`, `error_message`, timestamps
+- `from_manifest()` helper method simplifies conversion from input manifest to persisted record
 
 ### Asset Model
 
@@ -134,11 +149,33 @@ class Bounds(BaseModel):
     maxx: float
     maxy: float
     
-    @field_validator('*')
-    def validate_bounds(cls, v, info):
+    @model_validator(mode='after')
+    def validate_bounds(self) -> 'Bounds':
         # Ensures minx < maxx and miny < maxy
         ...
 ```
+
+#### FileType and OutputFormat Enums
+
+```python
+class FileType(str, Enum):
+    RASTER = "raster"
+    VECTOR = "vector"
+
+class OutputFormat(str, Enum):
+    GEOPARQUET = "geoparquet"
+    COG = "cog"
+    GEOJSON = "geojson"
+```
+
+### S3 Path Type
+
+The `manifest.py` module provides `S3Path` type for validated S3 object paths:
+
+- Validates bucket name format (3-63 chars, lowercase alphanumeric)
+- Normalizes paths to include `s3://` prefix
+- Validates that both bucket name and object key are present
+- Used by `FileEntry.path` and can be reused in other models (e.g., `Asset.s3_key`)
 
 ## Relation to Global Architecture
 
