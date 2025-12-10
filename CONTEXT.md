@@ -121,7 +121,7 @@ PostGIS is not for persistence. The pipeline must:
 
 - **GDALResource:** Wraps `subprocess.Popen`. Must be mockable for unit tests.
 - **PostGISResource:** Manages connection pools and ephemeral schema lifecycle.
-- **MinIOResource:** Wrapper around boto3.
+- **MinIOResource:** Wrapper around boto3 (or `dagster-aws` S3 resources) pointed at the MinIO endpoint.
 
 #### Environment:
 
@@ -147,6 +147,8 @@ All secrets/hosts defined via `.env` file and loaded into Dagster configuration.
 - Overly broad dependency ranges (`>=` without upper bounds) can break reproducibility—prefer pinning and review quarterly.
 - Forgetting to register new assets/jobs/resources/sensors in `services/dagster/etl_pipelines/definitions.py` (`defs`) means Dagster will not load them.
 - For production, changing code without rebuilding the user-code image leaves stale code running—always rebuild before deploy.
+- Version tracks differ: core Dagster uses 1.x; integrations (e.g., `dagster-postgres`, `dagster-aws`) use 0.28.x. Pin explicitly to matching tracks to avoid resolver/runtime issues.
+- Current pins (Dec 2025): `dagster==1.12.5`, `dagster-webserver==1.12.5`, `dagster-postgres==0.28.4`, `dagster-aws==0.28.4`.
 ## 7. Repository Structure
 
 This is a Git monorepo with the following layout:

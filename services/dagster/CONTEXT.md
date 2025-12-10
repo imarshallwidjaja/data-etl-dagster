@@ -107,4 +107,10 @@ def minio_resource(context) -> MinIOResource:
   - Dev: bind mount via docker-compose hot-reloads code changes
   - Prod: `Dockerfile.user-code` copies code into the image; rebuild required for changes
   - Add new assets/jobs/resources/sensors to `definitions.py` (`defs`) so Dagster loads them
+- S3/MinIO access uses `dagster-aws` S3 resources pointed at the MinIO endpoint (S3-compatible); ensure credentials/endpoint match MinIO in env vars.
+
+## Common Mistakes
+
+- Version tracks differ: core Dagster (`dagster`, `dagster-webserver`) uses 1.x (e.g., 1.12.5); integrations (`dagster-postgres`, `dagster-aws`) use 0.28.x (e.g., 0.28.4). Pin explicitly to matching tracks to avoid resolver/runtime issues.
+- Current pins (Dec 2025): `dagster==1.12.5`, `dagster-webserver==1.12.5`, `dagster-postgres==0.28.4`, `dagster-aws==0.28.4`. Update together to keep compatibility.
 
