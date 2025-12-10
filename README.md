@@ -120,13 +120,77 @@ docker compose up -d --build user-code
 
 ### Testing
 
+The project includes both unit tests (no services required) and integration tests (requires Docker stack).
+
+#### Prerequisites
+
 ```bash
 # Install test dependencies
 pip install -r requirements-test.txt
-
-# Run tests
-pytest tests/ -v
 ```
+
+#### Unit Tests
+
+Unit tests validate Pydantic models and business logic without requiring running services:
+
+```bash
+# Run unit tests only
+pytest tests/unit -v
+```
+
+#### Integration Tests
+
+Integration tests verify connectivity and basic operations against running services. These require the Docker stack to be running.
+
+**1. Start the Docker stack:**
+
+```bash
+# Start all services required for integration tests
+docker compose -f docker-compose.yaml up -d --build \
+  dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+```
+
+**2. Wait for services to be ready:**
+
+```bash
+# Wait for all services to become healthy
+python scripts/wait_for_services.py
+```
+
+This script polls each service (MinIO, MongoDB, PostGIS, Dagster) until they're ready or timeout is reached.
+
+**3. Run integration tests:**
+
+```bash
+# Run integration tests
+pytest -m integration tests/integration -v
+```
+
+**4. Stop the Docker stack:**
+
+```bash
+# Stop and remove containers and volumes
+docker compose -f docker-compose.yaml down -v
+```
+
+#### Running All Tests
+
+```bash
+# Run unit tests first
+pytest tests/unit -v
+
+# Then run integration tests (if Docker stack is running)
+pytest -m integration tests/integration -v
+```
+
+#### Test Structure
+
+- `tests/unit/` - Unit tests (no external dependencies)
+- `tests/integration/` - Integration tests (requires Docker stack)
+  - `test_minio.py` - MinIO connectivity and operations
+  - `test_mongodb.py` - MongoDB connectivity and CRUD
+  - `test_postgis.py` - PostGIS connectivity and spatial functions
+  - `test_dagster.py` - Dagster GraphQL API connectivity
 
 ## License
 

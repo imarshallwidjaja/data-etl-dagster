@@ -59,6 +59,7 @@ pytest_cache/
 
 # Environments
 .env
+!.env.ci  # Allow .env.ci for CI/CD (contains non-secret defaults)
 .venv
 env/
 venv/

@@ -54,6 +54,7 @@ class MinIOSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
+        extra="ignore",  # Ignore unrelated env vars from shared .env files
     )
 
 
@@ -92,6 +93,7 @@ class MongoSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
+        extra="ignore",  # Ignore unrelated env vars from shared .env files
     )
     
     @property
@@ -145,6 +147,7 @@ class PostGISSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
+        extra="ignore",  # Ignore unrelated env vars from shared .env files
     )
     
     @property
@@ -201,6 +204,7 @@ class DagsterPostgresSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
         case_sensitive=False,
+        extra="ignore",  # Ignore unrelated env vars from shared .env files
     )
     
     @property

@@ -134,6 +134,41 @@ All secrets/hosts defined via `.env` file and loaded into Dagster configuration.
 - **Error Handling:** Fail fast. Implement try/finally blocks to ensure ephemeral PostGIS schemas are dropped even if the pipeline fails.
 - **Testing:** Use pytest. The architecture must allow GDALResource and S3Resource to be mocked so logic can be tested without a running Docker stack.
 
+## 7. Testing Strategy
+
+The project uses a multi-layered testing approach:
+
+### Test Types
+
+1. **Unit Tests** (`tests/unit/`): Test Pydantic models, validation logic, and business logic in isolation. These tests do not require running services and use mocks where needed.
+
+2. **Integration Tests** (`tests/integration/`): Test connectivity and basic operations against running services (MinIO, MongoDB, PostGIS, Dagster). These tests verify that:
+   - Services are accessible and responding
+   - Configuration models correctly connect to services
+   - Basic CRUD operations work (read/write to MinIO, MongoDB, PostGIS)
+   - Dagster GraphQL API is accessible
+
+3. **End-to-End Tests** (Future): Test complete pipeline workflows that exercise all services together.
+
+### Test Dependencies
+
+Integration tests require additional dependencies (see `requirements-test.txt`):
+- `requests`: HTTP client for Dagster GraphQL API
+- `minio`: MinIO Python client for S3 operations
+- `pymongo`: MongoDB Python client
+- `psycopg2-binary`: PostgreSQL/PostGIS client
+- `tenacity`: Retry library for service health checks
+
+### Running Tests
+
+- **Unit tests only**: `pytest tests/unit`
+- **Integration tests**: Requires Docker stack running. Use `pytest -m integration tests/integration`
+- **All tests**: `pytest` (runs both unit and integration)
+
+### CI/CD Integration
+
+Integration tests run in GitHub Actions using Docker Compose to spin up the full service stack. See `.github/workflows/integration.yml` for the CI configuration.
+
 ## 8. Development Workflow (Dagster user code)
 
 - Edit code under `services/dagster/etl_pipelines`.
@@ -159,6 +194,8 @@ data-etl-dagster/
 ├── .gitignore
 ├── .env.example
 ├── docker-compose.yaml     # Development orchestration
+├── requirements.txt        # Base library dependencies
+├── requirements-test.txt   # Test dependencies (includes base)
 ├── services/               # Containerized services
 │   ├── dagster/           # Dagster orchestrator (webserver, daemon, user code)
 │   ├── minio/             # MinIO object storage configuration
@@ -167,6 +204,11 @@ data-etl-dagster/
 ├── libs/                   # Shared Python libraries
 │   ├── spatial_utils/     # GDAL wrappers, spatial operations
 │   └── models/            # Pydantic models, schemas
+├── tests/                  # Test suite
+│   ├── unit/              # Unit tests (no services required)
+│   └── integration/       # Integration tests (requires Docker stack)
+├── scripts/                # Utility scripts
+│   └── wait_for_services.py  # Service health check helper
 └── configs/               # Configuration templates
 ```
 

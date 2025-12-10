@@ -9,5 +9,12 @@
 -r requirements.txt
 
 # Testing framework
-pytest>=7.4.0
+pytest==7.4.3
+
+# Integration test dependencies (for service connectivity tests)
+requests==2.31.0          # HTTP client for Dagster GraphQL API
+minio==7.2.0              # MinIO Python client for S3-compatible storage
+pymongo==4.6.0            # MongoDB Python client
+psycopg2-binary==2.9.9    # PostgreSQL/PostGIS client (binary wheel)
+tenacity==8.2.3           # Retry library for service health checks
 
