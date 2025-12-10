@@ -29,12 +29,10 @@ The system runs as a closed loop within a Docker network. Storage is logically s
 ```mermaid
 graph TD
     subgraph "Docker Network"
-        direction TB
-        
         %% Dagster Components
         Daemon[Dagster Daemon]
         Sensor[Dagster Sensor]
-        CodeLoc[User Code Container<br/>(Python + GDAL Libs)]
+        CodeLoc["User Code Container (Python + GDAL Libs)"]
         
         %% Storage & Compute
         Landing[(MinIO: Landing Zone)]
@@ -47,7 +45,7 @@ graph TD
         Sensor -->|2. Detect Manifest| Daemon
         Daemon -->|3. Launch Run| CodeLoc
         CodeLoc -->|4. Read Raw Data| Landing
-        CodeLoc -->|5. Spatial Ops (SQL)| PostGIS
+        CodeLoc -->|5. Spatial Ops - SQL| PostGIS
         CodeLoc -->|6. Write GeoParquet| Lake
         CodeLoc -->|7. Log Lineage| Mongo
     end
