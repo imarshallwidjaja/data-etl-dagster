@@ -121,8 +121,11 @@ docker compose up -d --build user-code
 ### Testing
 
 ```bash
-# Run tests (requires Python environment)
-pytest libs/ -v
+# Install test dependencies
+pip install -r requirements-test.txt
+
+# Run tests
+pytest tests/ -v
 ```
 
 ## License

@@ -1,13 +1,11 @@
 # =============================================================================
-# Test Dependencies
+# Base Library Dependencies
 # =============================================================================
-# Dependencies required for running tests
-# Includes base library dependencies plus test-specific packages
+# Shared dependencies for libs/models and libs/spatial_utils
+# These are required for both runtime and testing
 # =============================================================================
 
-# Include base library dependencies
--r requirements.txt
-
-# Testing framework
-pytest>=7.4.0
+# Data validation
+pydantic>=2.7.0
+pydantic-settings>=2.2.0
 

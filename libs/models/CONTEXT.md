@@ -124,6 +124,9 @@ def test_valid_manifest(valid_manifest_dict):
 
 3. **Running Tests:**
    ```bash
+   # Install test dependencies (includes base library deps)
+   pip install -r requirements-test.txt
+   
    # Run all tests
    pytest tests/ -v
    
@@ -134,7 +137,10 @@ def test_valid_manifest(valid_manifest_dict):
    mypy libs/models/ --ignore-missing-imports
    ```
 
-4. **Dependencies:** Tests require `pytest` and `pydantic-settings`. These should be added to project requirements if not already present.
+4. **Dependencies:** 
+   - Base library dependencies are in `requirements.txt` (pydantic, pydantic-settings)
+   - Test dependencies are in `requirements-test.txt` (includes base requirements + pytest)
+   - This structure ensures dependencies are shared between runtime and testing
 
 ### Provenance Models (Deferred)
 
