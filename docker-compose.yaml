@@ -167,6 +167,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-spatial_compute}
     volumes:
       - ./libs:/opt/dagster/app/libs:ro
+      - ./services/dagster/etl_pipelines:/opt/dagster/app/etl_pipelines
     depends_on:
       - minio
       - mongodb

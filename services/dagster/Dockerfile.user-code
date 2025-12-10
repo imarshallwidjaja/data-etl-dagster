@@ -33,8 +33,9 @@ RUN pip install --no-cache-dir -r requirements-user-code.txt
 ENV GDAL_DATA=/usr/share/gdal
 ENV PROJ_LIB=/usr/share/proj
 
-# The actual code will be mounted or copied here
-# COPY ./etl_pipelines /opt/dagster/app/etl_pipelines
+# Copy the ETL pipeline code (for production builds)
+# In development, this is overridden by the volume mount in docker-compose.yaml
+COPY ./etl_pipelines /opt/dagster/app/etl_pipelines
 
 # Expose gRPC port
 EXPOSE 4000
