@@ -3,7 +3,10 @@
 # =============================================================================
 
 # Core Dagster (keep patch versions aligned)
-dagster==1.6.9
+dagster==1.12.5
+
+# Dagster integrations (follow their own version tracks)
+dagster-aws==0.28.5
 
 # Data validation
 pydantic==2.7.4
