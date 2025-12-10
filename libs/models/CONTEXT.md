@@ -362,6 +362,7 @@ class DagsterPostgresSettings(BaseSettings):
 - Export all public models from `__init__.py`
 - Keep MongoDB schema validation in sync with Pydantic models
 - Use `model_dump(mode="json")` for JSON serialization
+- The `py.typed` marker file enables PEP 561 type checking support for downstream packages
 
 ### Testing Strategy
 
