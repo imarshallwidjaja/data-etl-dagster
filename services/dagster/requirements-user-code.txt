@@ -1,0 +1,33 @@
+# =============================================================================
+# Dagster User Code Dependencies (ETL Pipeline)
+# =============================================================================
+
+# Core Dagster
+dagster==1.6.*
+
+# Data validation
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+
+# S3/MinIO
+boto3>=1.28.0
+minio>=7.2.0
+
+# MongoDB
+pymongo>=4.6.0
+
+# PostgreSQL/PostGIS
+psycopg2-binary>=2.9.0
+sqlalchemy>=2.0.0
+geoalchemy2>=0.14.0
+
+# Spatial data processing
+geopandas>=0.14.0
+pyarrow>=14.0.0
+shapely>=2.0.0
+pyproj>=3.6.0
+
+# Utilities
+python-dotenv>=1.0.0
+structlog>=23.0.0
+

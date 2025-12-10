@@ -1,0 +1,273 @@
+# =============================================================================
+# Spatial Data ETL Pipeline - Docker Compose Configuration
+# =============================================================================
+# Development orchestration for the spatial ETL pipeline.
+# 
+# Services:
+#   - dagster-webserver: Dagster UI (port 3000)
+#   - dagster-daemon: Background scheduler and sensor runner
+#   - dagster-postgres: Dagster's internal metadata database
+#   - user-code: Dagster user code container (Python + GDAL)
+#   - minio: S3-compatible object storage (ports 9000, 9001)
+#   - mongodb: Metadata ledger (port 27017)
+#   - postgis: Spatial compute engine (port 5432)
+# =============================================================================
+
+name: spatial-etl
+
+networks:
+  etl-network:
+    driver: bridge
+    name: spatial-etl-network
+
+volumes:
+  # Dagster volumes
+  dagster-postgres-data:
+    name: spatial-etl-dagster-postgres
+  dagster-storage:
+    name: spatial-etl-dagster-storage
+
+  # MinIO volumes (Landing Zone + Data Lake)
+  minio-data:
+    name: spatial-etl-minio-data
+
+  # MongoDB volume (Metadata Ledger)
+  mongodb-data:
+    name: spatial-etl-mongodb-data
+
+  # PostGIS volume (Compute Engine - ephemeral by design, but volume for dev)
+  postgis-data:
+    name: spatial-etl-postgis-data
+
+services:
+  # ===========================================================================
+  # DAGSTER SERVICES
+  # ===========================================================================
+  
+  # Dagster's internal PostgreSQL database for run history and event logs
+  dagster-postgres:
+    image: postgres:15-alpine
+    container_name: dagster-postgres
+    restart: unless-stopped
+    networks:
+      - etl-network
+    environment:
+      POSTGRES_USER: ${DAGSTER_POSTGRES_USER:-dagster}
+      POSTGRES_PASSWORD: ${DAGSTER_POSTGRES_PASSWORD:-dagster_password}
+      POSTGRES_DB: ${DAGSTER_POSTGRES_DB:-dagster}
+    volumes:
+      - dagster-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DAGSTER_POSTGRES_USER:-dagster} -d ${DAGSTER_POSTGRES_DB:-dagster}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Dagster Webserver (UI)
+  dagster-webserver:
+    build:
+      context: ./services/dagster
+      dockerfile: Dockerfile
+    container_name: dagster-webserver
+    restart: unless-stopped
+    networks:
+      - etl-network
+    entrypoint:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - workspace.yaml
+    ports:
+      - "3000:3000"
+    environment:
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      DAGSTER_POSTGRES_USER: ${DAGSTER_POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_POSTGRES_PASSWORD:-dagster_password}
+      DAGSTER_POSTGRES_DB: ${DAGSTER_POSTGRES_DB:-dagster}
+      DAGSTER_POSTGRES_HOST: dagster-postgres
+    volumes:
+      - dagster-storage:/opt/dagster/dagster_home/storage
+      - ./services/dagster/workspace.yaml:/opt/dagster/app/workspace.yaml:ro
+      - ./services/dagster/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+    depends_on:
+      dagster-postgres:
+        condition: service_healthy
+
+  # Dagster Daemon (Scheduler, Sensor Runner)
+  dagster-daemon:
+    build:
+      context: ./services/dagster
+      dockerfile: Dockerfile
+    container_name: dagster-daemon
+    restart: unless-stopped
+    networks:
+      - etl-network
+    entrypoint:
+      - dagster-daemon
+      - run
+    environment:
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      DAGSTER_POSTGRES_USER: ${DAGSTER_POSTGRES_USER:-dagster}
+      DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_POSTGRES_PASSWORD:-dagster_password}
+      DAGSTER_POSTGRES_DB: ${DAGSTER_POSTGRES_DB:-dagster}
+      DAGSTER_POSTGRES_HOST: dagster-postgres
+    volumes:
+      - dagster-storage:/opt/dagster/dagster_home/storage
+      - ./services/dagster/workspace.yaml:/opt/dagster/app/workspace.yaml:ro
+      - ./services/dagster/dagster.yaml:/opt/dagster/dagster_home/dagster.yaml:ro
+    depends_on:
+      dagster-postgres:
+        condition: service_healthy
+
+  # User Code Container (Python + GDAL Libraries)
+  user-code:
+    build:
+      context: ./services/dagster
+      dockerfile: Dockerfile.user-code
+    container_name: dagster-user-code
+    restart: unless-stopped
+    networks:
+      - etl-network
+    entrypoint:
+      - dagster
+      - api
+      - grpc
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "4000"
+      - -m
+      - etl_pipelines
+    ports:
+      - "4000:4000"
+    environment:
+      # MinIO Configuration
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_USE_SSL: "false"
+      MINIO_LANDING_BUCKET: ${MINIO_LANDING_BUCKET:-landing-zone}
+      MINIO_LAKE_BUCKET: ${MINIO_LAKE_BUCKET:-data-lake}
+      # MongoDB Configuration
+      MONGO_HOST: mongodb
+      MONGO_PORT: "27017"
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-mongo}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-mongo_password}
+      MONGO_DATABASE: ${MONGO_DATABASE:-spatial_etl}
+      # PostGIS Configuration
+      POSTGRES_HOST: postgis
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: ${POSTGRES_USER:-postgis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgis_password}
+      POSTGRES_DB: ${POSTGRES_DB:-spatial_compute}
+    volumes:
+      - ./libs:/opt/dagster/app/libs:ro
+    depends_on:
+      - minio
+      - mongodb
+      - postgis
+
+  # ===========================================================================
+  # STORAGE SERVICES
+  # ===========================================================================
+
+  # MinIO - S3-Compatible Object Storage
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    restart: unless-stopped
+    networks:
+      - etl-network
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # MinIO Console
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MinIO Client - Initialize buckets on startup
+  minio-init:
+    image: minio/mc:latest
+    container_name: minio-init
+    networks:
+      - etl-network
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 $${MINIO_ROOT_USER} $${MINIO_ROOT_PASSWORD};
+      mc mb local/$${MINIO_LANDING_BUCKET} --ignore-existing;
+      mc mb local/$${MINIO_LAKE_BUCKET} --ignore-existing;
+      mc mb local/$${MINIO_LANDING_BUCKET}/manifests --ignore-existing;
+      echo 'Buckets initialized successfully';
+      exit 0;
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_LANDING_BUCKET: ${MINIO_LANDING_BUCKET:-landing-zone}
+      MINIO_LAKE_BUCKET: ${MINIO_LAKE_BUCKET:-data-lake}
+    depends_on:
+      minio:
+        condition: service_healthy
+
+  # MongoDB - Metadata Ledger
+  mongodb:
+    image: mongo:7
+    container_name: mongodb
+    restart: unless-stopped
+    networks:
+      - etl-network
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-mongo}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-mongo_password}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-spatial_etl}
+    volumes:
+      - mongodb-data:/data/db
+      - ./services/mongodb/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ===========================================================================
+  # COMPUTE SERVICES
+  # ===========================================================================
+
+  # PostGIS - Spatial Compute Engine (Transient by Design)
+  postgis:
+    image: postgis/postgis:16-3.4-alpine
+    container_name: postgis
+    restart: unless-stopped
+    networks:
+      - etl-network
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgis}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgis_password}
+      POSTGRES_DB: ${POSTGRES_DB:-spatial_compute}
+    volumes:
+      - postgis-data:/var/lib/postgresql/data
+      - ./services/postgis/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgis} -d ${POSTGRES_DB:-spatial_compute}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+

@@ -1,0 +1,56 @@
+# =============================================================================
+# Dagster Instance Configuration
+# =============================================================================
+# This file configures the Dagster instance (webserver + daemon).
+# See: https://docs.dagster.io/deployment/dagster-instance
+# =============================================================================
+
+# Storage configuration - uses PostgreSQL for run/event storage
+storage:
+  postgres:
+    postgres_db:
+      username:
+        env: DAGSTER_POSTGRES_USER
+      password:
+        env: DAGSTER_POSTGRES_PASSWORD
+      hostname:
+        env: DAGSTER_POSTGRES_HOST
+      db_name:
+        env: DAGSTER_POSTGRES_DB
+      port: 5432
+
+# Run launcher - uses the default run launcher
+run_launcher:
+  module: dagster.core.launcher
+  class: DefaultRunLauncher
+
+# Run coordinator - controls run queuing
+run_coordinator:
+  module: dagster.core.run_coordinator
+  class: QueuedRunCoordinator
+  config:
+    max_concurrent_runs: 5
+
+# Compute log storage - stores stdout/stderr
+compute_logs:
+  module: dagster.core.storage.local_compute_log_manager
+  class: LocalComputeLogManager
+  config:
+    base_dir: /opt/dagster/dagster_home/storage/compute_logs
+
+# Local artifact storage
+local_artifact_storage:
+  module: dagster.core.storage.root
+  class: LocalArtifactStorage
+  config:
+    base_dir: /opt/dagster/dagster_home/storage/artifacts
+
+# Telemetry - disabled for on-premise
+telemetry:
+  enabled: false
+
+# Sensors configuration
+sensors:
+  use_threads: true
+  num_workers: 4
+

@@ -1,0 +1,14 @@
+# =============================================================================
+# Dagster Workspace Configuration
+# =============================================================================
+# Defines the code locations (repositories) that Dagster should load.
+# See: https://docs.dagster.io/concepts/code-locations/workspace-files
+# =============================================================================
+
+load_from:
+  # User code container running as gRPC server
+  - grpc_server:
+      host: user-code
+      port: 4000
+      location_name: "etl_pipelines"
+

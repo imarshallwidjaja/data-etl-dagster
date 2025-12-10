@@ -1,0 +1,44 @@
+# =============================================================================
+# Dagster User Code Dockerfile (with GDAL)
+# =============================================================================
+# This image contains the actual ETL pipeline code and GDAL libraries.
+# It runs as a gRPC server that the Dagster daemon connects to.
+# =============================================================================
+
+FROM ghcr.io/osgeo/gdal:ubuntu-full-3.8.0
+
+# Install Python and system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pip \
+    python3-venv \
+    libpq-dev \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create and activate virtual environment
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv $VIRTUAL_ENV
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Set working directory
+WORKDIR /opt/dagster/app
+
+# Install Python dependencies
+COPY requirements-user-code.txt .
+RUN pip install --no-cache-dir -r requirements-user-code.txt
+
+# Set GDAL environment variables
+ENV GDAL_DATA=/usr/share/gdal
+ENV PROJ_LIB=/usr/share/proj
+
+# The actual code will be mounted or copied here
+# COPY ./etl_pipelines /opt/dagster/app/etl_pipelines
+
+# Expose gRPC port
+EXPOSE 4000
+
+# Default command (overridden in docker-compose)
+CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "etl_pipelines"]
+
