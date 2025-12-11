@@ -42,7 +42,7 @@ def _ensure_buckets(client: Minio, buckets: list[str]) -> None:
                 raise
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def minio_settings():
     """Load MinIO settings from environment."""
     return MinIOSettings()
