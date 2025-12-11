@@ -20,10 +20,6 @@ jobs:
     name: Unit & Integration Tests
     runs-on: ubuntu-latest
     
-    defaults:
-      run:
-        working-directory: data-etl-dagster
-    
     env:
       # Use CI-safe defaults from .env.ci
       ENVIRONMENT: ci
@@ -78,16 +74,18 @@ jobs:
           token: ${{ github.token }}
           filters: |
             unit:
-              - 'data-etl-dagster/services/**'
-              - 'data-etl-dagster/libs/**'
-              - 'data-etl-dagster/tests/unit/**'
-              - 'data-etl-dagster/requirements*.txt'
+              - 'services/**'
+              - 'libs/**'
+              - 'tests/unit/**'
+              - 'requirements*.txt'
+              - '.github/workflows/integration.yml'
             integration:
-              - 'data-etl-dagster/docker-compose.yaml'
-              - 'data-etl-dagster/scripts/**'
-              - 'data-etl-dagster/tests/integration/**'
-              - 'data-etl-dagster/services/**'
-              - 'data-etl-dagster/libs/**'
+              - 'docker-compose.yaml'
+              - 'scripts/**'
+              - 'tests/integration/**'
+              - 'services/**'
+              - 'libs/**'
+              - '.github/workflows/integration.yml'
       
       - name: Set up Python
         if: ${{ steps.changes.outputs.unit == 'true' || steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
