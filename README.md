@@ -85,7 +85,9 @@ data-etl-dagster/
 │   ├── minio/             # Object storage config
 │   ├── mongodb/           # Metadata store config
 │   └── postgis/           # Compute engine config
-├── libs/
+├── libs/                   # Shared Python libraries (installable package)
+│   ├── pyproject.toml     # Package definition
+│   ├── __init__.py        # Package root
 │   ├── spatial_utils/     # GDAL wrappers
 │   └── models/            # Pydantic schemas
 └── configs/               # Configuration templates

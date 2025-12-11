@@ -127,8 +127,8 @@ services:
   # User Code Container (Python + GDAL Libraries)
   user-code:
     build:
-      context: ./services/dagster
-      dockerfile: Dockerfile.user-code
+      context: .
+      dockerfile: services/dagster/Dockerfile.user-code
     container_name: dagster-user-code
     restart: unless-stopped
     networks:

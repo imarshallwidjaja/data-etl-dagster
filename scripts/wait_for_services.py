@@ -22,9 +22,6 @@ except ImportError as e:
     print("Install test dependencies with: pip install -r requirements-test.txt")
     sys.exit(1)
 
-# Add parent directory to path to import libs
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-
 from libs.models import MinIOSettings, MongoSettings, PostGISSettings
 
 

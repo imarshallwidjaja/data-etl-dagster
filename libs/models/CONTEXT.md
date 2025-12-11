@@ -86,6 +86,12 @@ Configuration models use `pydantic-settings` with explicit `validation_alias` to
 - Use `model_dump(mode="json")` for JSON serialization.
 - The `py.typed` marker file enables PEP 561 type checking support for downstream packages.
 
+### Package Installation
+
+The `libs/` directory is a proper Python package (`spatial-etl-libs`).
+- **Local development:** Install with `pip install -e ./libs` (already included in `requirements-test.txt`)
+- **Docker:** The `user-code` container installs `libs` during image build. Changes to `libs/` require rebuilding the container: `docker-compose build user-code`
+
 ### Testing Strategy
 
 Tests are located in `tests/unit/test_models.py` with shared fixtures defined in `tests/conftest.py`.

@@ -26,8 +26,12 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 WORKDIR /opt/dagster/app
 
 # Install Python dependencies
-COPY requirements-user-code.txt .
+COPY services/dagster/requirements-user-code.txt .
 RUN pip install --no-cache-dir -r requirements-user-code.txt
+
+# Copy and install the libs package
+COPY libs /opt/dagster/app/libs
+RUN pip install --no-cache-dir /opt/dagster/app/libs
 
 # Set GDAL environment variables
 ENV GDAL_DATA=/usr/share/gdal
@@ -35,7 +39,7 @@ ENV PROJ_LIB=/usr/share/proj
 
 # Copy the ETL pipeline code (for production builds)
 # In development, this is overridden by the volume mount in docker-compose.yaml
-COPY ./etl_pipelines /opt/dagster/app/etl_pipelines
+COPY services/dagster/etl_pipelines /opt/dagster/app/etl_pipelines
 
 # Expose gRPC port
 EXPOSE 4000

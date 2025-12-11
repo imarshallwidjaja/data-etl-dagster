@@ -119,6 +119,7 @@ S3-compatible object storage operations for landing zone and data lake.
   - Dev: bind mount via docker-compose hot-reloads code changes
   - Prod: `Dockerfile.user-code` copies code into the image; rebuild required for changes
   - Add new assets/jobs/resources/sensors to `definitions.py` (`defs`) so Dagster loads them
+- **libs hot-reload:** The `libs/` package is installed at build time, not hot-reloaded. After editing files in `libs/`, rebuild the container: `docker-compose build user-code`
 - S3/MinIO access uses `dagster-aws` S3 resources pointed at the MinIO endpoint (S3-compatible); ensure credentials/endpoint match MinIO in env vars.
 
 ## Common Mistakes

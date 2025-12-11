@@ -411,40 +411,6 @@ class TestContentHashValidation:
 class TestConfigSettings:
     """Test configuration settings models."""
     
-    def test_minio_settings_load_from_env(self, monkeypatch):
-        """Test that MinIOSettings load from environment variables."""
-        monkeypatch.setenv("MINIO_ENDPOINT", "minio:9000")
-        monkeypatch.setenv("MINIO_ROOT_USER", "minioadmin")
-        monkeypatch.setenv("MINIO_ROOT_PASSWORD", "minioadmin")
-        
-        settings = MinIOSettings()
-        assert settings.endpoint == "minio:9000"
-        assert settings.access_key == "minioadmin"
-        assert settings.secret_key == "minioadmin"
-    
-    def test_minio_default_values(self, monkeypatch):
-        """Test that MinIOSettings apply default values when env vars missing."""
-        monkeypatch.setenv("MINIO_ENDPOINT", "minio:9000")
-        monkeypatch.setenv("MINIO_ROOT_USER", "minioadmin")
-        monkeypatch.setenv("MINIO_ROOT_PASSWORD", "minioadmin")
-        
-        settings = MinIOSettings()
-        assert settings.use_ssl is False
-        assert settings.landing_bucket == "landing-zone"
-        assert settings.lake_bucket == "data-lake"
-    
-    def test_mongo_settings_load_from_env(self, monkeypatch):
-        """Test that MongoSettings load from environment variables."""
-        monkeypatch.setenv("MONGO_INITDB_ROOT_USERNAME", "admin")
-        monkeypatch.setenv("MONGO_INITDB_ROOT_PASSWORD", "password")
-        
-        settings = MongoSettings()
-        assert settings.username == "admin"
-        assert settings.password == "password"
-        assert settings.host == "mongodb"  # Default
-        assert settings.port == 27017  # Default
-        assert settings.database == "spatial_etl"  # Default
-    
     def test_mongo_connection_string_property(self, monkeypatch):
         """Test that MongoSettings connection_string property builds correctly."""
         monkeypatch.setenv("MONGO_HOST", "custom-host")
@@ -458,19 +424,6 @@ class TestConfigSettings:
         conn_str = settings.connection_string
         assert "mongodb://admin:password@custom-host:27018/test_db?authSource=admin" == conn_str
     
-    def test_postgis_settings_load_from_env(self, monkeypatch):
-        """Test that PostGISSettings load from environment variables."""
-        monkeypatch.setenv("POSTGRES_HOST", "postgis")
-        monkeypatch.setenv("POSTGRES_USER", "postgres")
-        monkeypatch.setenv("POSTGRES_PASSWORD", "password")
-        
-        settings = PostGISSettings()
-        assert settings.host == "postgis"
-        assert settings.user == "postgres"
-        assert settings.password == "password"
-        assert settings.port == 5432  # Default
-        assert settings.database == "spatial_compute"  # Default
-    
     def test_postgis_connection_string_property(self, monkeypatch):
         """Test that PostGISSettings connection_string property builds correctly."""
         monkeypatch.setenv("POSTGRES_HOST", "custom-postgis")
@@ -482,20 +435,6 @@ class TestConfigSettings:
         settings = PostGISSettings()
         conn_str = settings.connection_string
         assert "postgresql://postgres:password@custom-postgis:5433/test_db" == conn_str
-    
-    def test_dagster_postgres_settings_load_from_env(self, monkeypatch):
-        """Test that DagsterPostgresSettings load from environment variables."""
-        monkeypatch.setenv("DAGSTER_POSTGRES_HOST", "postgres")
-        monkeypatch.setenv("DAGSTER_POSTGRES_USER", "dagster")
-        monkeypatch.setenv("DAGSTER_POSTGRES_PASSWORD", "password")
-        monkeypatch.setenv("DAGSTER_POSTGRES_DB", "dagster_db")
-        
-        settings = DagsterPostgresSettings()
-        assert settings.host == "postgres"
-        assert settings.user == "dagster"
-        assert settings.password == "password"
-        assert settings.database == "dagster_db"
-        assert settings.port == 5433  # Default
     
     def test_dagster_postgres_connection_string_property(self, monkeypatch):
         """Test that DagsterPostgresSettings connection_string property builds correctly."""

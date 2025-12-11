@@ -164,8 +164,10 @@ Integration tests run in GitHub Actions using Docker Compose to spin up the full
 
 ## 7. Development Workflow (Dagster user code)
 
-- Edit code under `services/dagster/etl_pipelines`.
-- Development: `docker-compose up` uses a bind mount; code reloads without rebuilding the user-code image.
+- Edit pipeline code under `services/dagster/etl_pipelines` — hot-reloads in dev mode.
+- Edit shared library code under `libs/` — requires rebuilding user-code: `docker-compose build user-code`
+- **Note:** `libs/` is installed as a package, not mounted for runtime. This ensures consistent import resolution.
+- Development: `docker-compose up` uses a bind mount for `etl_pipelines`; code reloads without rebuilding the user-code image.
 - Production: rebuild the user-code image (COPY in `Dockerfile.user-code` includes code).
 - Keep Dagster packages pinned to the same patch level across `requirements.txt` and `requirements-user-code.txt`.
 
@@ -194,7 +196,9 @@ data-etl-dagster/
 │   ├── minio/             # MinIO object storage configuration
 │   ├── mongodb/           # MongoDB metadata store configuration
 │   └── postgis/           # PostGIS compute engine configuration
-├── libs/                   # Shared Python libraries
+├── libs/                   # Shared Python libraries (installable package)
+│   ├── pyproject.toml     # Package definition
+│   ├── __init__.py        # Package root
 │   ├── spatial_utils/     # GDAL wrappers, spatial operations
 │   └── models/            # Pydantic models, schemas
 ├── tests/                  # Test suite
