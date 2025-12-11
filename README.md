@@ -183,14 +183,56 @@ pytest tests/unit -v
 pytest -m integration tests/integration -v
 ```
 
-#### Test Structure
+#### Test Coverage
 
-- `tests/unit/` - Unit tests (no external dependencies)
-- `tests/integration/` - Integration tests (requires Docker stack)
-  - `test_minio.py` - MinIO connectivity and operations
-  - `test_mongodb.py` - MongoDB connectivity and CRUD
-  - `test_postgis.py` - PostGIS connectivity and spatial functions
-  - `test_dagster.py` - Dagster GraphQL API connectivity
+**Unit Tests** (`tests/unit/`) - No external dependencies required:
+- `test_models.py` - Pydantic schemas validation (55 tests)
+  - CRS validation (EPSG, WKT, PROJ formats)
+  - Bounds validation
+  - Manifest validation and status tracking
+  - Asset registry models
+  - Content hash validation
+  - Configuration settings loading
+  - S3 path/key validation
+- `test_minio_resource.py` - MinIO resource operations (16 tests)
+  - Manifest listing and filtering
+  - Manifest download and JSON parsing
+  - Archive operations (copy and delete)
+  - File upload to data lake with content-type inference
+  - Presigned URL generation for GDAL
+
+**Integration Tests** (`tests/integration/`) - Requires Docker stack:
+- `test_minio.py` - MinIO connectivity and read/write operations
+- `test_mongodb.py` - MongoDB connectivity and CRUD operations
+- `test_postgis.py` - PostGIS connectivity and spatial functions
+- `test_dagster.py` - Dagster GraphQL API connectivity
+
+**Total Coverage:** 55 unit tests + 4 integration tests = 59 tests
+
+#### Continuous Integration
+
+The project uses GitHub Actions with **smart path-based test execution**:
+
+```
+Trigger: Pull request or push to main/develop
+         ↓
+Detect changed files
+         ↓
+         ├─ Code changes? → Run unit + integration tests
+         ├─ Infrastructure/Docker changes? → Run integration tests
+         ├─ Docs-only changes? → Skip all tests
+         └─ Manual dispatch? → Run all tests (escape hatch)
+```
+
+**Workflow file:** `.github/workflows/integration.yml`
+
+**Benefits:**
+- ⚡ Fast feedback: Unit tests run in ~5 seconds
+- 💰 Resource efficient: Skip expensive Docker for model changes
+- 🎯 Targeted: Only run tests relevant to changed files
+- 🔄 Safe: Manual dispatch option runs full suite
+
+See the workflow file for detailed path filter configuration.
 
 ## License
 

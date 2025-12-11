@@ -1,11 +1,12 @@
 # =============================================================================
-# Integration Tests Workflow
+# Test Suite Workflow
 # =============================================================================
-# Runs integration tests against the full Docker stack
-# Tests connectivity and basic operations for all services
+# Runs unit tests (no Docker required) and integration tests (full stack)
+# - Unit tests: Fast feedback on models, validation, and business logic
+# - Integration tests: Connectivity and operations against live services
 # =============================================================================
 
-name: Integration Tests
+name: Test Suite
 
 on:
   pull_request:
@@ -15,9 +16,13 @@ on:
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
-  integration:
-    name: Integration Tests
+  test:
+    name: Unit & Integration Tests
     runs-on: ubuntu-latest
+    
+    defaults:
+      run:
+        working-directory: data-etl-dagster
     
     env:
       # Use CI-safe defaults from .env.ci
@@ -66,34 +71,63 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
       
+      - name: Detect changed areas
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          token: ${{ github.token }}
+          filters: |
+            unit:
+              - 'data-etl-dagster/services/**'
+              - 'data-etl-dagster/libs/**'
+              - 'data-etl-dagster/tests/unit/**'
+              - 'data-etl-dagster/requirements*.txt'
+            integration:
+              - 'data-etl-dagster/docker-compose.yaml'
+              - 'data-etl-dagster/scripts/**'
+              - 'data-etl-dagster/tests/integration/**'
+              - 'data-etl-dagster/services/**'
+              - 'data-etl-dagster/libs/**'
+      
       - name: Set up Python
+        if: ${{ steps.changes.outputs.unit == 'true' || steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
       
       - name: Install dependencies
+        if: ${{ steps.changes.outputs.unit == 'true' || steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-test.txt
       
+      - name: Run unit tests
+        if: ${{ steps.changes.outputs.unit == 'true' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          pytest tests/unit -v --tb=short
+        timeout-minutes: 5
+      
       - name: Start Docker stack
+        if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
           docker compose -f docker-compose.yaml up -d --build \
             dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
       
       - name: Wait for services to be ready
+        if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
           python scripts/wait_for_services.py
         timeout-minutes: 5
       
       - name: Run integration tests
+        if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
           pytest -m integration tests/integration -v
         timeout-minutes: 10
       
       - name: Dump service logs on failure
-        if: failure()
+        if: failure() && (steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           echo "=== Dagster Webserver Logs ==="
           docker compose -f docker-compose.yaml logs dagster-webserver || true
@@ -117,7 +151,7 @@ jobs:
           docker compose -f docker-compose.yaml ps || true
       
       - name: Cleanup
-        if: always()
+        if: always() && (steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
         run: |
           docker compose -f docker-compose.yaml down -v
 
