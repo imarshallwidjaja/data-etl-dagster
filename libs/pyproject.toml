@@ -14,4 +14,4 @@ dependencies = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["libs", "libs.*"]
+include = ["models", "spatial_utils"]

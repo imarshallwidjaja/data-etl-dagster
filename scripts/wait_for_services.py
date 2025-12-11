@@ -9,20 +9,26 @@ Used by CI/CD pipelines and local development to ensure services are up before r
 import os
 import sys
 import time
-from typing import Callable, Optional
+from typing import Callable
 
 try:
     import requests
     import psycopg2
     from minio import Minio
     from pymongo import MongoClient
-    from tenacity import retry, stop_after_attempt, wait_exponential
 except ImportError as e:
     print(f"ERROR: Missing required dependency: {e}")
     print("Install test dependencies with: pip install -r requirements-test.txt")
     sys.exit(1)
 
-from libs.models import MinIOSettings, MongoSettings, PostGISSettings
+try:
+    from models import MinIOSettings, MongoSettings, PostGISSettings
+except ModuleNotFoundError:
+    print(
+        "ERROR: Missing spatial-etl-libs package. Install with `pip install -r requirements-test.txt` "
+        "or `pip install -e ./libs` before running this script."
+    )
+    sys.exit(1)
 
 
 # =============================================================================
@@ -70,9 +76,6 @@ def check_postgis(settings: PostGISSettings, timeout: int = 30) -> bool:
             connect_timeout=timeout,
         )
         with conn.cursor() as cur:
-            # Check PostgreSQL version
-            cur.execute("SELECT version();")
-            pg_version = cur.fetchone()[0]
             
             # Check PostGIS extension
             cur.execute("SELECT PostGIS_Version();")
