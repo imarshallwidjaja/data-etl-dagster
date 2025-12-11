@@ -4,6 +4,7 @@ Integration tests for MinIO (S3-compatible object storage).
 Tests basic connectivity, bucket operations, and read/write functionality.
 """
 
+import time
 import pytest
 from io import BytesIO
 from datetime import datetime
@@ -16,21 +17,49 @@ from minio.error import S3Error
 pytestmark = pytest.mark.integration
 
 
+def _wait_for_minio(client: Minio, *, timeout: int = 30, interval: int = 1) -> None:
+    """Poll MinIO until it responds to list_buckets or time out."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            client.list_buckets()
+            return
+        except Exception:
+            time.sleep(interval)
+    raise RuntimeError("MinIO did not become ready within timeout")
+
+
+def _ensure_buckets(client: Minio, buckets: list[str]) -> None:
+    """Create required buckets if they are missing."""
+    for bucket in buckets:
+        if client.bucket_exists(bucket):
+            continue
+        try:
+            client.make_bucket(bucket)
+        except S3Error as exc:
+            # If another process created the bucket after the existence check, ignore
+            if exc.code not in {"BucketAlreadyOwnedByYou", "BucketAlreadyExists"}:
+                raise
+
+
 @pytest.fixture
 def minio_settings():
     """Load MinIO settings from environment."""
     return MinIOSettings()
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def minio_client(minio_settings):
-    """Create MinIO client."""
-    return Minio(
+    """Create MinIO client and ensure required buckets exist."""
+    client = Minio(
         minio_settings.endpoint,
         access_key=minio_settings.access_key,
         secret_key=minio_settings.secret_key,
         secure=minio_settings.use_ssl,
     )
+    _wait_for_minio(client)
+    _ensure_buckets(client, [minio_settings.landing_bucket, minio_settings.lake_bucket])
+    return client
 
 
 class TestMinIOConnectivity:
