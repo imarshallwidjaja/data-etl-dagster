@@ -49,19 +49,31 @@ services/dagster/
 
 ## Resource Configuration
 
-All resources are configured via environment variables:
+All resources are configured via environment variables using Pydantic settings models.
 
-```python
-# Example Resource Configuration
-@resource
-def minio_resource(context) -> MinIOResource:
-    return MinIOResource(
-        endpoint=os.environ["MINIO_ENDPOINT"],
-        access_key=os.environ["MINIO_ROOT_USER"],
-        secret_key=os.environ["MINIO_ROOT_PASSWORD"],
-        secure=os.environ.get("MINIO_USE_SSL", "false").lower() == "true"
-    )
-```
+### Implemented Resources
+
+#### MinIOResource (`etl_pipelines/resources/minio_resource.py`)
+
+**Status:** ✅ Implemented
+
+S3-compatible object storage operations for landing zone and data lake.
+
+**Key Methods:**
+- `list_manifests()`: List JSON files in `manifests/` prefix
+- `get_manifest(key)`: Download and parse manifest JSON
+- `move_to_archive(key)`: Move processed manifest to `archive/`
+- `upload_to_lake(local_path, s3_key)`: Upload processed file to data lake
+- `get_presigned_url(bucket, key)`: Generate temp URL for GDAL `/vsicurl/`
+
+**Configuration:** Uses `MinIOSettings` from `libs.models.config`
+
+**Testing:** Unit tests with mocked `minio.Minio` client in `tests/unit/test_minio_resource.py`
+
+### Planned Resources
+
+- **PostGISResource:** Connection pooling and ephemeral schema lifecycle management
+- **GDALResource:** Subprocess wrapper for GDAL CLI operations (mockable for unit tests)
 
 ## Relation to Global Architecture
 
