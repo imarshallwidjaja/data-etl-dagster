@@ -231,3 +231,5 @@ temp/
 *.tmp
 *.temp
 
+# Cursor
+.cursor/rules/*.mdc
