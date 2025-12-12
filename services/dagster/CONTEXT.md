@@ -70,9 +70,77 @@ S3-compatible object storage operations for landing zone and data lake.
 
 **Testing:** Unit tests with mocked `minio.Minio` client in `tests/unit/test_minio_resource.py`
 
+#### PostGISResource (`etl_pipelines/resources/postgis_resource.py`)
+
+**Status:** ✅ Implemented
+
+Manages ephemeral schema lifecycle for spatial compute operations. Implements the compute engine pattern: Load → Transform → Dump → Drop.
+
+PostGIS is used as a **transient compute node**, NOT for data persistence. All permanent data lives in MinIO/MongoDB.
+
+**Key Methods:**
+- `ephemeral_schema(run_id)`: Context manager for schema creation/deletion
+- `execute_sql(sql, schema)`: Run SQL within a specific schema
+- `table_exists(schema, table)`: Check table existence
+- `get_table_bounds(schema, table)`: Compute spatial extent using `ST_Extent()`
+- `get_engine()`: Get SQLAlchemy engine (cached, with connection pooling)
+
+**Schema Lifecycle:**
+Each Dagster run creates an ephemeral schema with the pattern `proc_{run_id_sanitized}`:
+```python
+run_id = "abc12345-def6-7890-ijkl-mnop12345678"
+# Becomes schema: proc_abc12345_def6_7890_ijkl_mnop12345678
+```
+
+The schema is **automatically dropped** when the context manager exits (even on exception).
+
+**Configuration:** Uses `PostGISSettings` from `libs.models.config`
+
+**Testing:** 
+- Unit tests with mocked SQLAlchemy engine in `tests/unit/test_postgis_resource.py`
+- Integration tests verify PostGIS connectivity in `tests/integration/test_postgis.py`
+
+**Usage Example:**
+```python
+@op(required_resource_keys={"postgis"})
+def process_spatial_data(context):
+    postgis = context.resources.postgis
+    
+    with postgis.ephemeral_schema(context.run_id) as schema:
+        # Schema: proc_run_id_xxxxx created and available
+        
+        # Load raw data
+        postgis.execute_sql(
+            "CREATE TABLE raw_input AS (SELECT * FROM ...)", 
+            schema
+        )
+        
+        # Transform
+        postgis.execute_sql(
+            "CREATE TABLE processed AS (SELECT ST_Transform(geom, 4326) FROM raw_input)",
+            schema
+        )
+        
+        # Export via ogr2ogr to S3
+        bounds = postgis.get_table_bounds(schema, "processed")
+        
+    # Schema automatically dropped here
+```
+
+**Round-Trip Run ID Mapping:**
+The `RunIdSchemaMapping` utility (in `libs/spatial_utils/schema_mapper.py`) enables bidirectional conversion:
+```python
+# Forward: run_id → schema_name
+mapping = RunIdSchemaMapping.from_run_id(run_id)
+schema_name = mapping.schema_name
+
+# Reverse: schema_name → run_id (useful for monitoring/recovery)
+reverse = RunIdSchemaMapping.from_schema_name(schema_name)
+original_run_id = reverse.run_id
+```
+
 ### Planned Resources
 
-- **PostGISResource:** Connection pooling and ephemeral schema lifecycle management
 - **GDALResource:** Subprocess wrapper for GDAL CLI operations (mockable for unit tests)
 
 ## Relation to Global Architecture

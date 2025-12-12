@@ -9,11 +9,18 @@
 Spatial utilities for the ETL pipeline.
 
 This library provides:
+- RunIdSchemaMapping: Bidirectional run_id ↔ schema_name conversion
 - GDALWrapper: Mockable wrapper for GDAL CLI operations
 - Format converters: SHP → GeoParquet, TIFF → COG, etc.
 - CRS utilities: Coordinate reference system handling
 - Validators: Spatial file validation
 """
 
+from .schema_mapper import RunIdSchemaMapping
+
 __version__ = "0.1.0"
+
+__all__ = [
+    "RunIdSchemaMapping",
+]
 

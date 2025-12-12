@@ -1,6 +1,5 @@
 ---
-description: Global behavioral rules for the Spatial ETL Pipeline agent.
-globs: "**/*"
+description: Global behavioral rules for the Spatial ETL Pipeline agent working on the data-etl-dagster project.
 alwaysApply: true
 ---
 
