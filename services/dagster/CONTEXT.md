@@ -49,7 +49,14 @@ services/dagster/
 
 ## Resource Configuration
 
-All resources are configured via environment variables using Pydantic settings models.
+All resources are registered in `definitions.py` and configured using Dagster's `EnvVar` for environment variable resolution. This allows environment variables to be resolved at runtime and provides better visibility in the Dagster UI.
+
+Bucket names and database names are hardcoded in `definitions.py` to match architectural defaults:
+- MinIO buckets: `landing-zone`, `data-lake`
+- MongoDB database: `spatial_etl`
+- PostGIS database: `spatial_compute`
+
+Note: The Pydantic Settings models (`MinIOSettings`, `MongoSettings`, `PostGISSettings`, `GDALSettings`) in `libs.models.config` are still available for use in standalone scripts and other contexts, but are no longer used in `definitions.py`.
 
 ### Implemented Resources
 
@@ -66,7 +73,7 @@ S3-compatible object storage operations for landing zone and data lake.
 - `upload_to_lake(local_path, s3_key)`: Upload processed file to data lake
 - `get_presigned_url(bucket, key)`: Generate temp URL for GDAL `/vsicurl/`
 
-**Configuration:** Uses `MinIOSettings` from `libs.models.config`
+**Configuration:** Uses `EnvVar` for `MINIO_ENDPOINT`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`. Bucket names are hardcoded: `landing-zone`, `data-lake`.
 
 **Testing:** Unit tests with mocked `minio.Minio` client in `tests/unit/test_minio_resource.py`
 
@@ -94,7 +101,7 @@ run_id = "abc12345-def6-7890-ijkl-mnop12345678"
 
 The schema is **automatically dropped** when the context manager exits (even on exception).
 
-**Configuration:** Uses `PostGISSettings` from `libs.models.config`
+**Configuration:** Uses `EnvVar` for `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. Database name is hardcoded: `spatial_compute`. Port defaults to `5432`.
 
 **Testing:** 
 - Unit tests with mocked SQLAlchemy engine in `tests/unit/test_postgis_resource.py`
@@ -153,7 +160,7 @@ Serves as the metadata ledger interface that writes manifest status updates and 
 - `get_latest_asset(dataset_id)` / `get_next_version(dataset_id)`: Track versioning for datasets.
 - `asset_exists(content_hash)`: Deduplicate uploads before processing.
 
-**Configuration:** Uses `MongoSettings` from `libs.models.config` (`MONGO_*` env vars).
+**Configuration:** Uses `EnvVar("MONGO_CONNECTION_STRING")` for the connection URI. Database name is hardcoded: `spatial_etl`. The connection string can be built from individual env vars (see `MongoSettings.connection_string` property in `libs.models.config`) or set directly as `MONGO_CONNECTION_STRING`.
 
 **Testing:** `tests/unit/test_mongodb_resource.py` exercises every method via `mongomock`, keeping unit tests fast and isolated.
 
@@ -181,9 +188,7 @@ Thin wrapper for GDAL CLI operations (ogr2ogr, gdal_translate, ogrinfo, gdalinfo
 - **Pipes-Ready:** Can be moved to separate process/container without modification
 - **S3-Compatible:** Uses MinIO credentials via `/vsis3/` virtual file system
 
-**Configuration:** Uses `GDALSettings` from `libs.models.config`
-- Reuses MinIO credentials: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`
-- GDAL/PROJ paths optional: `GDAL_DATA`, `PROJ_LIB` (typically set in Dockerfile)
+**Configuration:** Uses `EnvVar` for MinIO credentials: `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_ENDPOINT` (reused from MinIO config). GDAL/PROJ paths (`GDAL_DATA`, `PROJ_LIB`) are optional and typically set in Dockerfile.
 
 **Testing:**
 - Unit tests: `tests/unit/resources/test_gdal_resource.py` (mock `subprocess.run`)
@@ -234,20 +239,23 @@ def load_vector_to_postgis(context):
 
 ### Environment Variables (Required)
 
-| Variable | Description |
-|----------|-------------|
-| `DAGSTER_POSTGRES_HOST` | Dagster DB hostname |
-| `DAGSTER_POSTGRES_USER` | Dagster DB username |
-| `DAGSTER_POSTGRES_PASSWORD` | Dagster DB password |
-| `DAGSTER_POSTGRES_DB` | Dagster DB name |
-| `MINIO_*` | MinIO connection settings |
-| `MONGO_*` | MongoDB connection settings |
-| `POSTGRES_*` | PostGIS connection settings |
-| `AWS_ACCESS_KEY_ID` | MinIO access key (for GDAL /vsis3/) |
-| `AWS_SECRET_ACCESS_KEY` | MinIO secret key (for GDAL /vsis3/) |
-| `AWS_S3_ENDPOINT` | MinIO endpoint URL (for GDAL /vsis3/) |
-| `GDAL_DATA` | GDAL data files path (optional) |
-| `PROJ_LIB` | PROJ library path (optional) |
+| Variable | Description | Used By |
+|----------|-------------|---------|
+| `DAGSTER_POSTGRES_HOST` | Dagster DB hostname | Dagster instance |
+| `DAGSTER_POSTGRES_USER` | Dagster DB username | Dagster instance |
+| `DAGSTER_POSTGRES_PASSWORD` | Dagster DB password | Dagster instance |
+| `DAGSTER_POSTGRES_DB` | Dagster DB name | Dagster instance |
+| `MINIO_ENDPOINT` | MinIO server endpoint (host:port) | MinIO, GDAL resources |
+| `MINIO_ROOT_USER` | MinIO access key | MinIO, GDAL resources |
+| `MINIO_ROOT_PASSWORD` | MinIO secret key | MinIO, GDAL resources |
+| `MONGO_CONNECTION_STRING` | MongoDB connection URI | MongoDB resource |
+| `POSTGRES_HOST` | PostGIS hostname | PostGIS resource |
+| `POSTGRES_USER` | PostGIS username | PostGIS resource |
+| `POSTGRES_PASSWORD` | PostGIS password | PostGIS resource |
+| `GDAL_DATA` | GDAL data files path (optional) | GDAL resource |
+| `PROJ_LIB` | PROJ library path (optional) | GDAL resource |
+
+**Note on MONGO_CONNECTION_STRING:** If not set directly, it can be built from individual MongoDB env vars using the format: `mongodb://[username]:[password]@[host]:[port]/[database]?authSource=[auth_source]`. See `MongoSettings.connection_string` in `libs.models.config` for the exact format.
 
 ## Development Notes
 
