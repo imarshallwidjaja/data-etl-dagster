@@ -139,6 +139,24 @@ reverse = RunIdSchemaMapping.from_schema_name(schema_name)
 original_run_id = reverse.run_id
 ```
 
+#### MongoDBResource (`etl_pipelines/resources/mongodb_resource.py`)
+
+**Status:** ✅ Implemented
+
+Serves as the metadata ledger interface that writes manifest status updates and asset registrations to MongoDB. This resource keeps the "Source of Truth" guarantee centralized so ops only interact with simple helpers like `insert_manifest`, `update_manifest_status`, `insert_asset`, `get_latest_asset`, and `get_next_version`.
+
+**Key Methods:**
+- `insert_manifest(record)`: Store manifests in the `manifests` collection.
+- `update_manifest_status(batch_id, status, ...)`: Advance manifest lifecycle and capture timestamps.
+- `get_manifest(batch_id)`: Load persisted manifest metadata.
+- `insert_asset(asset)`: Register processed assets and content hashes.
+- `get_latest_asset(dataset_id)` / `get_next_version(dataset_id)`: Track versioning for datasets.
+- `asset_exists(content_hash)`: Deduplicate uploads before processing.
+
+**Configuration:** Uses `MongoSettings` from `libs.models.config` (`MONGO_*` env vars).
+
+**Testing:** `tests/unit/test_mongodb_resource.py` exercises every method via `mongomock`, keeping unit tests fast and isolated.
+
 ### Planned Resources
 
 - **GDALResource:** Subprocess wrapper for GDAL CLI operations (mockable for unit tests)
