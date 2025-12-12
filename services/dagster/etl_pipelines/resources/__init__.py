@@ -3,10 +3,12 @@
 from .minio_resource import MinIOResource
 from .mongodb_resource import MongoDBResource
 from .postgis_resource import PostGISResource
+from .gdal_resource import GDALResource
 
 __all__ = [
     "MinIOResource",
     "MongoDBResource",
     "PostGISResource",
+    "GDALResource",
 ]
 

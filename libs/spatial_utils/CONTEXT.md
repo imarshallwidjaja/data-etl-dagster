@@ -74,9 +74,10 @@ mock_wrapper.ogr2ogr.return_value = CompletedProcess(args=[], returncode=0)
 │   Dagster User Code                                           │
 │         │                                                     │
 │         ▼                                                     │
-│   ┌─────────────────┐                                        │
-│   │  GDALWrapper    │───► subprocess.Popen ───► gdal CLI     │
-│   └─────────────────┘                                        │
+│   ┌──────────────────────┐                                   │
+│   │ GDALResource         │───► subprocess ───► gdal CLI      │
+│   │ (configurable)       │                                   │
+│   └──────────────────────┘                                   │
 │         │                                                     │
 │         ▼                                                     │
 │   File System / S3 (via /vsis3/)                             │
@@ -111,8 +112,10 @@ output_path = "/vsis3/data-lake/dataset_001/v1/data.parquet"
 
 ## Development Notes
 
-- GDAL must be installed in the execution environment (handled by Dockerfile.user-code)
-- All GDAL operations should be wrapped for error handling and logging
-- Use `subprocess.run(..., check=True)` to fail fast on GDAL errors
+- GDAL is installed in the user-code container (see Dockerfile.user-code)
+- Use the `GDALResource` from Dagster for all GDAL operations (it's a ConfigurableResource)
+- The resource wraps subprocess calls and is mockable for unit testing
+- Error handling is done via `GDALResult.success` flag and `.stderr` output
 - Test files should use small spatial datasets to keep tests fast
+- For integration tests, verify GDAL installation using `tests/integration/test_gdal_health.py`
 

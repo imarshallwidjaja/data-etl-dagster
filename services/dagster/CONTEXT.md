@@ -157,9 +157,57 @@ Serves as the metadata ledger interface that writes manifest status updates and 
 
 **Testing:** `tests/unit/test_mongodb_resource.py` exercises every method via `mongomock`, keeping unit tests fast and isolated.
 
-### Planned Resources
+#### GDALResource (`etl_pipelines/resources/gdal_resource.py`)
 
-- **GDALResource:** Subprocess wrapper for GDAL CLI operations (mockable for unit tests)
+**Status:** ✅ Implemented (Phase 2.4)
+
+Thin wrapper for GDAL CLI operations (ogr2ogr, gdal_translate, ogrinfo, gdalinfo).
+
+**Key Features:**
+- Stateless wrapper around subprocess calls
+- Serializable I/O (dataclass result, string inputs)
+- S3 support via `/vsis3/` virtual file system for MinIO access
+- Designed for future Dagster Pipes migration
+
+**Key Methods:**
+- `ogr2ogr(input_path, output_path, ...)`: Convert vector data (GeoJSON → PostgreSQL, Shapefile → Parquet, etc.)
+- `gdal_translate(input_path, output_path, ...)`: Convert raster data (GeoTIFF → COG, etc.)
+- `ogrinfo(input_path, layer=...)`: Inspect vector datasets
+- `gdalinfo(input_path)`: Inspect raster datasets
+
+**Design Principles:**
+- **Stateless:** All inputs are primitives (strings, dicts), no instance state
+- **Serializable:** Returns `GDALResult` dataclass with JSON-serializable fields
+- **Pipes-Ready:** Can be moved to separate process/container without modification
+- **S3-Compatible:** Uses MinIO credentials via `/vsis3/` virtual file system
+
+**Configuration:** Uses `GDALSettings` from `libs.models.config`
+- Reuses MinIO credentials: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_S3_ENDPOINT`
+- GDAL/PROJ paths optional: `GDAL_DATA`, `PROJ_LIB` (typically set in Dockerfile)
+
+**Testing:**
+- Unit tests: `tests/unit/resources/test_gdal_resource.py` (mock `subprocess.run`)
+- Integration tests: `tests/integration/test_gdal_health.py` (verify GDAL install/formats)
+
+**Usage Example:**
+```python
+@op(required_resource_keys={"gdal"})
+def load_vector_to_postgis(context):
+    gdal = context.resources.gdal
+    
+    result = gdal.ogr2ogr(
+        input_path="/vsis3/landing-zone/batch_123/data.geojson",
+        output_path="PG:host=postgis dbname=spatial_compute",
+        layer_name="raw_input",
+        target_crs="EPSG:4326",
+    )
+    
+    if not result.success:
+        raise RuntimeError(f"ogr2ogr failed: {result.stderr}")
+    
+    context.log.info(f"✅ Loaded data to PostGIS")
+    return result
+```
 
 ## Relation to Global Architecture
 
@@ -195,6 +243,11 @@ Serves as the metadata ledger interface that writes manifest status updates and 
 | `MINIO_*` | MinIO connection settings |
 | `MONGO_*` | MongoDB connection settings |
 | `POSTGRES_*` | PostGIS connection settings |
+| `AWS_ACCESS_KEY_ID` | MinIO access key (for GDAL /vsis3/) |
+| `AWS_SECRET_ACCESS_KEY` | MinIO secret key (for GDAL /vsis3/) |
+| `AWS_S3_ENDPOINT` | MinIO endpoint URL (for GDAL /vsis3/) |
+| `GDAL_DATA` | GDAL data files path (optional) |
+| `PROJ_LIB` | PROJ library path (optional) |
 
 ## Development Notes
 

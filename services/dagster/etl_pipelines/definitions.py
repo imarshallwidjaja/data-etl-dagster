@@ -1,9 +1,9 @@
 """Dagster Definitions - Repository Configuration."""
 
 from dagster import Definitions
-from libs.models import MinIOSettings, MongoSettings, PostGISSettings
+from libs.models import MinIOSettings, MongoSettings, PostGISSettings, GDALSettings
 
-from .resources import MinIOResource, MongoDBResource, PostGISResource
+from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
 
 # Import assets, jobs, resources, schedules, and sensors as they are created
 # Example:
@@ -15,6 +15,7 @@ from .resources import MinIOResource, MongoDBResource, PostGISResource
 minio_settings = MinIOSettings()
 mongo_settings = MongoSettings()
 postgis_settings = PostGISSettings()
+gdal_settings = GDALSettings()
 
 defs = Definitions(
     assets=[],
@@ -38,6 +39,13 @@ defs = Definitions(
             user=postgis_settings.user,
             password=postgis_settings.password,
             database=postgis_settings.database,
+        ),
+        "gdal": GDALResource(
+            aws_access_key_id=gdal_settings.aws_access_key_id,
+            aws_secret_access_key=gdal_settings.aws_secret_access_key,
+            aws_s3_endpoint=gdal_settings.aws_s3_endpoint,
+            gdal_data_path=gdal_settings.gdal_data_path,
+            proj_lib_path=gdal_settings.proj_lib_path,
         ),
     },
     schedules=[],

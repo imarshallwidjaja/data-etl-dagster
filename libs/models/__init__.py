@@ -50,6 +50,7 @@ from .config import (
     MongoSettings,
     PostGISSettings,
     DagsterPostgresSettings,
+    GDALSettings,
 )
 
 __all__ = [
@@ -76,5 +77,6 @@ __all__ = [
     "MongoSettings",
     "PostGISSettings",
     "DagsterPostgresSettings",
+    "GDALSettings",
 ]
 

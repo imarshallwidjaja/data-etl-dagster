@@ -234,6 +234,8 @@ temp/
 # Cursor
 .cursor/rules/*.mdc
 .cursor/plans/
+.cursor/implementation_summaries
 
 # MCPs
 .serena/
+

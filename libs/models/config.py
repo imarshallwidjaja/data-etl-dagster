@@ -16,6 +16,7 @@ __all__ = [
     "MongoSettings",
     "PostGISSettings",
     "DagsterPostgresSettings",
+    "GDALSettings",
 ]
 
 
@@ -221,4 +222,44 @@ class DagsterPostgresSettings(BaseSettings):
             f"postgresql://{self.user}:{self.password}@"
             f"{self.host}:{self.port}/{self.database}"
         )
+
+
+
+# =============================================================================
+# GDAL Settings (Spatial Data CLI Operations)
+# =============================================================================
+
+class GDALSettings(BaseSettings):
+    """
+    Configuration for GDAL CLI operations.
+    
+    GDAL is used to access S3-compatible storage (MinIO) via the /vsis3/ virtual
+    file system. Credentials are shared with MinIO since they're for the same endpoint.
+    
+    Maps environment variables:
+    - AWS_ACCESS_KEY_ID → aws_access_key_id (MinIO access key)
+    - AWS_SECRET_ACCESS_KEY → aws_secret_access_key (MinIO secret key)
+    - AWS_S3_ENDPOINT → aws_s3_endpoint (MinIO endpoint URL)
+    - GDAL_DATA → gdal_data_path (optional, typically set in Dockerfile)
+    - PROJ_LIB → proj_lib_path (optional, typically set in Dockerfile)
+    
+    Attributes:
+        aws_access_key_id: AWS/MinIO access key for /vsis3/ S3 access
+        aws_secret_access_key: AWS/MinIO secret key for /vsis3/ S3 access
+        aws_s3_endpoint: MinIO endpoint URL (e.g., "http://minio:9000")
+        gdal_data_path: Path to GDAL data files (optional, defaults set in container)
+        proj_lib_path: Path to PROJ coordinate system files (optional, defaults set in container)
+    """
+    
+    aws_access_key_id: str = Field("", validation_alias="AWS_ACCESS_KEY_ID", description="AWS/MinIO access key")
+    aws_secret_access_key: str = Field("", validation_alias="AWS_SECRET_ACCESS_KEY", description="AWS/MinIO secret key")
+    aws_s3_endpoint: str = Field("", validation_alias="AWS_S3_ENDPOINT", description="MinIO endpoint URL")
+    gdal_data_path: str = Field("", validation_alias="GDAL_DATA", description="GDAL data files path (optional)")
+    proj_lib_path: str = Field("", validation_alias="PROJ_LIB", description="PROJ library path (optional)")
+    
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore",  # Ignore unrelated env vars from shared .env files
+    )
 
