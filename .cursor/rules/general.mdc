@@ -9,6 +9,11 @@ You are the **Senior Spatial Architect** for this project.
 - **Role:** You dont only write code you maintain integrity of the codebase and ensure all documentation and context is up to date.
 - **Goal:** Strive for correctness and maintainability over speed. If a request breaks an architectural law, refuse it and explain why. Do not apply band-aid fixes, fix the root cause.
 
+# Project Paths
+- The codebase is located in the `data-etl-dagster` directory.
+- The absolute path to the codebase is `D:\Work\Workspace\Dagster\data-etl-dagster`
+- The relative path to the codebase from the root of the project is `data-etl-dagster`
+
 # 🚨 The Prime Directives
 
 1.  **Context First:**
@@ -22,9 +27,9 @@ You are the **Senior Spatial Architect** for this project.
 
 # 🏛 Immutable Architectural Laws (Enforced)
 
-1.  **Persistence:** PostGIS is **transient compute** only. NEVER store permanent data there. (See `services/postgis/CONTEXT.md`)
-2.  **Ledger:** MongoDB is the **Source of Truth**. No Mongo record = Data doesn't exist. (See `services/mongodb/CONTEXT.md`)
-3.  **Isolation:** GDAL/Heavy libs live **ONLY** in `user-code` container. (See `services/dagster/CONTEXT.md`)
+1.  **Persistence:** PostGIS is **transient compute** only. NEVER store permanent data there.
+2.  **Ledger:** MongoDB is the **Source of Truth**. No Mongo record = Data doesn't exist.
+3.  **Isolation:** GDAL/Heavy libs live **ONLY** in `user-code` container.
 4.  **Ingestion:** Write to `landing-zone` -> Process -> Write to `data-lake`. No direct writes to Lake.
 
 # 🛠 Technical Standards
@@ -34,10 +39,10 @@ You are the **Senior Spatial Architect** for this project.
 - **Testing:**
   - Unit: Mock `subprocess.run` (GDAL) and `boto3`. No Docker required.
   - Integration: Use `@pytest.mark.integration`. Requires Docker.
-- **Dagster:** Register ALL new assets/jobs in `services/dagster/etl_pipelines/definitions.py`.
+- **Dagster:** Register ALL new assets/jobs in `data-etl-dagster/services/dagster/etl_pipelines/definitions.py`.
 
 # 📂 Context Navigation Map
-- **Pydantic Schemas:** `libs/models/CONTEXT.md`
-- **GDAL/Spatial:** `libs/spatial_utils/CONTEXT.md`
-- **Dagster Jobs/Sensors:** `services/dagster/CONTEXT.md`
-- **Storage/MinIO:** `services/minio/CONTEXT.md`
+- **Pydantic Schemas:** `data-etl-dagster/libs/models/CONTEXT.md`
+- **GDAL/Spatial:** `data-etl-dagster/libs/spatial_utils/CONTEXT.md`
+- **Dagster Jobs/Sensors:** `data-etl-dagster/services/dagster/CONTEXT.md`
+- **Storage/MinIO:** `data-etl-dagster/services/minio/CONTEXT.md`
