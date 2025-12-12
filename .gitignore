@@ -233,3 +233,4 @@ temp/
 
 # Cursor
 .cursor/rules/*.mdc
+.cursor/plans/
