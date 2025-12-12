@@ -1,9 +1,10 @@
 """Dagster Definitions - Repository Configuration."""
 
-from dagster import Definitions
+from dagster import Definitions, define_asset_job
 from libs.models import MinIOSettings, MongoSettings, PostGISSettings, GDALSettings
 
 from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
+from .assets import gdal_health_check
 
 # Import assets, jobs, resources, schedules, and sensors as they are created
 # Example:
@@ -17,9 +18,15 @@ mongo_settings = MongoSettings()
 postgis_settings = PostGISSettings()
 gdal_settings = GDALSettings()
 
+gdal_health_check_job = define_asset_job(
+    "gdal_health_check_job",
+    selection=[gdal_health_check],
+    description="Health check for GDAL installation and dependencies",
+)
+
 defs = Definitions(
-    assets=[],
-    jobs=[],
+    assets=[gdal_health_check],
+    jobs=[gdal_health_check_job],
     resources={
         "minio": MinIOResource(
             endpoint=minio_settings.endpoint,

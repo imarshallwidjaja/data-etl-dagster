@@ -1,210 +1,312 @@
-"""Integration test: GDAL installation health check.
+"""Integration test: GDAL installation health check via Dagster.
 
-These tests verify that GDAL and required libraries are properly installed
-and configured in the user-code container.
+This test verifies that GDAL and required libraries are properly installed
+and configured in the user-code container by triggering a Dagster job run.
+
+The test monitors the job execution through the Dagster GraphQL API and
+validates that the health check asset materializes successfully.
 
 Run with: pytest tests/integration/test_gdal_health.py -v -m integration
 """
 
-import subprocess
+import os
 import pytest
+import requests
+import time
+from typing import Optional
+from requests.exceptions import RequestException, Timeout
 
 
-@pytest.mark.integration
-def test_gdalinfo_installed():
-    """Verify gdalinfo command is available and functional."""
-    result = subprocess.run(
-        ["gdalinfo", "--version"],
-        capture_output=True,
-        text=True,
-    )
+pytestmark = pytest.mark.integration
+
+
+@pytest.fixture
+def dagster_graphql_url():
+    """Get Dagster GraphQL endpoint URL."""
+    port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
+    return f"http://localhost:{port}/graphql"
+
+
+@pytest.fixture
+def dagster_client(dagster_graphql_url):
+    """Create a simple Dagster GraphQL client."""
     
-    assert result.returncode == 0, f"gdalinfo not found: {result.stderr}"
-    assert "GDAL" in result.stdout
-    print(f"✅ GDAL version: {result.stdout.strip()}")
-
-
-@pytest.mark.integration
-def test_ogr2ogr_installed():
-    """Verify ogr2ogr command is available."""
-    result = subprocess.run(
-        ["ogr2ogr", "--version"],
-        capture_output=True,
-        text=True,
-    )
-    
-    assert result.returncode == 0, f"ogr2ogr not found: {result.stderr}"
-    assert "GDAL" in result.stdout
-    print(f"✅ ogr2ogr available: {result.stdout.strip()}")
-
-
-@pytest.mark.integration
-def test_gdal_formats():
-    """Verify critical GDAL vector formats are available."""
-    result = subprocess.run(
-        ["ogr2ogr", "--formats"],
-        capture_output=True,
-        text=True,
-    )
-    
-    assert result.returncode == 0, "Failed to list ogr2ogr formats"
-    
-    # Check for critical formats used in this pipeline
-    required_formats = [
-        "GeoJSON",
-        "ESRI Shapefile",
-        "PostgreSQL",
-        "Parquet",
-    ]
-    
-    for fmt in required_formats:
-        assert fmt in result.stdout, (
-            f"Missing GDAL format: {fmt}\n"
-            f"Available formats:\n{result.stdout}"
-        )
-    
-    print(f"✅ All required formats available: {required_formats}")
-
-
-@pytest.mark.integration
-def test_gdal_raster_formats():
-    """Verify critical GDAL raster formats are available."""
-    result = subprocess.run(
-        ["gdalinfo", "--formats"],
-        capture_output=True,
-        text=True,
-    )
-    
-    assert result.returncode == 0, "Failed to list gdalinfo formats"
-    
-    # Check for critical raster formats
-    required_formats = [
-        "GTiff",
-        "COG",  # Cloud Optimized GeoTIFF
-    ]
-    
-    for fmt in required_formats:
-        assert fmt in result.stdout, (
-            f"Missing raster format: {fmt}\n"
-            f"Available formats:\n{result.stdout}"
-        )
-    
-    print(f"✅ Raster formats available: {required_formats}")
-
-
-@pytest.mark.integration
-def test_vsis3_support():
-    """Verify /vsis3/ (S3 virtual file system) is available.
-    
-    This doesn't verify actual S3 connectivity (that requires credentials),
-    but checks that GDAL has S3 support compiled in.
-    """
-    # Try to list formats - S3 support shows up in available drivers
-    result = subprocess.run(
-        ["gdalinfo", "--formats"],
-        capture_output=True,
-        text=True,
-    )
-    
-    assert result.returncode == 0
-    # Check that vsis3 or S3 related support is mentioned
-    # (presence of these formats indicates S3 support)
-    assert "GTiff" in result.stdout or "COG" in result.stdout
-    
-    print("✅ /vsis3/ virtual file system support available")
-
-
-@pytest.mark.integration
-def test_gdal_data_environment():
-    """Verify GDAL_DATA environment variable is properly set."""
-    result = subprocess.run(
-        ["gdalinfo", "--version"],
-        capture_output=True,
-        text=True,
-    )
-    
-    # If GDAL_DATA is not set, gdalinfo still works but may show warnings
-    # Just verify the command executes successfully
-    assert result.returncode == 0
-    print("✅ GDAL environment properly configured")
-
-
-@pytest.mark.integration
-def test_proj_library_available():
-    """Verify PROJ library is available for coordinate transformations."""
-    # The best way to test PROJ is to try a coordinate transformation
-    # Create a simple test by checking if proj data files exist
-    result = subprocess.run(
-        ["proj", "-v"],
-        capture_output=True,
-        text=True,
-    )
-    
-    # If proj command not available, that's ok - as long as GDAL has PROJ support
-    if result.returncode == 0:
-        assert "Rel." in result.stdout or "version" in result.stdout.lower()
-        print(f"✅ PROJ library available: {result.stdout.strip()}")
-    else:
-        # Fall back to checking gdalinfo mentions PROJ
-        result = subprocess.run(
-            ["gdalinfo", "--version"],
-            capture_output=True,
-            text=True,
-        )
-        assert result.returncode == 0
-        print("✅ PROJ support available through GDAL")
-
-
-@pytest.mark.integration
-def test_gdal_python_bindings_available():
-    """Verify GDAL Python bindings are available."""
-    # This test runs the GDALResource to ensure Python imports work
-    try:
-        from services.dagster.etl_pipelines.resources import GDALResource
+    class DagsterGraphQLClient:
+        def __init__(self, url: str):
+            self.url = url
         
-        resource = GDALResource(
-            aws_access_key_id="test",
-            aws_secret_access_key="test",
-            aws_s3_endpoint="http://minio:9000",
+        def query(self, query_str: str, variables: Optional[dict] = None, timeout: int = 30) -> dict:
+            """Execute a GraphQL query."""
+            payload = {"query": query_str}
+            if variables:
+                payload["variables"] = variables
+            
+            try:
+                response = requests.post(
+                    self.url,
+                    json=payload,
+                    timeout=timeout,
+                )
+                if response.status_code != 200:
+                    raise RuntimeError(
+                        f"GraphQL request failed with status {response.status_code}: "
+                        f"{response.text}"
+                    )
+                return response.json()
+            except (RequestException, Timeout) as e:
+                raise RuntimeError(f"Failed to communicate with Dagster GraphQL API: {e}")
+    
+    return DagsterGraphQLClient(dagster_graphql_url)
+
+
+class TestGDALHealthCheckJob:
+    """Test suite for GDAL health check via Dagster job."""
+    
+    def test_gdal_health_check_job_exists(self, dagster_client):
+        """Verify that the gdal_health_check_job is registered."""
+        query = """
+        query JobCheck($repositoryLocationName: String!, $repositoryName: String!, $jobName: String!) {
+            pipelineOrError(params: {
+                repositoryLocationName: $repositoryLocationName,
+                repositoryName: $repositoryName,
+                pipelineName: $jobName
+            }) {
+                ... on Pipeline {
+                    name
+                    description
+                }
+                ... on PipelineNotFoundError {
+                    message
+                }
+                ... on InvalidSubsetError {
+                    message
+                }
+                ... on PythonError {
+                    message
+                }
+            }
+        }
+        """
+        
+        variables = {
+            "repositoryLocationName": "etl_pipelines",
+            "repositoryName": "__repository__",
+            "jobName": "gdal_health_check_job"
+        }
+        
+        result = dagster_client.query(query, variables=variables)
+        
+        # Check for errors
+        assert "errors" not in result, f"GraphQL errors: {result.get('errors')}"
+        
+        job_or_error = result["data"]["pipelineOrError"]
+        assert "name" in job_or_error, \
+            f"Job not found or error occurred: {job_or_error}"
+        assert job_or_error["name"] == "gdal_health_check_job"
+    
+    def test_gdal_health_check_asset_materializes(self, dagster_client):
+        """
+        Trigger gdal_health_check_job and verify the asset materializes successfully.
+        
+        This is the primary integration test that validates GDAL is working inside
+        the user-code container.
+        """
+        # 1. Launch the job
+        launch_query = """
+        mutation LaunchRun($repositoryLocationName: String!, $repositoryName: String!, $jobName: String!) {
+            launchRun(
+                executionParams: {
+                    selector: {
+                        repositoryLocationName: $repositoryLocationName,
+                        repositoryName: $repositoryName,
+                        pipelineName: $jobName
+                    }
+                }
+            ) {
+                ... on LaunchRunSuccess {
+                    run {
+                        runId
+                        status
+                    }
+                }
+                ... on PipelineNotFoundError {
+                    message
+                }
+                ... on RunConfigValidationInvalid {
+                    errors {
+                        message
+                    }
+                }
+                ... on PythonError {
+                    message
+                }
+            }
+        }
+        """
+        
+        variables = {
+            "repositoryLocationName": "etl_pipelines",
+            "repositoryName": "__repository__",
+            "jobName": "gdal_health_check_job"
+        }
+        
+        launch_result = dagster_client.query(
+            launch_query,
+            variables=variables,
+            timeout=10
         )
         
-        assert resource is not None
-        print("✅ GDAL Python bindings available")
-    except ImportError as e:
-        pytest.fail(f"Failed to import GDALResource: {e}")
-
-
-@pytest.mark.integration
-def test_gdal_postgres_support():
-    """Verify PostgreSQL support in ogr2ogr."""
-    result = subprocess.run(
-        ["ogr2ogr", "--formats"],
-        capture_output=True,
-        text=True,
-    )
-    
-    assert result.returncode == 0
-    assert "PostgreSQL" in result.stdout, (
-        "PostgreSQL support not found in ogr2ogr\n"
-        "Available formats:\n{result.stdout}"
-    )
-    
-    print("✅ PostgreSQL support in ogr2ogr")
-
-
-@pytest.mark.integration
-def test_gdal_parquet_support():
-    """Verify Parquet support in ogr2ogr."""
-    result = subprocess.run(
-        ["ogr2ogr", "--formats"],
-        capture_output=True,
-        text=True,
-    )
-    
-    assert result.returncode == 0
-    assert "Parquet" in result.stdout, (
-        "Parquet support not found in ogr2ogr\n"
-        "Note: Parquet support requires GDAL compiled with Parquet driver"
-    )
-    
-    print("✅ Parquet support in ogr2ogr")
+        assert "errors" not in launch_result, \
+            f"Failed to launch job: {launch_result.get('errors')}"
+        
+        launch_response = launch_result["data"]["launchRun"]
+        assert "run" in launch_response, \
+            f"Job launch failed: {launch_response.get('message', 'Unknown error')}"
+        
+        run_id = launch_response["run"]["runId"]
+        assert run_id, "No run_id returned from job launch"
+        print(f"Launched run: {run_id}")
+        
+        # 2. Poll for job completion (with timeout)
+        max_wait = 120  # 2 minutes max
+        poll_interval = 2  # Check every 2 seconds
+        elapsed = 0
+        
+        status = "STARTING"
+        
+        while elapsed < max_wait:
+            run_query = """
+            query GetRun($runId: ID!) {
+                runOrError(runId: $runId) {
+                    ... on Run {
+                        id
+                        status
+                    }
+                    ... on RunNotFoundError {
+                        message
+                    }
+                }
+            }
+            """
+            
+            run_result = dagster_client.query(
+                run_query,
+                variables={"runId": run_id},
+                timeout=10
+            )
+            
+            assert "errors" not in run_result, \
+                f"Failed to query run status: {run_result.get('errors')}"
+            
+            run_or_error = run_result["data"]["runOrError"]
+            if "id" not in run_or_error:
+                # Run not found yet, wait and retry
+                time.sleep(poll_interval)
+                elapsed += poll_interval
+                continue
+            
+            status = run_or_error["status"]
+            
+            # Check for terminal states
+            if status in ["SUCCESS", "FAILURE", "CANCELED"]:
+                break
+            
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+        
+        # 3. Verify final status
+        if status != "SUCCESS":
+            # Fetch logs to debug failure
+            log_query = """
+            query GetRunLogs($runId: ID!) {
+                logsForRun(runId: $runId) {
+                    __typename
+                    ... on EventConnection {
+                        events {
+                            __typename
+                            ... on MessageEvent {
+                                message
+                                level
+                            }
+                            ... on ExecutionStepFailureEvent {
+                                error {
+                                    message
+                                    stack
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            """
+            
+            log_result = dagster_client.query(
+                log_query,
+                variables={"runId": run_id},
+                timeout=10
+            )
+            
+            error_details = "Unknown error"
+            if "data" in log_result and "logsForRun" in log_result["data"]:
+                logs = log_result["data"]["logsForRun"]
+                if logs.get("__typename") == "EventConnection":
+                    events_list = logs.get("events", [])
+                    # Filter for errors
+                    error_events = [
+                        e for e in events_list 
+                        if e.get("level") == "ERROR" or "Failure" in e.get("__typename", "")
+                    ]
+                    if error_events:
+                        error_details = error_events
+                    else:
+                        # Just show the last few events if no explicit error found
+                        error_details = events_list[-5:] if events_list else "No events found"
+            
+            assert status == "SUCCESS", \
+                f"Job failed with status {status}. Error details: {error_details}"
+        
+        # 4. Verify the asset was materialized
+        asset_query = """
+        query GetAssetMaterializationEvents($runId: ID!) {
+            logsForRun(runId: $runId) {
+                __typename
+                ... on EventConnection {
+                    events {
+                        __typename
+                        ... on MaterializationEvent {
+                            assetKey {
+                                path
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        """
+        
+        asset_result = dagster_client.query(
+            asset_query,
+            variables={"runId": run_id},
+            timeout=10
+        )
+        
+        assert "errors" not in asset_result, \
+            f"Failed to query asset events: {asset_result.get('errors')}"
+        
+        logs = asset_result["data"]["logsForRun"]
+        events = []
+        if logs.get("__typename") == "EventConnection":
+            events = logs.get("events", [])
+        
+        # Find asset materialization events
+        asset_events = [
+            e for e in events
+            if e.get("__typename") == "MaterializationEvent" and 
+            e.get("assetKey") and 
+            "gdal_health_check" in str(e["assetKey"].get("path", []))
+        ]
+        
+        assert len(asset_events) > 0, \
+            f"No asset materialization events found for gdal_health_check in run {run_id}"
+        
+        print("✅ GDAL health check passed successfully!")

@@ -299,3 +299,23 @@ class GDALResource(ConfigurableResource):
             return_code=result.returncode,
             output_path=output_path if result.returncode == 0 else None,
         )
+
+    
+    def run_raw_command(self, cmd: list[str]) -> GDALResult:
+        """
+        Execute an arbitrary GDAL command via subprocess.
+        
+        This method is useful for health checks, version queries, and format listings.
+        
+        Args:
+            cmd: Command and arguments as list (e.g., ["gdalinfo", "--version"])
+        
+        Returns:
+            GDALResult with execution details, stdout, stderr, and return code
+        
+        Example:
+            >>> result = gdal.run_raw_command(["gdalinfo", "--version"])
+            >>> if result.success:
+            ...     print(result.stdout)
+        """
+        return self._run_command(cmd)

@@ -264,5 +264,6 @@ def load_vector_to_postgis(context):
 ## Common Mistakes
 
 - Version tracks differ: core Dagster (`dagster`, `dagster-webserver`) uses 1.x (e.g., 1.12.5); integrations (`dagster-postgres`, `dagster-aws`) use 0.28.x (e.g., 0.28.4). Pin explicitly to matching tracks to avoid resolver/runtime issues.
-- Current pins (Dec 2025): `dagster==1.12.5`, `dagster-webserver==1.12.5`, `dagster-postgres==0.28.4`, `dagster-aws==0.28.4`. Update together to keep compatibility.
+- Current pins (Dec 2025): `dagster==1.12.5`, `dagster-webserver==1.12.5`, `dagster-postgres==0.28.5`, `dagster-aws==0.28.5`. Update together to keep compatibility.
+- The `user-code` container requires `dagster-postgres` and `DAGSTER_POSTGRES_*` environment variables to properly initialize RPC storage/config, even if it doesn't host the DB itself.
 
