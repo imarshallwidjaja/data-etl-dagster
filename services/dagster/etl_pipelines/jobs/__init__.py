@@ -1,4 +1,6 @@
 """Dagster Jobs - Executable Workflows."""
 
-# Jobs will be defined here as they are implemented
+from .ingest_job import ingest_job
+
+__all__ = ["ingest_job"]
 

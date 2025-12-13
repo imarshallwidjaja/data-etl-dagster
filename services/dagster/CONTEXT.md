@@ -214,6 +214,80 @@ def load_vector_to_postgis(context):
     return result
 ```
 
+### Implemented Sensors
+
+#### ManifestSensor (`etl_pipelines/sensors/manifest_sensor.py`)
+
+**Status:** ✅ Implemented (Phase 3)
+
+Polls MinIO landing zone for new manifest files and triggers ingestion jobs.
+
+**Key Features:**
+- Polls `s3://landing-zone/manifests/` every 30 seconds
+- Uses sensor cursor to track processed manifests
+- Validates manifests against `Manifest` Pydantic model
+- Handles validation errors gracefully (logs, doesn't crash)
+- Yields `RunRequest` with manifest data as run config
+
+**Configuration:**
+- Poll interval: 30 seconds (configurable via `minimum_interval_seconds`)
+- Default status: RUNNING (starts automatically)
+
+**Error Handling:**
+- MinIO connection errors → SkipReason (retries on next evaluation)
+- Invalid manifest JSON → Logged, skipped, added to cursor (only tried once)
+- Individual manifest errors don't stop processing of other manifests
+- All manifests (valid or invalid) are only processed once
+
+**Cursor Management:**
+- Format: Comma-separated list of manifest keys
+- Tracks all processed manifests (valid and invalid) to prevent duplicate runs
+- Cursor persists across sensor evaluations
+- Stored in Dagster's metadata database (PostgreSQL)
+- **Cursor Growth:** Cursor grows indefinitely as manifests are processed. This is acceptable as:
+  - Each manifest key is typically <100 characters
+  - Even 10,000 manifests = ~1MB string (negligible)
+  - Cursor is stored in PostgreSQL, which handles large text fields efficiently
+  - No cleanup mechanism needed unless processing millions of manifests
+
+**Retry Mechanism:**
+
+Manifests are only processed once (even if invalid). The current retry approach and future options are documented below.
+
+**Current Approach (Phase 3):**
+- **Re-upload with new key**: Upload manifest with a different key (e.g., `manifests/batch_001_retry.json`)
+  - Simplest approach, no code changes needed
+  - Works immediately
+  - User manually re-uploads with new filename
+
+**Future Retry Options (For Future Implementation):**
+
+1. **Retry Prefix/Folder** (Recommended for Phase 4+)
+   - Sensor checks `manifests/retry/` prefix separately, bypasses cursor check
+   - User moves manifest from `manifests/batch_001.json` to `manifests/retry/batch_001.json`
+   - More automated, better UX
+   - Requires code changes to sensor
+
+2. **MongoDB Status Check** (Recommended for Phase 4+)
+   - Sensor checks MongoDB manifest status, allows retry if status is "failed" or "pending"
+   - User updates MongoDB manifest status, then re-uploads
+   - Most integrated with ledger, tracks retry history
+   - Requires MongoDB integration in sensor
+
+3. **Manual Job Trigger** (Always Available)
+   - User manually triggers `ingest_job` via Dagster UI/API with run config
+   - Full control, bypasses sensor entirely
+   - Requires Dagster UI/API access
+
+**Implementation Notes:**
+- Retry options 1 and 2 should be implemented in future phases based on user feedback
+- Option 3 is always available and doesn't require code changes
+- Current approach (re-upload with new key) is sufficient for Phase 3
+
+**Testing:**
+- Unit tests: `tests/unit/sensors/test_manifest_sensor.py` (mock `MinIOResource` and `SensorEvaluationContext`)
+- Integration tests: Future (Phase 4+) - test against real MinIO instance
+
 ## Relation to Global Architecture
 
 ```

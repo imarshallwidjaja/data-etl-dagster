@@ -4,12 +4,8 @@ from dagster import Definitions, EnvVar, define_asset_job
 
 from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
 from .assets import gdal_health_check
-
-# Import assets, jobs, resources, schedules, and sensors as they are created
-# Example:
-# from .ops import my_asset
-# from .jobs import my_job
-# from .sensors import my_sensor
+from .jobs import ingest_job
+from .sensors import manifest_sensor
 
 gdal_health_check_job = define_asset_job(
     "gdal_health_check_job",
@@ -19,7 +15,7 @@ gdal_health_check_job = define_asset_job(
 
 defs = Definitions(
     assets=[gdal_health_check],
-    jobs=[gdal_health_check_job],
+    jobs=[gdal_health_check_job, ingest_job],
     resources={
         "minio": MinIOResource(
             endpoint=EnvVar("MINIO_ENDPOINT"),
@@ -47,6 +43,6 @@ defs = Definitions(
         ),
     },
     schedules=[],
-    sensors=[],
+    sensors=[manifest_sensor],
 )
 
