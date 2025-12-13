@@ -8,6 +8,7 @@ from typing import Dict, Any
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.models import Bounds
+from libs.transformations import RecipeRegistry, CreateSpatialIndexStep
 
 
 def _spatial_transform(
@@ -35,36 +36,37 @@ def _spatial_transform(
     schema = schema_info["schema"]
     manifest = schema_info["manifest"]
     run_id = schema_info["run_id"]
+    intent = manifest.get("intent", "ingest_vector")
     
-    # Verify table exists
+    # Verify input table exists
     if not postgis.table_exists(schema, "raw_data"):
         raise ValueError(f"Table {schema}.raw_data does not exist")
     
     log.info(f"Transforming data in schema: {schema}")
     
-    # Execute spatial SQL transformations (hardcoded)
-    # Normalize CRS to EPSG:4326, simplify geometries, create spatial indexes
-    # Note: execute_sql sets search_path, so we can reference tables without schema prefix
-    # But CREATE TABLE needs explicit schema, so we use the schema parameter context
-    transform_sql = """
-    CREATE TABLE processed AS
-    SELECT 
-        *,
-        ST_Transform(geom, 4326) as geom,
-        ST_SimplifyPreserveTopology(geom, 0.0001) as geom_simple
-    FROM raw_data;
-    """
+    # Get recipe from registry
+    recipe = RecipeRegistry.get_vector_recipe(intent)
+    log.info(f"Using recipe with {len(recipe)} steps for intent: {intent}")
     
-    # Execute transformation (execute_sql sets search_path to schema)
-    postgis.execute_sql(transform_sql, schema)
-    log.info(f"Created processed table in schema: {schema}")
+    # Execute steps with table chaining
+    current_table = "raw_data"
+    for i, step in enumerate(recipe):
+        if isinstance(step, CreateSpatialIndexStep):
+            # Index steps don't create new tables
+            sql = step.generate_sql(schema, current_table, current_table)
+            postgis.execute_sql(sql, schema)
+            log.info(f"Step {i}: Created index on {current_table}")
+        else:
+            next_table = f"step_{i}"
+            sql = step.generate_sql(schema, current_table, next_table)
+            postgis.execute_sql(sql, schema)
+            log.info(f"Step {i}: {current_table} -> {next_table}")
+            current_table = next_table
     
-    # Create spatial index on processed geometry
-    index_sql = """
-    CREATE INDEX idx_processed_geom ON processed USING GIST (geom);
-    """
-    postgis.execute_sql(index_sql, schema)
-    log.info(f"Created spatial index on processed table")
+    # Rename final table to "processed"
+    rename_sql = f'ALTER TABLE {current_table} RENAME TO "processed";'
+    postgis.execute_sql(rename_sql, schema)
+    log.info(f"Renamed {current_table} to processed")
     
     # Compute spatial bounds
     bounds = postgis.get_table_bounds(schema, "processed")
@@ -94,7 +96,9 @@ def spatial_transform(context: OpExecutionContext, schema_info: dict) -> dict:
     """
     Execute spatial transformations in PostGIS ephemeral schema.
     
-    Performs hardcoded spatial transformations:
+    Uses recipe-based transformation architecture:
+    - Gets recipe from registry based on manifest intent
+    - Executes transformation steps with table chaining
     - Normalizes CRS to EPSG:4326
     - Simplifies geometries for performance
     - Creates spatial indexes
