@@ -46,6 +46,197 @@ docker compose up -d
 | MongoDB | localhost:27017 | See .env |
 | PostGIS | localhost:5432 | See .env |
 
+## Usage
+
+### Triggering Data Ingestion
+
+The pipeline uses a manifest-based ingestion protocol. To trigger processing, upload a `manifest.json` file to the MinIO landing zone.
+
+#### Step 1: Upload Your Data Files
+
+First, upload your raw spatial data files (GeoTIFF, Shapefile, GeoJSON, etc.) to the landing zone bucket:
+
+```bash
+# Using MinIO client (mc)
+mc cp your-data.tif minio/landing-zone/batch_001/your-data.tif
+
+# Or using AWS CLI (configured for MinIO)
+aws --endpoint-url http://localhost:9000 s3 cp your-data.tif s3://landing-zone/batch_001/your-data.tif
+```
+
+**Note:** Organize files in subdirectories (e.g., `batch_001/`) to keep batches separate.
+
+#### Step 2: Create and Upload Manifest
+
+Create a `manifest.json` file describing your data. The manifest format is currently being standardized, but the following structure is supported:
+
+```json
+{
+  "batch_id": "unique_batch_identifier",
+  "uploader": "user_or_system_id",
+  "intent": "ingest_satellite_raster",
+  "files": [
+    {
+      "path": "s3://landing-zone/batch_001/your-data.tif",
+      "type": "raster",
+      "format": "GTiff",
+      "crs": "EPSG:4326"
+    }
+  ],
+  "metadata": {
+    "project": "ALPHA",
+    "description": "User supplied context"
+  }
+}
+```
+
+**Manifest Fields:**
+- `batch_id` (required): Unique identifier for this batch
+- `uploader` (required): User or system identifier
+- `intent` (required): Processing intent (e.g., `ingest_satellite_raster`, `ingest_vector`)
+- `files` (required): Array of file entries, each with:
+  - `path`: S3 path to the file (must start with `s3://landing-zone/`)
+  - `type`: File type (`raster` or `vector`)
+  - `format`: Input format (e.g., `GTiff`, `GPKG`, `SHP`, `GeoJSON`)
+  - `crs`: Coordinate Reference System (e.g., `EPSG:4326`)
+- `metadata` (required): User-supplied metadata with:
+  - `project`: Project identifier
+  - `description`: Optional description
+
+**Note:** The manifest schema is subject to change as the system evolves. Check `CONTEXT.md` for the latest schema definition.
+
+Upload the manifest to the `manifests/` prefix:
+
+```bash
+# Using MinIO client
+mc cp manifest.json minio/landing-zone/manifests/batch_001.json
+
+# Or using AWS CLI
+aws --endpoint-url http://localhost:9000 s3 cp manifest.json s3://landing-zone/manifests/batch_001.json
+```
+
+#### Step 3: Monitor Processing
+
+The manifest sensor polls the `manifests/` prefix every 30 seconds. Once your manifest is detected:
+
+1. **Sensor Detection** (within 30 seconds):
+   - The manifest sensor detects the new JSON file
+   - Validates the manifest against the schema
+   - If valid, triggers the ingestion job
+
+2. **Job Execution**:
+   - The ingestion job processes your files
+   - Data is transformed using PostGIS
+   - Processed files are written to the data lake
+   - Metadata is recorded in MongoDB
+
+3. **Monitor Progress**:
+   - View job status in Dagster UI: http://localhost:3000
+   - Check logs for processing details
+   - Verify results in the data lake bucket
+
+### What Happens After Upload
+
+Once a manifest is uploaded, the following sequence occurs:
+
+1. **Sensor Polling**: The manifest sensor checks for new manifests every 30 seconds
+2. **Validation**: The manifest is validated against the Pydantic schema
+3. **Job Trigger**: If valid, a Dagster run is created with the manifest data
+4. **Processing**: The ingestion job executes (currently a placeholder that logs the manifest)
+5. **Tracking**: The manifest is marked as processed in the sensor cursor (prevents duplicate runs)
+
+**Important Notes:**
+- Each manifest is processed **only once** (even if invalid)
+- Invalid manifests are logged but not retried automatically
+- Processing status can be viewed in the Dagster UI
+
+### Retrying Failed Ingestion
+
+If ingestion fails or you need to reprocess a manifest, you have several options:
+
+#### Option 1: Re-upload with New Key (Recommended for Phase 3)
+
+The simplest approach is to upload the manifest with a different filename:
+
+```bash
+# Original manifest
+s3://landing-zone/manifests/batch_001.json
+
+# Retry with new key
+s3://landing-zone/manifests/batch_001_retry.json
+```
+
+**Why this works:** The sensor tracks processed manifests by their S3 key. A new key is treated as a new manifest.
+
+**When to use:** 
+- Quick retry after fixing manifest errors
+- Reprocessing with corrected data
+- Testing different processing parameters
+
+#### Option 2: Manual Job Trigger (Always Available)
+
+You can manually trigger the ingestion job via the Dagster UI:
+
+1. Navigate to http://localhost:3000
+2. Go to the "Jobs" section
+3. Select `ingest_job`
+4. Click "Launch Run"
+5. Provide the manifest data in the run config:
+
+```yaml
+ops:
+  ingest_placeholder:
+    config:
+      manifest:
+        batch_id: "batch_001"
+        uploader: "user_123"
+        intent: "ingest_satellite_raster"
+        files:
+          - path: "s3://landing-zone/batch_001/your-data.tif"
+            type: "raster"
+            format: "GTiff"
+            crs: "EPSG:4326"
+        metadata:
+          project: "ALPHA"
+          description: "Retry after fix"
+      manifest_key: "manifests/batch_001_retry.json"
+```
+
+**When to use:**
+- Full control over run configuration
+- Testing specific scenarios
+- Bypassing sensor entirely
+
+#### Option 3: Future Retry Mechanisms (Phase 4+)
+
+Future enhancements will provide automated retry mechanisms:
+
+- **Retry Prefix/Folder**: Move manifest to `manifests/retry/` to bypass cursor check
+- **MongoDB Status Check**: Update manifest status in MongoDB to allow retry
+- **Automatic Retry**: Failed runs automatically retry based on status
+
+These options will be documented when implemented.
+
+### Troubleshooting
+
+**Manifest not detected:**
+- Verify the file is in `s3://landing-zone/manifests/` prefix
+- Ensure the file has a `.json` extension
+- Check sensor status in Dagster UI (should be RUNNING)
+- Wait up to 30 seconds for sensor polling interval
+
+**Manifest validation errors:**
+- Check Dagster logs for validation error details
+- Verify all required fields are present
+- Ensure S3 paths are correct and files exist
+- Check CRS format (must be valid EPSG code, WKT, or PROJ string)
+
+**Job not executing:**
+- Check Dagster UI for run status
+- Verify resources (MinIO, MongoDB, PostGIS) are accessible
+- Review job logs for errors
+- Ensure the manifest was successfully validated
+
 ## Architecture
 
 ```mermaid
