@@ -15,6 +15,7 @@ from typing import Dict, Any
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.models import Asset, AssetMetadata, Bounds, OutputFormat, CRS
+from libs.spatial_utils import RunIdSchemaMapping
 from services.dagster.etl_pipelines.resources.gdal_resource import GDALResult
 
 
@@ -176,6 +177,10 @@ def export_to_datalake(context: OpExecutionContext, transform_result: dict) -> d
     Exports data from PostGIS to GeoParquet format, uploads to MinIO data lake,
     calculates content hash, and registers the asset in MongoDB.
     
+    After export completes (success or failure), automatically cleans up the
+    ephemeral PostGIS schema to maintain architectural law that PostGIS is
+    transient compute only.
+    
     Args:
         context: Dagster op execution context
         transform_result: Transform result dict from spatial_transform op
@@ -192,12 +197,28 @@ def export_to_datalake(context: OpExecutionContext, transform_result: dict) -> d
     Raises:
         RuntimeError: If GDAL export, hash calculation, upload, or MongoDB insert fails
     """
-    return _export_to_datalake(
-        gdal=context.resources.gdal,
-        postgis=context.resources.postgis,
-        minio=context.resources.minio,
-        mongodb=context.resources.mongodb,
-        transform_result=transform_result,
-        run_id=context.run_id,
-        log=context.log,
-    )
+    try:
+        return _export_to_datalake(
+            gdal=context.resources.gdal,
+            postgis=context.resources.postgis,
+            minio=context.resources.minio,
+            mongodb=context.resources.mongodb,
+            transform_result=transform_result,
+            run_id=context.run_id,
+            log=context.log,
+        )
+    finally:
+        # Cleanup schema after export completes (success or failure)
+        # This ensures PostGIS remains transient compute only
+        try:
+            run_id = context.run_id
+            mapping = RunIdSchemaMapping.from_run_id(run_id)
+            schema = mapping.schema_name
+            
+            postgis = context.resources.postgis
+            context.log.info(f"Cleaning up ephemeral schema: {schema}")
+            postgis._drop_schema(schema)
+            context.log.info(f"Successfully dropped schema: {schema}")
+        except Exception as e:
+            # Log but don't raise - cleanup failures shouldn't break the pipeline
+            context.log.warning(f"Failed to cleanup schema: {e}")
