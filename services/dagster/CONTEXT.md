@@ -99,7 +99,9 @@ run_id = "abc12345-def6-7890-ijkl-mnop12345678"
 # Becomes schema: proc_abc12345_def6_7890_ijkl_mnop12345678
 ```
 
-The schema is **automatically dropped** when the context manager exits (even on exception).
+The schema can be managed in two ways:
+1. **Context Manager** (recommended for standalone scripts): The `ephemeral_schema()` context manager automatically drops the schema when it exits (even on exception).
+2. **Manual Management** (used by ETL ops): The ETL pipeline ops (`load_to_postgis`, `spatial_transform`, `export_to_datalake`) manually create schemas in `load_to_postgis` and automatically clean them up in `export_to_datalake` using a try/finally block. This ensures cleanup happens even if the export fails, maintaining the architectural law that PostGIS is transient compute only.
 
 **Configuration:** Uses `EnvVar` for `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. Database name is hardcoded: `spatial_compute`. Port defaults to `5432`.
 
@@ -213,6 +215,95 @@ def load_vector_to_postgis(context):
     context.log.info(f"✅ Loaded data to PostGIS")
     return result
 ```
+
+### Implemented Ops
+
+The ETL pipeline consists of four main ops that implement the Load → Transform → Dump → Drop pattern:
+
+#### load_to_postgis (`etl_pipelines/ops/load_op.py`)
+
+**Status:** ✅ Implemented
+
+Loads spatial data from MinIO landing zone to PostGIS ephemeral schema using GDAL ogr2ogr.
+
+**Key Features:**
+- Creates ephemeral schema based on Dagster run_id
+- Loads all files from manifest into a single `raw_data` table
+- Converts S3 paths (`s3://`) to GDAL virtual file system paths (`/vsis3/`)
+- Supports multiple files per manifest (all loaded into same table)
+
+**Input:** Manifest dict with `batch_id`, `files`, `metadata`
+**Output:** Schema info dict with `schema`, `manifest`, `tables`, `run_id`
+
+**Resources Required:** `gdal`, `postgis`, `minio`
+
+**Testing:** Unit tests in `tests/unit/ops/test_load_op.py`
+
+#### spatial_transform (`etl_pipelines/ops/transform_op.py`)
+
+**Status:** ✅ Implemented
+
+Executes spatial transformations in PostGIS ephemeral schema.
+
+**Key Features:**
+- Normalizes CRS to EPSG:4326
+- Simplifies geometries for performance
+- Creates spatial indexes on processed data
+- Computes spatial bounds for metadata
+
+**Input:** Schema info dict from `load_to_postgis`
+**Output:** Transform result dict with `schema`, `table`, `manifest`, `bounds`, `crs`, `run_id`
+
+**Resources Required:** `postgis`
+
+**Testing:** Unit tests in `tests/unit/ops/test_transform_op.py`
+
+#### export_to_datalake (`etl_pipelines/ops/export_op.py`)
+
+**Status:** ✅ Implemented
+
+Exports processed data from PostGIS to MinIO data lake and registers in MongoDB.
+
+**Key Features:**
+- Exports PostGIS data to GeoParquet format using ogr2ogr
+- Calculates SHA256 content hash for deduplication
+- Uploads to MinIO data lake with versioned paths
+- Registers asset in MongoDB ledger
+- **Automatically cleans up PostGIS schema** after export completes (success or failure)
+
+**Schema Cleanup:**
+The op uses a try/finally block to ensure the ephemeral PostGIS schema is always dropped after export completes, even if the export fails. This maintains the architectural law that PostGIS is transient compute only. The cleanup derives the schema name from the Dagster run_id using `RunIdSchemaMapping`.
+
+**Input:** Transform result dict from `spatial_transform`
+**Output:** Asset info dict with `asset_id`, `s3_key`, `dataset_id`, `version`, `content_hash`, `run_id`
+
+**Resources Required:** `gdal`, `postgis`, `minio`, `mongodb`
+
+**Testing:** 
+- Unit tests in `tests/unit/ops/test_export_op.py`
+- Integration tests verify schema cleanup in `tests/integration/test_schema_cleanup.py`
+
+#### cleanup_postgis_schema (`etl_pipelines/ops/cleanup_op.py`)
+
+**Status:** ✅ Implemented
+
+Standalone op for dropping PostGIS schemas. While schema cleanup is automatically handled by `export_to_datalake`, this op is available for explicit cleanup if needed.
+
+**Key Features:**
+- Drops ephemeral schemas by schema name
+- Handles missing schemas gracefully (idempotent)
+- Logs cleanup failures without breaking the pipeline
+
+**Input:** Schema info dict with `schema` key
+**Output:** None (void op)
+
+**Resources Required:** `postgis`
+
+**Testing:** 
+- Unit tests in `tests/unit/ops/test_cleanup_op.py`
+- Integration tests in `tests/integration/test_schema_cleanup.py`
+
+**Note:** The cleanup hooks (`cleanup_schema_on_success`, `cleanup_schema_on_failure`) are defined but not currently used, as cleanup is handled directly in `export_to_datalake`'s finally block for better reliability.
 
 ### Implemented Sensors
 
