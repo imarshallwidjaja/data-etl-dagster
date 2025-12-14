@@ -1,0 +1,21 @@
+---
+description: Terminal + environment rules (Windows + conda)
+alwaysApply: true
+---
+
+## Terminal environment
+
+- **OS/shell**: Commands run in **PowerShell on Windows**.
+
+## Dependency/environment management
+
+- **Conda-only**: Use conda for environment and dependency management.
+- **Required env**: Always activate the conda environment **`data-etl-dagster`** before running commands.
+
+```powershell
+conda activate data-etl-dagster
+```
+
+## Failure handling
+
+- **Install errors**: If an installation error occurs, **stop** and ask the user for help (do not continue).

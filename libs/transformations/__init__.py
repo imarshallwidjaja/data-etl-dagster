@@ -2,7 +2,7 @@
 # Transformations Library
 # =============================================================================
 # Recipe-based transformation architecture for spatial ETL pipeline.
-# See CONTEXT.md for detailed documentation.
+# See AGENTS.md for detailed documentation.
 # =============================================================================
 
 """

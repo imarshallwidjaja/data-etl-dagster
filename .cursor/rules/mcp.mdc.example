@@ -1,0 +1,16 @@
+---
+description: MCP usage rules (always apply)
+alwaysApply: true
+---
+
+## Mandatory tool usage
+
+- **Primary code search**: Use `augment-context-engine` (`codebase-retrieval`) first for understanding the codebase or locating code by meaning.
+- **Exact string searches**: Use grep-like tools only for exact text matches (errors, config values, log strings). Prefer repo tools over shell.
+
+## Required startup sequence (each run)
+
+- **Read MCP instructions**: Follow the `augment-context-engine` tool rules exactly.
+- **If unfamiliar with the codebase**: Fetch context with `augment-context-engine` *before* making changes.
+- **Use Serena**: Read Serena MCP instructions and **prioritize Serena tools** for code exploration/edits.
+- **Project activation**: Ensure the Serena project is active/activated when needed.

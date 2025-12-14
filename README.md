@@ -12,7 +12,7 @@ This platform processes spatial data through a strict manifest-based ingestion p
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
 
-**Recipe-Based Transformations:** The pipeline uses a recipe-based transformation architecture that maps manifest `intent` fields to ordered lists of transformation steps (CRS normalization, geometry simplification, spatial indexing). See `CONTEXT.md` Section 10 for details.
+**Recipe-Based Transformations:** The pipeline uses a recipe-based transformation architecture that maps manifest `intent` fields to ordered lists of transformation steps (CRS normalization, geometry simplification, spatial indexing). See `libs/transformations/AGENTS.md` for details.
 
 **Geometry Column Contract:** In PostGIS compute schemas, vector geometry column is standardized to `geom`, and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
 
@@ -139,9 +139,9 @@ The pipeline uses a recipe-based transformation architecture where the `intent` 
 - Geometry simplification (tolerance varies by intent)
 - Spatial index creation (GIST)
 
-See `libs/transformations/CONTEXT.md` for detailed documentation on the recipe system.
+See `libs/transformations/AGENTS.md` for detailed documentation on the recipe system.
 
-**Note:** The manifest schema is subject to change as the system evolves. Check `CONTEXT.md` for the latest schema definition.
+**Note:** The manifest schema is subject to change as the system evolves. Check `AGENTS.md` for the latest schema definition.
 
 Upload the manifest to the `manifests/` prefix:
 
@@ -315,7 +315,7 @@ graph TD
 
 ```
 data-etl-dagster/
-├── CONTEXT.md              # Global architecture context
+├── AGENTS.md              # Global architecture context
 ├── docker-compose.yaml     # Service orchestration
 ├── services/
 │   ├── dagster/           # Dagster orchestrator
@@ -333,16 +333,16 @@ data-etl-dagster/
 
 ## Documentation
 
-Each component has its own `CONTEXT.md` with detailed documentation:
+Each component has its own `AGENTS.md` with detailed documentation:
 
-- [Global Context](./CONTEXT.md) - Architecture and philosophy
-- [Dagster](./services/dagster/CONTEXT.md) - Orchestration layer
-- [MinIO](./services/minio/CONTEXT.md) - Object storage
-- [MongoDB](./services/mongodb/CONTEXT.md) - Metadata ledger
-- [PostGIS](./services/postgis/CONTEXT.md) - Compute engine
-- [Spatial Utils](./libs/spatial_utils/CONTEXT.md) - GDAL wrappers
-- [Transformations](./libs/transformations/CONTEXT.md) - Recipe-based transformation architecture
-- [Models](./libs/models/CONTEXT.md) - Data schemas
+- [Global Context](./AGENTS.md) - Architecture and philosophy
+- [Dagster](./services/dagster/AGENTS.md) - Orchestration layer
+- [MinIO](./services/minio/AGENTS.md) - Object storage
+- [MongoDB](./services/mongodb/AGENTS.md) - Metadata ledger
+- [PostGIS](./services/postgis/AGENTS.md) - Compute engine
+- [Spatial Utils](./libs/spatial_utils/AGENTS.md) - GDAL wrappers
+- [Transformations](./libs/transformations/AGENTS.md) - Recipe-based transformation architecture
+- [Models](./libs/models/AGENTS.md) - Data schemas
 
 ## Development
 

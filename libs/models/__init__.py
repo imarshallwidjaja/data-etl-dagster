@@ -2,7 +2,7 @@
 # Data Models Library
 # =============================================================================
 # Pydantic models and schemas for the Spatial ETL Pipeline.
-# See CONTEXT.md for detailed documentation.
+# See AGENTS.md for detailed documentation.
 # =============================================================================
 
 """
