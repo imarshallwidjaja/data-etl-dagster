@@ -4,6 +4,7 @@
 # Executes spatial transformations in PostGIS ephemeral schema.
 # =============================================================================
 
+import re
 from typing import Dict, Any
 from dagster import op, OpExecutionContext, In, Out
 
@@ -40,57 +41,69 @@ def _spatial_transform(
     intent = manifest.get("intent", "ingest_vector")
     geom_column = schema_info.get("geom_column", "geom")
 
-    # Verify input table exists
-    if not postgis.table_exists(schema, "raw_data"):
-        raise ValueError(f"Table {schema}.raw_data does not exist")
+    try:
+        # Verify input table exists
+        if not postgis.table_exists(schema, "raw_data"):
+            raise ValueError(f"Table {schema}.raw_data does not exist")
 
-    log.info(f"Transforming data in schema: {schema}")
+        log.info(f"Transforming data in schema: {schema}")
 
-    # Get recipe from registry
-    recipe = RecipeRegistry.get_vector_recipe(intent, geom_column=geom_column)
-    log.info(f"Using recipe with {len(recipe)} steps for intent: {intent}")
-    
-    # Execute steps with table chaining
-    current_table = "raw_data"
-    for i, step in enumerate(recipe):
-        if isinstance(step, CreateSpatialIndexStep):
-            # Index steps don't create new tables
-            sql = step.generate_sql(schema, current_table, current_table)
-            postgis.execute_sql(sql, schema)
-            log.info(f"Step {i}: Created index on {current_table}")
-        else:
-            next_table = f"step_{i}"
-            sql = step.generate_sql(schema, current_table, next_table)
-            postgis.execute_sql(sql, schema)
-            log.info(f"Step {i}: {current_table} -> {next_table}")
-            current_table = next_table
-    
-    # Rename final table to "processed"
-    rename_sql = f'ALTER TABLE {current_table} RENAME TO "processed";'
-    postgis.execute_sql(rename_sql, schema)
-    log.info(f"Renamed {current_table} to processed")
-    
-    # Compute spatial bounds
-    bounds = postgis.get_table_bounds(schema, "processed", geom_column=geom_column)
+        # Get recipe from registry
+        recipe = RecipeRegistry.get_vector_recipe(intent, geom_column=geom_column)
+        log.info(f"Using recipe with {len(recipe)} steps for intent: {intent}")
+        
+        # Execute steps with table chaining
+        current_table = "raw_data"
+        for i, step in enumerate(recipe):
+            if isinstance(step, CreateSpatialIndexStep):
+                # Index steps don't create new tables
+                sql = step.generate_sql(schema, current_table, current_table)
+                postgis.execute_sql(sql, schema)
+                log.info(f"Step {i}: Created index on {current_table}")
+            else:
+                next_table = f"step_{i}"
+                sql = step.generate_sql(schema, current_table, next_table)
+                postgis.execute_sql(sql, schema)
+                log.info(f"Step {i}: {current_table} -> {next_table}")
+                current_table = next_table
+        
+        # Rename final table to "processed"
+        # Validate and quote current_table for safety
+        if not re.match(r'^(raw_data|step_\d+)$', current_table):
+            raise ValueError(f"Invalid table name for rename: {current_table}")
+        rename_sql = f'ALTER TABLE "{current_table}" RENAME TO "processed";'
+        postgis.execute_sql(rename_sql, schema)
+        log.info(f"Renamed {current_table} to processed")
+        
+        # Compute spatial bounds
+        bounds = postgis.get_table_bounds(schema, "processed", geom_column=geom_column)
 
-    # Return transform result
-    bounds_dict = None
-    if bounds is not None:
-        bounds_dict = {
-            "minx": bounds.minx,
-            "miny": bounds.miny,
-            "maxx": bounds.maxx,
-            "maxy": bounds.maxy,
+        # Return transform result
+        bounds_dict = None
+        if bounds is not None:
+            bounds_dict = {
+                "minx": bounds.minx,
+                "miny": bounds.miny,
+                "maxx": bounds.maxx,
+                "maxy": bounds.maxy,
+            }
+
+        return {
+            "schema": schema,
+            "table": "processed",
+            "manifest": manifest,
+            "bounds": bounds_dict,
+            "crs": "EPSG:4326",
+            "run_id": run_id,
         }
-
-    return {
-        "schema": schema,
-        "table": "processed",
-        "manifest": manifest,
-        "bounds": bounds_dict,
-        "crs": "EPSG:4326",
-        "run_id": run_id,
-    }
+    except Exception:
+        # Clean up schema on failure to maintain architectural law
+        log.warning(f"Transform failed, cleaning up schema: {schema}")
+        try:
+            postgis._drop_schema(schema)
+        except Exception as cleanup_error:
+            log.warning(f"Failed to cleanup schema {schema}: {cleanup_error}")
+        raise
 
 
 @op(

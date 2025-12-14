@@ -91,6 +91,8 @@ All vector transformation steps enforce a **single-geometry-column** contract:
 - Table names come from trusted sources (internal step chaining)
 - Schema names already sanitized via `RunIdSchemaMapping`
 - SQL generation uses f-strings for table name interpolation (safe for PostgreSQL identifiers)
+- **Identifier validation**: All identifiers (schema, input_table, output_table, geom_column) are validated using strict allowlist pattern `^[A-Za-z_][A-Za-z0-9_]*$` before SQL generation to prevent injection and ensure forward compatibility
+- **Geometry-only table support**: Vector steps handle tables with only a geometry column (no non-geom columns) by normalizing NULL column lists and building safe SELECT prefixes without dangling commas
 
 ### Table Chaining Pattern
 

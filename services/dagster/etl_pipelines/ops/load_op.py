@@ -119,19 +119,8 @@ def _load_files_to_postgis(
     mapping = RunIdSchemaMapping.from_run_id(run_id)
     schema = mapping.schema_name
     
-    # Create ephemeral schema (will persist across ops, cleaned up later)
-    # Use execute_sql to create schema - need to escape schema name for SQL
-    # PostGISResource.execute_sql sets search_path, but CREATE SCHEMA needs to be
-    # executed in a different context, so we use the engine directly
-    engine = postgis.get_engine()
-    with engine.connect() as conn:
-        # Escape schema name for SQL (add quotes)
-        safe_schema = f'"{schema}"'
-        conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {safe_schema}"))
-        conn.commit()
-    log.info(f"Created ephemeral schema: {schema}")
-
     # Pre-flight: validate schema compatibility across all files (fail-fast)
+    # This runs BEFORE schema creation to avoid creating schema if preflight fails
     if len(manifest["files"]) > 1:
         log.info("Validating schema compatibility across multiple files...")
         first_file_schema = None
@@ -184,6 +173,10 @@ def _load_files_to_postgis(
 
         log.info("Schema compatibility validation passed.")
 
+    # Create schema explicitly before loading (ensures cleanup on failure)
+    postgis._create_schema(schema)
+    log.info(f"Created ephemeral schema: {schema}")
+
     # Build PostgreSQL connection string for ogr2ogr
     # Format: PG:host={host} dbname={database} user={user} password={password}
     pg_conn_str = (
@@ -196,68 +189,77 @@ def _load_files_to_postgis(
     # Load all files into the same table: raw_data
     layer_name = f"{schema}.raw_data"
 
-    for i, file_entry in enumerate(manifest["files"]):
-        s3_path = file_entry["path"]
+    try:
+        for i, file_entry in enumerate(manifest["files"]):
+            s3_path = file_entry["path"]
 
-        # Convert s3:// path to /vsis3/ path
-        # s3://landing-zone/path -> /vsis3/landing-zone/path
-        if s3_path.startswith("s3://"):
-            vsis3_path = s3_path.replace("s3://", "/vsis3/", 1)
-        else:
-            # Already in /vsis3/ format or unexpected format
-            vsis3_path = s3_path
+            # Convert s3:// path to /vsis3/ path
+            # s3://landing-zone/path -> /vsis3/landing-zone/path
+            if s3_path.startswith("s3://"):
+                vsis3_path = s3_path.replace("s3://", "/vsis3/", 1)
+            else:
+                # Already in /vsis3/ format or unexpected format
+                vsis3_path = s3_path
 
-        log.info(f"Loading file: {s3_path} -> {layer_name}")
+            log.info(f"Loading file: {s3_path} -> {layer_name}")
 
-        # Get target CRS if provided
-        target_crs = file_entry.get("crs")
+            # Get target CRS if provided
+            target_crs = file_entry.get("crs")
 
-        # Set options based on whether this is the first file or subsequent files
-        # First file: create table with -overwrite and geometry column name
-        # Subsequent files: append with -append and -update
-        if i == 0:
-            # First file: create table
-            options = {
-                "-overwrite": "",
-                "-lco": f"GEOMETRY_NAME={geom_column_name}",
-            }
-        else:
-            # Subsequent files: append to existing table
-            options = {
-                "-append": "",
-                "-update": "",
-                "-lco": f"GEOMETRY_NAME={geom_column_name}",
-            }
+            # Set options based on whether this is the first file or subsequent files
+            # First file: create table with -overwrite and geometry column name
+            # Subsequent files: append with -append and -update
+            if i == 0:
+                # First file: create table
+                options = {
+                    "-overwrite": "",
+                    "-lco": f"GEOMETRY_NAME={geom_column_name}",
+                }
+            else:
+                # Subsequent files: append to existing table
+                options = {
+                    "-append": "",
+                    "-update": "",
+                    "-lco": f"GEOMETRY_NAME={geom_column_name}",
+                }
 
-        # Execute ogr2ogr
-        result: GDALResult = gdal.ogr2ogr(
-            input_path=vsis3_path,
-            output_path=pg_conn_str,
-            output_format="PostgreSQL",
-            layer_name=layer_name,
-            target_crs=target_crs,
-            options=options,
-        )
-
-        # Check for failure
-        if not result.success:
-            raise RuntimeError(
-                f"ogr2ogr failed for file {s3_path}: {result.stderr}"
+            # Execute ogr2ogr
+            result: GDALResult = gdal.ogr2ogr(
+                input_path=vsis3_path,
+                output_path=pg_conn_str,
+                output_format="PostgreSQL",
+                layer_name=layer_name,
+                target_crs=target_crs,
+                options=options,
             )
 
-        log.info(f"Successfully loaded {s3_path} to {layer_name}")
-    
-    # Collect table names (single table approach)
-    tables = ["raw_data"]
-    
-    # Return schema info (schema persists for use by subsequent ops)
-    return {
-        "schema": schema,
-        "manifest": manifest,
-        "tables": tables,
-        "run_id": run_id,
-        "geom_column": geom_column_name,
-    }
+            # Check for failure
+            if not result.success:
+                raise RuntimeError(
+                    f"ogr2ogr failed for file {s3_path}: {result.stderr}"
+                )
+
+            log.info(f"Successfully loaded {s3_path} to {layer_name}")
+        
+        # Collect table names (single table approach)
+        tables = ["raw_data"]
+        
+        # Return schema info (schema persists for use by subsequent ops)
+        return {
+            "schema": schema,
+            "manifest": manifest,
+            "tables": tables,
+            "run_id": run_id,
+            "geom_column": geom_column_name,
+        }
+    except Exception:
+        # Clean up schema on failure to maintain architectural law
+        log.warning(f"Load failed, cleaning up schema: {schema}")
+        try:
+            postgis._drop_schema(schema)
+        except Exception as cleanup_error:
+            log.warning(f"Failed to cleanup schema {schema}: {cleanup_error}")
+        raise
 
 
 @op(

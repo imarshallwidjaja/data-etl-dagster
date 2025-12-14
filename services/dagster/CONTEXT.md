@@ -275,6 +275,14 @@ Exports processed data from PostGIS to MinIO data lake and registers in MongoDB.
 **Schema Cleanup:**
 The op uses a try/finally block to ensure the ephemeral PostGIS schema is always dropped after export completes, even if the export fails. This maintains the architectural law that PostGIS is transient compute only. The cleanup derives the schema name from the Dagster run_id using `RunIdSchemaMapping`.
 
+**Ephemeral Schema Lifecycle Guarantees:**
+Ephemeral schemas are automatically cleaned up in the following scenarios:
+- **Export completion (success or failure)**: Schema is dropped in `export_to_datalake`'s finally block
+- **Load failure**: Schema is dropped in `load_to_postgis`'s exception handler if ogr2ogr fails after schema creation
+- **Transform failure**: Schema is dropped in `spatial_transform`'s exception handler if any transformation step fails
+
+This ensures that PostGIS remains transient compute only and no schemas leak on failure paths.
+
 **Input:** Transform result dict from `spatial_transform`
 **Output:** Asset info dict with `asset_id`, `s3_key`, `dataset_id`, `version`, `content_hash`, `run_id`
 

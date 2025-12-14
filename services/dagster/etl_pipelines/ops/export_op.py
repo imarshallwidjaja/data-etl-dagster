@@ -146,12 +146,12 @@ def _export_to_datalake(
         )
         
         # Register in MongoDB
-        inserted_asset = mongodb.insert_asset(asset)
-        log.info(f"Registered asset in MongoDB: {inserted_asset.id}")
+        inserted_id = mongodb.insert_asset(asset)
+        log.info(f"Registered asset in MongoDB: {inserted_id}")
         
         # Return asset info
         return {
-            "asset_id": str(inserted_asset.id),
+            "asset_id": inserted_id,
             "s3_key": s3_key,
             "dataset_id": dataset_id,
             "version": version,

@@ -4,9 +4,29 @@
 # Concrete vector transformation step implementations.
 # =============================================================================
 
+import re
+
 from .base import VectorStep
 
 __all__ = ["NormalizeCRSStep", "SimplifyGeometryStep", "CreateSpatialIndexStep"]
+
+
+def _validate_identifier(identifier: str, name: str) -> None:
+    """
+    Validate that an identifier matches PostgreSQL identifier allowlist.
+    
+    Args:
+        identifier: Identifier to validate
+        name: Name of the identifier (for error messages)
+    
+    Raises:
+        ValueError: If identifier doesn't match allowlist pattern
+    """
+    if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', identifier):
+        raise ValueError(
+            f"Invalid {name}: {identifier}. "
+            f"Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$"
+        )
 
 
 class NormalizeCRSStep(VectorStep):
@@ -39,11 +59,21 @@ class NormalizeCRSStep(VectorStep):
 
         Returns:
             SQL string to create table with transformed geometries
+        
+        Raises:
+            ValueError: If any identifier is invalid
         """
+        # Validate identifiers for SQL safety
+        _validate_identifier(schema, "schema")
+        _validate_identifier(input_table, "input_table")
+        _validate_identifier(output_table, "output_table")
+        _validate_identifier(self.geom_column, "geom_column")
+        
         return f"""
         DO $$
         DECLARE
             col_list TEXT;
+            select_prefix TEXT;
             geom_count INTEGER;
         BEGIN
             -- Validate exactly one geometry column exists and matches expected name
@@ -70,18 +100,24 @@ class NormalizeCRSStep(VectorStep):
                     '{self.geom_column}', '{schema}', '{input_table}';
             END IF;
 
-            -- Build column list excluding the geometry column
-            SELECT string_agg(quote_ident(column_name), ', ')
+            -- Build column list excluding the geometry column (with deterministic ordering)
+            SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)
             INTO col_list
             FROM information_schema.columns
             WHERE table_schema = '{schema}'
               AND table_name = '{input_table}'
               AND column_name != '{self.geom_column}';
 
+            -- Normalize column list (handle NULL for geometry-only tables)
+            col_list := COALESCE(col_list, '');
+
+            -- Build safe select prefix (no dangling comma for geometry-only tables)
+            select_prefix := CASE WHEN col_list = '' THEN '' ELSE col_list || ', ' END;
+
             -- Create output table with transformed geometry
             EXECUTE format(
-                'CREATE TABLE %I AS SELECT %s, ST_Transform(%I, %s) AS %I FROM %I.%I',
-                '{output_table}', col_list, '{self.geom_column}', {self.target_crs},
+                'CREATE TABLE %I AS SELECT %sST_Transform(%I, %s) AS %I FROM %I.%I',
+                '{output_table}', select_prefix, '{self.geom_column}', {self.target_crs},
                 '{self.geom_column}', '{schema}', '{input_table}'
             );
         END $$;
@@ -118,11 +154,21 @@ class SimplifyGeometryStep(VectorStep):
 
         Returns:
             SQL string to create table with simplified geometries
+        
+        Raises:
+            ValueError: If any identifier is invalid
         """
+        # Validate identifiers for SQL safety
+        _validate_identifier(schema, "schema")
+        _validate_identifier(input_table, "input_table")
+        _validate_identifier(output_table, "output_table")
+        _validate_identifier(self.geom_column, "geom_column")
+        
         return f"""
         DO $$
         DECLARE
             col_list TEXT;
+            select_prefix TEXT;
             geom_count INTEGER;
         BEGIN
             -- Validate exactly one geometry column exists and matches expected name
@@ -149,18 +195,24 @@ class SimplifyGeometryStep(VectorStep):
                     '{self.geom_column}', '{schema}', '{input_table}';
             END IF;
 
-            -- Build column list excluding the geometry column
-            SELECT string_agg(quote_ident(column_name), ', ')
+            -- Build column list excluding the geometry column (with deterministic ordering)
+            SELECT string_agg(quote_ident(column_name), ', ' ORDER BY ordinal_position)
             INTO col_list
             FROM information_schema.columns
             WHERE table_schema = '{schema}'
               AND table_name = '{input_table}'
               AND column_name != '{self.geom_column}';
 
+            -- Normalize column list (handle NULL for geometry-only tables)
+            col_list := COALESCE(col_list, '');
+
+            -- Build safe select prefix (no dangling comma for geometry-only tables)
+            select_prefix := CASE WHEN col_list = '' THEN '' ELSE col_list || ', ' END;
+
             -- Create output table with simplified geometry
             EXECUTE format(
-                'CREATE TABLE %I AS SELECT %s, ST_SimplifyPreserveTopology(%I, %s) AS %I FROM %I.%I',
-                '{output_table}', col_list, '{self.geom_column}', {self.tolerance},
+                'CREATE TABLE %I AS SELECT %sST_SimplifyPreserveTopology(%I, %s) AS %I FROM %I.%I',
+                '{output_table}', select_prefix, '{self.geom_column}', {self.tolerance},
                 '{self.geom_column}', '{schema}', '{input_table}'
             );
         END $$;
@@ -195,7 +247,15 @@ class CreateSpatialIndexStep(VectorStep):
 
         Returns:
             SQL string to create GIST spatial index
+        
+        Raises:
+            ValueError: If any identifier is invalid
         """
+        # Validate identifiers for SQL safety
+        _validate_identifier(schema, "schema")
+        _validate_identifier(input_table, "input_table")
+        _validate_identifier(self.geom_column, "geom_column")
+        
         return f"""
         DO $$
         DECLARE

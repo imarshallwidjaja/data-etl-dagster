@@ -87,10 +87,8 @@ def test_export_to_datalake_success(mock_path, mock_tempfile):
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
     
-    # Mock Asset with id
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
     
     mock_log = Mock()
     
@@ -180,10 +178,8 @@ def test_export_to_datalake_none_bounds(mock_path, mock_tempfile):
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
 
-    # Mock Asset with id
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
 
     mock_log = Mock()
 
@@ -248,9 +244,8 @@ def test_export_to_datalake_dataset_id_generation(mock_path, mock_tempfile):
     
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
     
     mock_log = Mock()
     
@@ -368,9 +363,8 @@ def test_export_to_datalake_s3_key_generation(mock_path, mock_tempfile):
     
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
     
     mock_log = Mock()
     
@@ -426,9 +420,8 @@ def test_export_to_datalake_sha256_hash_calculation(mock_path, mock_tempfile):
     
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
     
     mock_log = Mock()
     
@@ -488,9 +481,8 @@ def test_export_to_datalake_asset_model_creation(mock_path, mock_tempfile):
     
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
     
     mock_log = Mock()
     
@@ -675,9 +667,8 @@ def test_export_to_datalake_op(mock_path, mock_tempfile):
     
     mock_mongodb = Mock()
     mock_mongodb.get_next_version.return_value = 1
-    mock_asset = Mock()
-    mock_asset.id = "507f1f77bcf86cd799439011"
-    mock_mongodb.insert_asset.return_value = mock_asset
+    # Mock insert_asset to return string id (real behavior)
+    mock_mongodb.insert_asset.return_value = "507f1f77bcf86cd799439011"
     
     # Create mock context
     context = build_op_context(
