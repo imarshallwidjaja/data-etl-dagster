@@ -18,9 +18,10 @@ pytest==7.4.3
 requests==2.31.0          # HTTP client for Dagster GraphQL API
 minio==7.2.9              # MinIO Python client for S3-compatible storage
 pymongo==4.7.2            # MongoDB Python client
-mongomock==4.1.2          # In-memory MongoDB mock for unit tests
+mongomock==4.3.0          # In-memory MongoDB mock for unit tests
 psycopg2-binary==2.9.9    # PostgreSQL/PostGIS client (binary wheel)
 tenacity==8.2.3           # Retry library for service health checks
+setuptools<81             # Pin to avoid pkg_resources deprecation warning from mongomock
 
 # Install libs as editable for development
 -e ./libs
