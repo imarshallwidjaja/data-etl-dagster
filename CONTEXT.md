@@ -209,7 +209,59 @@ data-etl-dagster/
 └── configs/               # Configuration templates
 ```
 
-## 10. Geometry Column Contract
+## 10. Recipe-Based Transformation Architecture
+
+The pipeline uses a **recipe-based transformation architecture** that enables flexible, intent-driven spatial transformations. This architecture organizes SQL operations into reusable step classes that are composed into recipes based on the manifest `intent` field.
+
+### Architecture Overview
+
+The recipe-based system consists of three main components:
+
+1. **Transformation Steps**: Individual transformation operations (e.g., CRS normalization, geometry simplification, spatial indexing) implemented as step classes
+2. **Recipe Registry**: Maps manifest `intent` values to ordered lists of transformation steps
+3. **Table Chaining**: Executes steps sequentially, creating intermediate tables for debugging and step isolation
+
+### How It Works
+
+1. **Recipe Selection**: The `RecipeRegistry.get_vector_recipe()` method reads the manifest `intent` field and returns a list of transformation steps
+2. **Step Execution**: Steps are executed in order with table chaining:
+   - `raw_data` → `step_0` → `step_1` → ... → `processed`
+3. **SQL Generation**: Each step generates PostGIS SQL that is executed within the ephemeral schema context
+4. **Step Types**:
+   - **Transform Steps**: Create new tables via `CREATE TABLE ... AS SELECT` (e.g., `NormalizeCRSStep`, `SimplifyGeometryStep`)
+   - **Index Steps**: Operate on existing tables without creating new ones (e.g., `CreateSpatialIndexStep`)
+
+### Default Recipe
+
+The default vector transformation recipe includes:
+1. **NormalizeCRSStep**: Transforms geometries to EPSG:4326 (configurable)
+2. **SimplifyGeometryStep**: Simplifies geometries while preserving topology
+3. **CreateSpatialIndexStep**: Creates GIST spatial index on the geometry column
+
+### Intent-Based Customization
+
+Recipes can be customized per manifest intent. For example:
+- `ingest_vector`: Default recipe (CRS normalization, simplification, indexing)
+- `ingest_road_network`: Can use a customized recipe with different parameters
+
+Unknown intents fall back to the default recipe for backward compatibility.
+
+### Geometry Column Contract
+
+All vector transformation steps enforce a **single-geometry-column** contract:
+- Input assumption: Input table has exactly one geometry column (default: `"geom"`)
+- Output guarantee: Output table has exactly one geometry column with the same name
+- Runtime validation: Steps validate the contract using `information_schema.columns` before execution
+
+This ensures predictable geometry column naming throughout the pipeline and prevents geometry column proliferation.
+
+### Integration Points
+
+- **Used by**: `services/dagster/etl_pipelines/ops/transform_op.py`
+- **Library**: `libs/transformations/` (see `libs/transformations/CONTEXT.md` for detailed documentation)
+- **Execution**: SQL is executed via `PostGISResource.execute_sql()` within ephemeral schemas
+
+## 11. Geometry Column Contract
 
 In PostGIS compute schemas, vector geometry column is standardized to `geom` (configurable), and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
 

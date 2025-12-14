@@ -244,20 +244,40 @@ Loads spatial data from MinIO landing zone to PostGIS ephemeral schema using GDA
 
 **Status:** ✅ Implemented
 
-Executes spatial transformations in PostGIS ephemeral schema.
+Executes spatial transformations in PostGIS ephemeral schema using the **recipe-based transformation architecture**.
 
 **Key Features:**
-- Normalizes CRS to EPSG:4326
-- Simplifies geometries for performance (overwrites geometry column)
-- Creates spatial indexes on processed data
+- Uses `RecipeRegistry` to get transformation recipe based on manifest `intent` field
+- Executes transformation steps with table chaining (`raw_data` → `step_0` → `step_1` → `processed`)
+- Default recipe includes:
+  - CRS normalization to EPSG:4326
+  - Geometry simplification (preserves topology)
+  - Spatial index creation (GIST)
 - Computes spatial bounds for metadata (may be None for empty geometry)
+- Handles both transform steps (create new tables) and index steps (operate on existing tables)
+
+**Recipe-Based Architecture:**
+The op uses the recipe-based transformation system from `libs/transformations`:
+1. Reads manifest `intent` field (defaults to `"ingest_vector"` if not specified)
+2. Gets recipe from `RecipeRegistry.get_vector_recipe(intent, geom_column)`
+3. Executes steps sequentially with table chaining
+4. Renames final table to `processed` for downstream operations
+
+**Table Chaining Pattern:**
+```
+raw_data → step_0 (CRS normalization) → step_1 (simplification) → processed (after index creation)
+```
+
+Index steps operate on the current table without creating new tables, while transform steps create new intermediate tables.
 
 **Input:** Schema info dict from `load_to_postgis`
 **Output:** Transform result dict with `schema`, `table`, `manifest`, `bounds`, `crs`, `run_id`
 
 **Resources Required:** `postgis`
 
-**Testing:** Unit tests in `tests/unit/ops/test_transform_op.py`
+**Testing:** Unit tests in `tests/unit/ops/test_transform_op.py` (mocks `RecipeRegistry` and transformation steps)
+
+**See Also:** `libs/transformations/CONTEXT.md` for detailed documentation on the recipe-based transformation architecture
 
 #### export_to_datalake (`etl_pipelines/ops/export_op.py`)
 
@@ -402,12 +422,23 @@ Manifests are only processed once (even if invalid). The current retry approach 
 │              ▼                               ▼               │
 │         MinIO (S3)                    PostGIS (SQL)         │
 │              │                               │               │
+│              │                               │               │
+│              │                    Recipe-Based Transform     │
+│              │                    (libs/transformations)     │
+│              │                               │               │
 │              └───────────────┬───────────────┘              │
 │                              │                               │
 │                              ▼                               │
 │                        MongoDB (Ledger)                      │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+**Recipe-Based Transformation Integration:**
+The `spatial_transform` op integrates with the recipe-based transformation architecture from `libs/transformations`:
+- Reads manifest `intent` to select transformation recipe
+- Executes transformation steps via `RecipeRegistry`
+- Generates and executes PostGIS SQL within ephemeral schemas
+- Maintains single-geometry-column contract throughout transformation chain
 
 ## Configuration Requirements
 

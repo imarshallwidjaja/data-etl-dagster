@@ -8,9 +8,11 @@ This platform processes spatial data through a strict manifest-based ingestion p
 
 1. **Upload** raw files to MinIO landing zone
 2. **Trigger** processing via manifest JSON
-3. **Transform** data using PostGIS as a compute engine (geometry column standardized to `geom`)
+3. **Transform** data using PostGIS as a compute engine with recipe-based transformations (geometry column standardized to `geom`)
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
+
+**Recipe-Based Transformations:** The pipeline uses a recipe-based transformation architecture that maps manifest `intent` fields to ordered lists of transformation steps (CRS normalization, geometry simplification, spatial indexing). See `CONTEXT.md` Section 10 for details.
 
 **Geometry Column Contract:** In PostGIS compute schemas, vector geometry column is standardized to `geom`, and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
 
@@ -282,6 +284,7 @@ data-etl-dagster/
 │   ├── pyproject.toml     # Package definition
 │   ├── __init__.py        # Package root
 │   ├── spatial_utils/     # GDAL wrappers
+│   ├── transformations/   # Recipe-based transformation steps
 │   └── models/            # Pydantic schemas
 └── configs/               # Configuration templates
 ```
@@ -296,6 +299,7 @@ Each component has its own `CONTEXT.md` with detailed documentation:
 - [MongoDB](./services/mongodb/CONTEXT.md) - Metadata ledger
 - [PostGIS](./services/postgis/CONTEXT.md) - Compute engine
 - [Spatial Utils](./libs/spatial_utils/CONTEXT.md) - GDAL wrappers
+- [Transformations](./libs/transformations/CONTEXT.md) - Recipe-based transformation architecture
 - [Models](./libs/models/CONTEXT.md) - Data schemas
 
 ## Development
