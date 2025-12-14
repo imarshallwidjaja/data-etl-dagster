@@ -89,7 +89,7 @@ PostGIS is used as a **transient compute node**, NOT for data persistence. All p
 - `ephemeral_schema(run_id)`: Context manager for schema creation/deletion
 - `execute_sql(sql, schema)`: Run SQL within a specific schema
 - `table_exists(schema, table)`: Check table existence
-- `get_table_bounds(schema, table)`: Compute spatial extent using `ST_Extent()`
+- `get_table_bounds(schema, table, geom_column="geom")`: Compute spatial extent using `ST_Extent()` on specified geometry column, returns None for empty geometry
 - `get_engine()`: Get SQLAlchemy engine (cached, with connection pooling)
 
 **Schema Lifecycle:**
@@ -229,8 +229,9 @@ Loads spatial data from MinIO landing zone to PostGIS ephemeral schema using GDA
 **Key Features:**
 - Creates ephemeral schema based on Dagster run_id
 - Loads all files from manifest into a single `raw_data` table
+- Standardizes geometry column name to "geom" using GDAL layer creation options
 - Converts S3 paths (`s3://`) to GDAL virtual file system paths (`/vsis3/`)
-- Supports multiple files per manifest (all loaded into same table)
+- Supports multiple files per manifest with append semantics and schema validation
 
 **Input:** Manifest dict with `batch_id`, `files`, `metadata`
 **Output:** Schema info dict with `schema`, `manifest`, `tables`, `run_id`
@@ -247,9 +248,9 @@ Executes spatial transformations in PostGIS ephemeral schema.
 
 **Key Features:**
 - Normalizes CRS to EPSG:4326
-- Simplifies geometries for performance
+- Simplifies geometries for performance (overwrites geometry column)
 - Creates spatial indexes on processed data
-- Computes spatial bounds for metadata
+- Computes spatial bounds for metadata (may be None for empty geometry)
 
 **Input:** Schema info dict from `load_to_postgis`
 **Output:** Transform result dict with `schema`, `table`, `manifest`, `bounds`, `crs`, `run_id`

@@ -201,7 +201,7 @@ class Asset(BaseModel):
     dagster_run_id: str = Field(..., description="Dagster run ID that created this asset")
     format: OutputFormat = Field(..., description="Output format")
     crs: CRS = Field(..., description="Coordinate Reference System")
-    bounds: Bounds = Field(..., description="Geographic bounding box")
+    bounds: Bounds | None = Field(None, description="Geographic bounding box (optional; None means empty/unknown)")
     metadata: AssetMetadata = Field(..., description="Asset metadata")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime | None = Field(None, description="Last update timestamp")

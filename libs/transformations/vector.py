@@ -17,89 +17,219 @@ class NormalizeCRSStep(VectorStep):
     The original geometry column is replaced with the transformed geometry.
     """
 
-    def __init__(self, target_crs: int = 4326):
+    def __init__(self, target_crs: int = 4326, geom_column: str = "geom"):
         """
         Initialize CRS normalization step.
-        
+
         Args:
             target_crs: Target EPSG code (default: 4326)
+            geom_column: Name of geometry column to transform (default: "geom")
         """
         self.target_crs = target_crs
+        self.geom_column = geom_column
 
     def generate_sql(self, schema: str, input_table: str, output_table: str) -> str:
         """
         Generate SQL to transform geometries to target CRS.
-        
+
         Args:
-            schema: Schema name (unused, kept for interface consistency)
+            schema: Schema name
             input_table: Input table name
             output_table: Output table name
-        
+
         Returns:
             SQL string to create table with transformed geometries
         """
         return f"""
-        CREATE TABLE {output_table} AS
-        SELECT *, ST_Transform(geom, {self.target_crs}) as geom
-        FROM {input_table};
+        DO $$
+        DECLARE
+            col_list TEXT;
+            geom_count INTEGER;
+        BEGIN
+            -- Validate exactly one geometry column exists and matches expected name
+            SELECT COUNT(*) INTO geom_count
+            FROM information_schema.columns
+            WHERE table_schema = '{schema}'
+              AND table_name = '{input_table}'
+              AND udt_name = 'geometry';
+
+            IF geom_count != 1 THEN
+                RAISE EXCEPTION 'Table %.% must have exactly one geometry column, found %',
+                    '{schema}', '{input_table}', geom_count;
+            END IF;
+
+            -- Check if the geometry column has the expected name
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = '{schema}'
+                  AND table_name = '{input_table}'
+                  AND column_name = '{self.geom_column}'
+                  AND udt_name = 'geometry'
+            ) THEN
+                RAISE EXCEPTION 'Geometry column "%" not found in table %.%',
+                    '{self.geom_column}', '{schema}', '{input_table}';
+            END IF;
+
+            -- Build column list excluding the geometry column
+            SELECT string_agg(quote_ident(column_name), ', ')
+            INTO col_list
+            FROM information_schema.columns
+            WHERE table_schema = '{schema}'
+              AND table_name = '{input_table}'
+              AND column_name != '{self.geom_column}';
+
+            -- Create output table with transformed geometry
+            EXECUTE format(
+                'CREATE TABLE %I AS SELECT %s, ST_Transform(%I, %s) AS %I FROM %I.%I',
+                '{output_table}', col_list, '{self.geom_column}', {self.target_crs},
+                '{self.geom_column}', '{schema}', '{input_table}'
+            );
+        END $$;
         """
 
 
 class SimplifyGeometryStep(VectorStep):
     """
     Simplify geometries while preserving topology.
-    
+
     Creates a new table with simplified geometries using ST_SimplifyPreserveTopology.
-    Adds a new column `geom_simple` with the simplified geometry.
+    Overwrites the geometry column with the simplified geometry.
     """
 
-    def __init__(self, tolerance: float = 0.0001):
+    def __init__(self, tolerance: float = 0.0001, geom_column: str = "geom"):
         """
         Initialize geometry simplification step.
-        
+
         Args:
             tolerance: Simplification tolerance (default: 0.0001)
+            geom_column: Name of geometry column to simplify (default: "geom")
         """
         self.tolerance = tolerance
+        self.geom_column = geom_column
 
     def generate_sql(self, schema: str, input_table: str, output_table: str) -> str:
         """
         Generate SQL to simplify geometries.
-        
+
         Args:
-            schema: Schema name (unused, kept for interface consistency)
+            schema: Schema name
             input_table: Input table name
             output_table: Output table name
-        
+
         Returns:
             SQL string to create table with simplified geometries
         """
         return f"""
-        CREATE TABLE {output_table} AS
-        SELECT *, ST_SimplifyPreserveTopology(geom, {self.tolerance}) as geom_simple
-        FROM {input_table};
+        DO $$
+        DECLARE
+            col_list TEXT;
+            geom_count INTEGER;
+        BEGIN
+            -- Validate exactly one geometry column exists and matches expected name
+            SELECT COUNT(*) INTO geom_count
+            FROM information_schema.columns
+            WHERE table_schema = '{schema}'
+              AND table_name = '{input_table}'
+              AND udt_name = 'geometry';
+
+            IF geom_count != 1 THEN
+                RAISE EXCEPTION 'Table %.% must have exactly one geometry column, found %',
+                    '{schema}', '{input_table}', geom_count;
+            END IF;
+
+            -- Check if the geometry column has the expected name
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = '{schema}'
+                  AND table_name = '{input_table}'
+                  AND column_name = '{self.geom_column}'
+                  AND udt_name = 'geometry'
+            ) THEN
+                RAISE EXCEPTION 'Geometry column "%" not found in table %.%',
+                    '{self.geom_column}', '{schema}', '{input_table}';
+            END IF;
+
+            -- Build column list excluding the geometry column
+            SELECT string_agg(quote_ident(column_name), ', ')
+            INTO col_list
+            FROM information_schema.columns
+            WHERE table_schema = '{schema}'
+              AND table_name = '{input_table}'
+              AND column_name != '{self.geom_column}';
+
+            -- Create output table with simplified geometry
+            EXECUTE format(
+                'CREATE TABLE %I AS SELECT %s, ST_SimplifyPreserveTopology(%I, %s) AS %I FROM %I.%I',
+                '{output_table}', col_list, '{self.geom_column}', {self.tolerance},
+                '{self.geom_column}', '{schema}', '{input_table}'
+            );
+        END $$;
         """
 
 
 class CreateSpatialIndexStep(VectorStep):
     """
     Create GIST spatial index on geometry column.
-    
+
     This step operates on an existing table and does not create a new table.
     The output_table parameter is ignored for index steps.
     """
 
+    def __init__(self, geom_column: str = "geom"):
+        """
+        Initialize spatial index creation step.
+
+        Args:
+            geom_column: Name of geometry column to index (default: "geom")
+        """
+        self.geom_column = geom_column
+
     def generate_sql(self, schema: str, input_table: str, output_table: str) -> str:
         """
         Generate SQL to create spatial index.
-        
+
         Args:
-            schema: Schema name (unused, kept for interface consistency)
+            schema: Schema name
             input_table: Table name to create index on
             output_table: Ignored for index steps
-        
+
         Returns:
             SQL string to create GIST spatial index
         """
-        return f"CREATE INDEX idx_{input_table}_geom ON {input_table} USING GIST (geom);"
+        return f"""
+        DO $$
+        DECLARE
+            geom_count INTEGER;
+        BEGIN
+            -- Validate exactly one geometry column exists and matches expected name
+            SELECT COUNT(*) INTO geom_count
+            FROM information_schema.columns
+            WHERE table_schema = '{schema}'
+              AND table_name = '{input_table}'
+              AND udt_name = 'geometry';
+
+            IF geom_count != 1 THEN
+                RAISE EXCEPTION 'Table %.% must have exactly one geometry column, found %',
+                    '{schema}', '{input_table}', geom_count;
+            END IF;
+
+            -- Check if the geometry column has the expected name
+            IF NOT EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_schema = '{schema}'
+                  AND table_name = '{input_table}'
+                  AND column_name = '{self.geom_column}'
+                  AND udt_name = 'geometry'
+            ) THEN
+                RAISE EXCEPTION 'Geometry column "%" not found in table %.%',
+                    '{self.geom_column}', '{schema}', '{input_table}';
+            END IF;
+
+            -- Create spatial index
+            EXECUTE format(
+                'CREATE INDEX idx_%I_%I ON %I.%I USING GIST (%I)',
+                '{input_table}', '{self.geom_column}', '{schema}', '{input_table}', '{self.geom_column}'
+            );
+        END $$;
+        """
 

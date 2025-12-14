@@ -36,6 +36,7 @@ SAMPLE_SCHEMA_INFO = {
     },
     "tables": ["raw_data"],
     "run_id": "abc12345-def6-7890-abcd-ef1234567890",
+    "geom_column": "geom",
 }
 
 
@@ -82,8 +83,8 @@ def test_spatial_transform_success(mock_registry):
     assert result["bounds"]["maxx"] == 180.0
     assert result["bounds"]["maxy"] == 90.0
     
-    # Verify registry was called with correct intent
-    mock_registry.get_vector_recipe.assert_called_once_with("ingest_vector")
+    # Verify registry was called with correct intent and geom_column
+    mock_registry.get_vector_recipe.assert_called_once_with("ingest_vector", geom_column="geom")
     
     # Verify table existence check
     mock_postgis.table_exists.assert_called_once_with(
@@ -97,7 +98,8 @@ def test_spatial_transform_success(mock_registry):
     # Verify bounds calculation
     mock_postgis.get_table_bounds.assert_called_once_with(
         "proc_abc12345_def6_7890_abcd_ef1234567890",
-        "processed"
+        "processed",
+        geom_column="geom"
     )
 
 
@@ -183,11 +185,11 @@ def test_spatial_transform_bounds_calculation(mock_registry):
     mock_step2 = SimplifyGeometryStep()
     mock_step3 = CreateSpatialIndexStep()
     mock_registry.get_vector_recipe.return_value = [mock_step1, mock_step2, mock_step3]
-    
+
     mock_postgis = Mock()
     mock_postgis.table_exists.return_value = True
     mock_postgis.execute_sql = Mock()
-    
+
     test_bounds = Bounds(
         minx=-120.0,
         miny=30.0,
@@ -195,21 +197,50 @@ def test_spatial_transform_bounds_calculation(mock_registry):
         maxy=40.0,
     )
     mock_postgis.get_table_bounds.return_value = test_bounds
-    
+
     mock_log = Mock()
-    
+
     # Call core function
     result = _spatial_transform(
         postgis=mock_postgis,
         schema_info=SAMPLE_SCHEMA_INFO,
         log=mock_log,
     )
-    
+
     # Verify bounds in result
     assert result["bounds"]["minx"] == -120.0
     assert result["bounds"]["miny"] == 30.0
     assert result["bounds"]["maxx"] == -110.0
     assert result["bounds"]["maxy"] == 40.0
+
+
+@patch('services.dagster.etl_pipelines.ops.transform_op.RecipeRegistry')
+def test_spatial_transform_bounds_calculation_none(mock_registry):
+    """Test bounds calculation when bounds are None (empty geometry)."""
+    # Create mock recipe steps
+    mock_step1 = NormalizeCRSStep()
+    mock_step2 = SimplifyGeometryStep()
+    mock_step3 = CreateSpatialIndexStep()
+    mock_registry.get_vector_recipe.return_value = [mock_step1, mock_step2, mock_step3]
+
+    mock_postgis = Mock()
+    mock_postgis.table_exists.return_value = True
+    mock_postgis.execute_sql = Mock()
+
+    # Return None for empty geometry
+    mock_postgis.get_table_bounds.return_value = None
+
+    mock_log = Mock()
+
+    # Call core function
+    result = _spatial_transform(
+        postgis=mock_postgis,
+        schema_info=SAMPLE_SCHEMA_INFO,
+        log=mock_log,
+    )
+
+    # Verify bounds in result is None
+    assert result["bounds"] is None
 
 
 @patch('services.dagster.etl_pipelines.ops.transform_op.RecipeRegistry')
@@ -311,8 +342,8 @@ def test_spatial_transform_uses_registry(mock_registry):
         log=mock_log,
     )
     
-    # Verify registry called with correct intent
-    mock_registry.get_vector_recipe.assert_called_once_with("ingest_vector")
+    # Verify registry called with correct intent and geom_column
+    mock_registry.get_vector_recipe.assert_called_once_with("ingest_vector", geom_column="geom")
     
     # Verify steps executed in order
     assert mock_postgis.execute_sql.call_count == 3  # 2 steps + rename

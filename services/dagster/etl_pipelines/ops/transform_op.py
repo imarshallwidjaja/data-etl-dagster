@@ -18,17 +18,18 @@ def _spatial_transform(
 ) -> Dict[str, Any]:
     """
     Core logic for spatial transformations.
-    
+
     This function is extracted for easier unit testing without Dagster context.
-    
+
     Args:
         postgis: PostGISResource instance
         schema_info: Schema info dict from load_op
         log: Logger instance (context.log)
-    
+
     Returns:
         Transform result dict with schema, table, manifest, bounds, crs, run_id
-    
+        bounds may be None for empty geometry datasets
+
     Raises:
         ValueError: If table doesn't exist or geometry column not found
         RuntimeError: If bounds calculation fails
@@ -37,15 +38,16 @@ def _spatial_transform(
     manifest = schema_info["manifest"]
     run_id = schema_info["run_id"]
     intent = manifest.get("intent", "ingest_vector")
-    
+    geom_column = schema_info.get("geom_column", "geom")
+
     # Verify input table exists
     if not postgis.table_exists(schema, "raw_data"):
         raise ValueError(f"Table {schema}.raw_data does not exist")
-    
+
     log.info(f"Transforming data in schema: {schema}")
-    
+
     # Get recipe from registry
-    recipe = RecipeRegistry.get_vector_recipe(intent)
+    recipe = RecipeRegistry.get_vector_recipe(intent, geom_column=geom_column)
     log.info(f"Using recipe with {len(recipe)} steps for intent: {intent}")
     
     # Execute steps with table chaining
@@ -69,19 +71,23 @@ def _spatial_transform(
     log.info(f"Renamed {current_table} to processed")
     
     # Compute spatial bounds
-    bounds = postgis.get_table_bounds(schema, "processed")
-    
+    bounds = postgis.get_table_bounds(schema, "processed", geom_column=geom_column)
+
     # Return transform result
-    return {
-        "schema": schema,
-        "table": "processed",
-        "manifest": manifest,
-        "bounds": {
+    bounds_dict = None
+    if bounds is not None:
+        bounds_dict = {
             "minx": bounds.minx,
             "miny": bounds.miny,
             "maxx": bounds.maxx,
             "maxy": bounds.maxy,
-        },
+        }
+
+    return {
+        "schema": schema,
+        "table": "processed",
+        "manifest": manifest,
+        "bounds": bounds_dict,
         "crs": "EPSG:4326",
         "run_id": run_id,
     }
@@ -95,7 +101,7 @@ def _spatial_transform(
 def spatial_transform(context: OpExecutionContext, schema_info: dict) -> dict:
     """
     Execute spatial transformations in PostGIS ephemeral schema.
-    
+
     Uses recipe-based transformation architecture:
     - Gets recipe from registry based on manifest intent
     - Executes transformation steps with table chaining
@@ -103,20 +109,20 @@ def spatial_transform(context: OpExecutionContext, schema_info: dict) -> dict:
     - Simplifies geometries for performance
     - Creates spatial indexes
     - Computes spatial bounds
-    
+
     Args:
         context: Dagster op execution context
         schema_info: Schema info dict from load_to_postgis op
-    
+
     Returns:
         Transform result dict containing:
         - schema: Schema name
         - table: Table name ("processed")
         - manifest: Full manifest dict
-        - bounds: Geographic bounding box (minx, miny, maxx, maxy)
+        - bounds: Geographic bounding box (minx, miny, maxx, maxy) or None if empty
         - crs: Coordinate reference system ("EPSG:4326")
         - run_id: Dagster run ID
-    
+
     Raises:
         ValueError: If table doesn't exist or geometry column not found
         RuntimeError: If bounds calculation fails

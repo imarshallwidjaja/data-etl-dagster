@@ -120,14 +120,17 @@ def _export_to_datalake(
             source=None,
             license=None,
         )
-        
-        bounds = Bounds(
-            minx=bounds_dict["minx"],
-            miny=bounds_dict["miny"],
-            maxx=bounds_dict["maxx"],
-            maxy=bounds_dict["maxy"],
-        )
-        
+
+        # Handle optional bounds
+        bounds = None
+        if bounds_dict is not None:
+            bounds = Bounds(
+                minx=bounds_dict["minx"],
+                miny=bounds_dict["miny"],
+                maxx=bounds_dict["maxx"],
+                maxy=bounds_dict["maxy"],
+            )
+
         asset = Asset(
             s3_key=s3_key,
             dataset_id=dataset_id,

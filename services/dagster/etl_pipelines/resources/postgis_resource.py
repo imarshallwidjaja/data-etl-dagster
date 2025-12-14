@@ -266,62 +266,92 @@ class PostGISResource(ConfigurableResource):
             exists = result.scalar()
             return bool(exists)
     
-    def get_table_bounds(self, schema: str, table: str) -> Bounds:
+    def get_table_bounds(self, schema: str, table: str, geom_column: str = "geom") -> Optional[Bounds]:
         """
         Get the spatial bounding box of a table's geometry column.
-        
-        Computes ST_Extent() on the first geometry column found.
-        Assumes table has a geometry column (common pattern for processed data).
-        
+
+        Computes ST_Extent() on the specified geometry column.
+        Returns None for empty tables or tables with no geometry data.
+
         Args:
             schema: Schema name
-            table: Table name (must have a geometry column)
-            
+            table: Table name
+            geom_column: Name of geometry column (default: "geom")
+
         Returns:
-            Bounds object with minx, miny, maxx, maxy
-            
+            Bounds object with minx, miny, maxx, maxy, or None if empty/no geometry
+
         Raises:
-            ValueError: If table doesn't exist or has no geometry column
+            ValueError: If table doesn't exist or geometry column doesn't exist
             Exception: If query execution fails
-            
+
         Example:
             >>> bounds = postgis.get_table_bounds(
             ...     "proc_abc123_def456_...",
             ...     "processed_features"
             ... )
-            >>> print(f"Extent: {bounds.minx}, {bounds.miny}, {bounds.maxx}, {bounds.maxy}")
+            >>> if bounds:
+            ...     print(f"Extent: {bounds.minx}, {bounds.miny}, {bounds.maxx}, {bounds.maxy}")
+            ... else:
+            ...     print("Empty geometry")
         """
         if not self.table_exists(schema, table):
             raise ValueError(
                 f"Table does not exist: {schema}.{table}"
             )
-        
+
+        # Validate geometry column identifier (strict allowlist per Phase 4.5 plan)
+        import re
+        if not re.match(r'^[A-Za-z_][A-Za-z0-9_]*$', geom_column):
+            raise ValueError(f"Invalid geometry column name: {geom_column}. Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$")
+
         engine = self.get_engine()
-        
+
         with engine.connect() as conn:
-            # Find first geometry column and compute extent
+            # Check if geometry column exists
+            column_check = conn.execute(
+                text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1
+                        FROM information_schema.columns
+                        WHERE table_schema = :schema
+                          AND table_name = :table
+                          AND column_name = :geom_column
+                          AND udt_name = 'geometry'
+                    )
+                    """
+                ),
+                {"schema": schema, "table": table, "geom_column": geom_column}
+            )
+
+            if not column_check.scalar():
+                raise ValueError(
+                    f"Geometry column '{geom_column}' not found in table {schema}.{table}"
+                )
+
+            # Compute extent on specified geometry column
             result = conn.execute(
                 text(
                     f"""
-                    SELECT 
+                    SELECT
                         ST_XMin(extent) as minx,
                         ST_YMin(extent) as miny,
                         ST_XMax(extent) as maxx,
                         ST_YMax(extent) as maxy
                     FROM (
-                        SELECT ST_Extent(geom) as extent
+                        SELECT ST_Extent("{geom_column}") as extent
                         FROM "{schema}"."{table}"
                     ) bounds
                     """
                 )
             )
-            
+
             row = result.fetchone()
             if row is None or row[0] is None:
-                raise ValueError(
-                    f"Table {schema}.{table} has no geometry data (ST_Extent returned NULL)"
-                )
-            
+                # Empty geometry - return None instead of raising (Option C)
+                return None
+
             minx, miny, maxx, maxy = row
-            
+
             return Bounds(minx=minx, miny=miny, maxx=maxx, maxy=maxy)

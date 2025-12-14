@@ -20,31 +20,32 @@ class RecipeRegistry:
     """
 
     @staticmethod
-    def get_vector_recipe(intent: str) -> List[VectorStep]:
+    def get_vector_recipe(intent: str, geom_column: str = "geom") -> List[VectorStep]:
         """
         Get vector transformation recipe for given intent.
-        
+
         Returns a list of step instances that will be executed in order.
         Steps are instantiated fresh each time (no shared state).
-        
+
         Args:
             intent: Manifest intent field (e.g., "ingest_vector", "ingest_road_network")
-        
+            geom_column: Name of geometry column to operate on (default: "geom")
+
         Returns:
             List of VectorStep instances to execute
         """
-        # Default recipe (same as current hardcoded behavior)
+        # Default recipe with configurable geometry column
         default_recipe = [
-            NormalizeCRSStep(),
-            SimplifyGeometryStep(),
-            CreateSpatialIndexStep(),
+            NormalizeCRSStep(target_crs=4326, geom_column=geom_column),
+            SimplifyGeometryStep(tolerance=0.0001, geom_column=geom_column),
+            CreateSpatialIndexStep(geom_column=geom_column),
         ]
-        
+
         # Future: intent-specific recipes
         recipes = {
             "ingest_vector": default_recipe,
             "ingest_road_network": default_recipe,  # Can customize later
         }
-        
+
         return recipes.get(intent, default_recipe)
 

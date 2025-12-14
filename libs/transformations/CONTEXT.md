@@ -44,29 +44,45 @@ class TransformStep(ABC):
 **Returns:**
 - SQL string to execute via `PostGISResource.execute_sql`
 
+### Geometry Column Contract
+
+All vector transformation steps enforce a **single-geometry-column** contract:
+
+- **Input Assumption**: Input table has exactly one geometry column named `geom_column` (default: `"geom"`)
+- **Output Guarantee**: Output table has exactly one geometry column named `geom_column` containing the transformed geometry
+- **Fail-Fast Validation**: Steps validate the contract at runtime using `information_schema.columns`
+- **Overwrite Semantics**: Geometry steps overwrite the geometry column rather than creating additional columns
+
+**Benefits:**
+- Predictable geometry column naming throughout the pipeline
+- Prevention of geometry column proliferation
+- Clear contract for downstream operations
+- Runtime validation prevents silent failures
+
 ### Vector Steps
 
 **NormalizeCRSStep:**
 - Transforms geometries to target CRS (default: EPSG:4326)
-- Creates new table with transformed geometry column
-- Parameters: `target_crs: int = 4326`
+- Creates new table with transformed geometry (overwrites geometry column)
+- Parameters: `target_crs: int = 4326`, `geom_column: str = "geom"`
 
 **SimplifyGeometryStep:**
 - Simplifies geometries while preserving topology
-- Creates new table with simplified geometry column (`geom_simple`)
-- Parameters: `tolerance: float = 0.0001`
+- Creates new table with simplified geometry (overwrites geometry column)
+- Parameters: `tolerance: float = 0.0001`, `geom_column: str = "geom"`
 
 **CreateSpatialIndexStep:**
 - Creates GIST spatial index on geometry column
 - Operates on existing table (does not create new table)
-- Parameters: None
+- Parameters: `geom_column: str = "geom"`
 
 ### RecipeRegistry
 
-**get_vector_recipe(intent: str) -> List[VectorStep]:**
+**get_vector_recipe(intent: str, geom_column: str = "geom") -> List[VectorStep]:**
 - Maps manifest intent to list of transformation steps
 - Returns default recipe for unknown intents (backward compatibility)
 - Steps are instantiated fresh each time (no shared state)
+- All steps configured with specified geometry column
 
 ## Design Principles
 

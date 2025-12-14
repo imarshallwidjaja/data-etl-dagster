@@ -104,7 +104,7 @@ class MongoDBResource(ConfigurableResource):
         Register a processed asset in MongoDB.
         """
         collection = self._get_collection(self.ASSETS)
-        result = collection.insert_one(asset.model_dump())
+        result = collection.insert_one(asset.model_dump(exclude_none=True))
         return str(result.inserted_id)
 
     def get_asset(self, dataset_id: str, version: int) -> Asset | None:

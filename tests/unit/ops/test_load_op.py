@@ -73,13 +73,13 @@ def test_load_files_to_postgis_success():
         return_code=0,
         output_path=None,
     )
-    
+
     mock_postgis = Mock()
     mock_postgis.host = "postgis"
     mock_postgis.database = "spatial_compute"
     mock_postgis.user = "test_user"
     mock_postgis.password = "test_password"
-    
+
     # Mock execute_sql for schema creation
     mock_postgis.execute_sql = Mock()
     mock_postgis.get_engine = Mock()
@@ -88,9 +88,9 @@ def test_load_files_to_postgis_success():
     mock_conn = Mock()
     mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
     mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
-    
+
     mock_log = Mock()
-    
+
     # Call core function
     result = _load_files_to_postgis(
         gdal=mock_gdal,
@@ -99,12 +99,13 @@ def test_load_files_to_postgis_success():
         run_id="abc12345-def6-7890-abcd-ef1234567890",
         log=mock_log,
     )
-    
+
     # Verify result
     assert result["schema"] == "proc_abc12345_def6_7890_abcd_ef1234567890"
     assert result["manifest"] == SAMPLE_MANIFEST
     assert result["tables"] == ["raw_data"]
     assert result["run_id"] == "abc12345-def6-7890-abcd-ef1234567890"
+    assert result["geom_column"] == "geom"
     
     # Verify ogr2ogr was called
     mock_gdal.ogr2ogr.assert_called_once()
@@ -116,7 +117,7 @@ def test_load_files_to_postgis_success():
     assert call_args.kwargs["output_format"] == "PostgreSQL"
     assert call_args.kwargs["layer_name"] == "proc_abc12345_def6_7890_abcd_ef1234567890.raw_data"
     assert call_args.kwargs["target_crs"] == "EPSG:3857"
-    assert call_args.kwargs["options"] == {"-overwrite": ""}
+    assert call_args.kwargs["options"] == {"-overwrite": "", "-lco": "GEOMETRY_NAME=geom"}
 
 
 def test_load_files_to_postgis_multiple_files():
@@ -130,7 +131,17 @@ def test_load_files_to_postgis_multiple_files():
         return_code=0,
         output_path=None,
     )
-    
+
+    # Mock ogrinfo for schema compatibility check (JSON output)
+    mock_gdal.ogrinfo.return_value = GDALResult(
+        success=True,
+        command=["ogrinfo", "-json", "/vsis3/..."],
+        stdout='{"layers": [{"name": "data", "fields": [{"name": "id", "type": "Integer"}, {"name": "name", "type": "String"}], "geometryFields": [{"type": "Point"}]}]}',
+        stderr="",
+        return_code=0,
+        output_path=None,
+    )
+
     mock_postgis = Mock()
     mock_postgis.host = "postgis"
     mock_postgis.database = "spatial_compute"
@@ -143,9 +154,9 @@ def test_load_files_to_postgis_multiple_files():
     mock_conn = Mock()
     mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
     mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
-    
+
     mock_log = Mock()
-    
+
     # Call core function
     result = _load_files_to_postgis(
         gdal=mock_gdal,
@@ -154,15 +165,27 @@ def test_load_files_to_postgis_multiple_files():
         run_id="abc12345-def6-7890-abcd-ef1234567890",
         log=mock_log,
     )
-    
+
+    # Verify ogrinfo was called for schema validation (twice for 2 files)
+    assert mock_gdal.ogrinfo.call_count == 2
+    # Verify ogrinfo was called with as_json=True
+    for call in mock_gdal.ogrinfo.call_args_list:
+        assert call.kwargs.get("as_json") is True
+
     # Verify ogr2ogr was called twice (once per file)
     assert mock_gdal.ogr2ogr.call_count == 2
-    
+
     # Verify both calls use the same layer name
     calls = mock_gdal.ogr2ogr.call_args_list
     layer_name = "proc_abc12345_def6_7890_abcd_ef1234567890.raw_data"
     assert calls[0].kwargs["layer_name"] == layer_name
     assert calls[1].kwargs["layer_name"] == layer_name
+
+    # Verify first call uses -overwrite and geometry column option
+    assert calls[0].kwargs["options"] == {"-overwrite": "", "-lco": "GEOMETRY_NAME=geom"}
+
+    # Verify second call uses -append, -update and geometry column option
+    assert calls[1].kwargs["options"] == {"-append": "", "-update": "", "-lco": "GEOMETRY_NAME=geom"}
 
 
 def test_load_files_to_postgis_s3_path_conversion():
@@ -199,6 +222,7 @@ def test_load_files_to_postgis_s3_path_conversion():
         manifest=SAMPLE_MANIFEST,
         run_id="abc12345-def6-7890-abcd-ef1234567890",
         log=mock_log,
+        geom_column_name="geom",
     )
     
     # Verify path conversion
@@ -242,6 +266,7 @@ def test_load_files_to_postgis_ogr2ogr_failure():
             manifest=SAMPLE_MANIFEST,
             run_id="abc12345-def6-7890-abcd-ef1234567890",
             log=mock_log,
+            geom_column_name="geom",
         )
     
     assert "ogr2ogr failed" in str(exc_info.value)
@@ -283,6 +308,7 @@ def test_load_files_to_postgis_postgres_connection_string():
         manifest=SAMPLE_MANIFEST,
         run_id="abc12345-def6-7890-abcd-ef1234567890",
         log=mock_log,
+        geom_column_name="geom",
     )
     
     # Verify connection string
@@ -310,7 +336,7 @@ def test_load_to_postgis_op():
         return_code=0,
         output_path=None,
     )
-    
+
     mock_postgis = Mock()
     mock_postgis.host = "postgis"
     mock_postgis.database = "spatial_compute"
@@ -323,9 +349,9 @@ def test_load_to_postgis_op():
     mock_conn = Mock()
     mock_engine.connect.return_value.__enter__ = Mock(return_value=mock_conn)
     mock_engine.connect.return_value.__exit__ = Mock(return_value=None)
-    
+
     mock_minio = Mock()
-    
+
     # Create mock context
     context = build_op_context(
         resources={
@@ -336,13 +362,14 @@ def test_load_to_postgis_op():
     )
     # Mock run_id property
     type(context).run_id = PropertyMock(return_value="abc12345-def6-7890-abcd-ef1234567890")
-    
+
     # Call op
     result = load_to_postgis(context, manifest=SAMPLE_MANIFEST)
-    
+
     # Verify result
     assert result["schema"] == "proc_abc12345_def6_7890_abcd_ef1234567890"
     assert result["manifest"] == SAMPLE_MANIFEST
     assert result["tables"] == ["raw_data"]
     assert result["run_id"] == "abc12345-def6-7890-abcd-ef1234567890"
+    assert result["geom_column"] == "geom"
 

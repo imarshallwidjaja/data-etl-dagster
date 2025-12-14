@@ -225,28 +225,39 @@ class GDALResource(ConfigurableResource):
         self,
         input_path: str,
         layer: Optional[str] = None,
+        as_json: bool = False,
     ) -> GDALResult:
         """
         Get information about a vector dataset.
-        
+
         Displays schema, feature count, coordinate system, and spatial extent.
-        
+
         Args:
             input_path: Path to vector dataset
             layer: Specific layer to inspect (optional)
-        
+            as_json: Return output in JSON format (optional, default: False)
+
         Returns:
             GDALResult with dataset info in stdout
-        
+
         Example:
             >>> result = gdal.ogrinfo("/vsis3/landing-zone/data.geojson")
             >>> if result.success:
             ...     print(result.stdout)
+
+            >>> result = gdal.ogrinfo("/vsis3/landing-zone/data.geojson", as_json=True)
+            >>> import json
+            >>> schema = json.loads(result.stdout)
         """
-        cmd = ["ogrinfo", "-al", "-so", input_path]
+        cmd = ["ogrinfo"]
+        if as_json:
+            cmd.append("-json")
+        else:
+            cmd.extend(["-al", "-so"])
+        cmd.append(input_path)
         if layer:
             cmd.append(layer)
-        
+
         return self._run_command(cmd)
     
     def gdalinfo(self, input_path: str) -> GDALResult:

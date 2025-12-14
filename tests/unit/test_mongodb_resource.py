@@ -141,3 +141,37 @@ def test_get_latest_asset_returns_highest_version(mongo_resource, asset):
     latest = mongo_resource.get_latest_asset(asset.dataset_id)
     assert latest is not None
     assert latest.version == 2
+
+
+def test_insert_asset_excludes_none_bounds(mongo_resource):
+    """Test that insert_asset excludes None bounds from MongoDB document."""
+    asset_with_none_bounds = Asset(
+        s3_key="data-lake/test/v1/data.parquet",
+        dataset_id="test_dataset_none_bounds",
+        version=1,
+        content_hash="sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        dagster_run_id="test_run_id",
+        format=OutputFormat.GEOPARQUET,
+        crs="EPSG:4326",
+        bounds=None,  # None bounds should be excluded
+        metadata=AssetMetadata(
+            title="Test Asset",
+            description="Test asset with None bounds",
+        ),
+        created_at=datetime.now(timezone.utc),
+        updated_at=None,
+    )
+
+    inserted_id = mongo_resource.insert_asset(asset_with_none_bounds)
+    assert inserted_id is not None
+
+    # Retrieve the document and verify bounds field is not present
+    retrieved = mongo_resource.get_asset("test_dataset_none_bounds", 1)
+    assert retrieved is not None
+    assert retrieved.bounds is None  # Model should have None bounds
+
+    # Verify the underlying document doesn't contain the bounds field
+    collection = mongo_resource._get_collection(mongo_resource.ASSETS)
+    document = collection.find_one({"dataset_id": "test_dataset_none_bounds", "version": 1})
+    assert document is not None
+    assert "bounds" not in document  # bounds field should be excluded when None

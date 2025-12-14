@@ -8,9 +8,11 @@ This platform processes spatial data through a strict manifest-based ingestion p
 
 1. **Upload** raw files to MinIO landing zone
 2. **Trigger** processing via manifest JSON
-3. **Transform** data using PostGIS as a compute engine
+3. **Transform** data using PostGIS as a compute engine (geometry column standardized to `geom`)
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
+
+**Geometry Column Contract:** In PostGIS compute schemas, vector geometry column is standardized to `geom`, and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
 
 ## Quick Start
 

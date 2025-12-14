@@ -207,14 +207,34 @@ class TestGDALResourceInfo:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogrinfo(
                 "/vsis3/landing/data.shp",
                 layer="points",
             )
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert "points" in called_cmd
+
+    def test_ogrinfo_json(self, gdal_resource):
+        """Test ogrinfo with JSON output."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = Mock(
+                returncode=0,
+                stdout='{"layers": []}',
+                stderr="",
+            )
+
+            result = gdal_resource.ogrinfo("/vsis3/landing/data.geojson", as_json=True)
+
+            called_cmd = mock_run.call_args[0][0]
+            assert called_cmd[0] == "ogrinfo"
+            assert "-json" in called_cmd
+            assert "-al" not in called_cmd  # JSON mode doesn't use -al -so
+            assert "-so" not in called_cmd
+
+            assert result.success is True
+            assert result.stdout == '{"layers": []}'
     
     def test_gdalinfo(self, gdal_resource):
         """Test gdalinfo call."""

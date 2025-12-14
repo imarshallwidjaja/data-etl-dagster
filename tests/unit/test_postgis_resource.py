@@ -349,22 +349,27 @@ def test_get_table_bounds_returns_bounds_object(postgis_resource):
     with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.table_exists') as mock_exists:
         with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.get_engine') as mock_get_engine:
             mock_exists.return_value = True
-            
+
             mock_engine = MagicMock()
             mock_conn = MagicMock()
-            
+
+            # Mock column check result (geometry column exists)
+            mock_column_result = MagicMock()
+            mock_column_result.scalar.return_value = True
+            mock_conn.execute.side_effect = [mock_column_result, MagicMock()]
+
             # Mock ST_Extent result (minx, miny, maxx, maxy)
-            mock_result = MagicMock()
-            mock_result.fetchone.return_value = (-180.0, -90.0, 180.0, 90.0)
-            mock_conn.execute.return_value = mock_result
-            
+            mock_extent_result = MagicMock()
+            mock_extent_result.fetchone.return_value = (-180.0, -90.0, 180.0, 90.0)
+            mock_conn.execute.side_effect = [mock_column_result, mock_extent_result]
+
             mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
             mock_engine.connect.return_value.__exit__ = MagicMock(return_value=None)
-            
+
             mock_get_engine.return_value = mock_engine
-            
+
             bounds = postgis_resource.get_table_bounds("proc_abc123", "features")
-            
+
             assert isinstance(bounds, Bounds)
             assert bounds.minx == -180.0
             assert bounds.miny == -90.0
@@ -376,32 +381,37 @@ def test_get_table_bounds_raises_on_missing_table(postgis_resource):
     """Test that get_table_bounds raises ValueError if table doesn't exist."""
     with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.table_exists') as mock_exists:
         mock_exists.return_value = False
-        
+
         with pytest.raises(ValueError, match="Table does not exist"):
-            postgis_resource.get_table_bounds("proc_abc123", "missing_table")
+            postgis_resource.get_table_bounds("proc_abc123", "missing_table", geom_column="geom")
 
 
-def test_get_table_bounds_raises_on_no_geometry_data(postgis_resource):
-    """Test that get_table_bounds raises ValueError if table has no geometry."""
+def test_get_table_bounds_returns_none_on_no_geometry_data(postgis_resource):
+    """Test that get_table_bounds returns None if table has no geometry data."""
     with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.table_exists') as mock_exists:
         with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.get_engine') as mock_get_engine:
             mock_exists.return_value = True
-            
+
             mock_engine = MagicMock()
             mock_conn = MagicMock()
-            
-            # Mock result where ST_Extent returned NULL
-            mock_result = MagicMock()
-            mock_result.fetchone.return_value = (None, None, None, None)
-            mock_conn.execute.return_value = mock_result
-            
+
+            # Mock column check result (geometry column exists)
+            mock_column_result = MagicMock()
+            mock_column_result.scalar.return_value = True
+
+            # Mock result where ST_Extent returned NULL (empty geometry)
+            mock_extent_result = MagicMock()
+            mock_extent_result.fetchone.return_value = (None, None, None, None)
+            mock_conn.execute.side_effect = [mock_column_result, mock_extent_result]
+
             mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
             mock_engine.connect.return_value.__exit__ = MagicMock(return_value=None)
-            
+
             mock_get_engine.return_value = mock_engine
-            
-            with pytest.raises(ValueError, match="has no geometry data"):
-                postgis_resource.get_table_bounds("proc_abc123", "empty_table")
+
+            # Should return None instead of raising
+            bounds = postgis_resource.get_table_bounds("proc_abc123", "empty_table", geom_column="geom")
+            assert bounds is None
 
 
 def test_get_table_bounds_uses_quoted_identifiers(postgis_resource):
@@ -409,22 +419,87 @@ def test_get_table_bounds_uses_quoted_identifiers(postgis_resource):
     with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.table_exists') as mock_exists:
         with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.get_engine') as mock_get_engine:
             mock_exists.return_value = True
-            
+
             mock_engine = MagicMock()
             mock_conn = MagicMock()
-            
-            mock_result = MagicMock()
-            mock_result.fetchone.return_value = (0.0, 0.0, 1.0, 1.0)
-            mock_conn.execute.return_value = mock_result
-            
+
+            # Mock column check result (geometry column exists)
+            mock_column_result = MagicMock()
+            mock_column_result.scalar.return_value = True
+
+            mock_extent_result = MagicMock()
+            mock_extent_result.fetchone.return_value = (0.0, 0.0, 1.0, 1.0)
+            mock_conn.execute.side_effect = [mock_column_result, mock_extent_result]
+
             mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
             mock_engine.connect.return_value.__exit__ = MagicMock(return_value=None)
-            
+
             mock_get_engine.return_value = mock_engine
-            
+
             # Should execute without error and return bounds
-            bounds = postgis_resource.get_table_bounds("proc_abc123", "my_table")
-            
+            bounds = postgis_resource.get_table_bounds("proc_abc123", "my_table", geom_column="geom")
+
             # Verify it returned a Bounds object
             assert isinstance(bounds, Bounds)
             assert mock_conn.execute.called
+
+
+def test_get_table_bounds_rejects_invalid_geom_column_names(postgis_resource):
+    """Test that get_table_bounds rejects invalid geometry column names."""
+    with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.table_exists') as mock_exists:
+        mock_exists.return_value = True
+
+        # Test various invalid column names
+        invalid_names = [
+            "geom-name",  # hyphens not allowed
+            "geom;drop table",  # semicolons not allowed
+            "123geom",  # cannot start with number
+            "",  # empty string
+            "geom name",  # spaces not allowed
+            "geom.name",  # dots not allowed
+        ]
+
+        for invalid_name in invalid_names:
+            with pytest.raises(ValueError, match="Invalid geometry column name"):
+                postgis_resource.get_table_bounds("proc_abc123", "my_table", geom_column=invalid_name)
+
+
+def test_get_table_bounds_accepts_valid_geom_column_names(postgis_resource):
+    """Test that get_table_bounds accepts valid geometry column names."""
+    with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.table_exists') as mock_exists:
+        with patch('services.dagster.etl_pipelines.resources.postgis_resource.PostGISResource.get_engine') as mock_get_engine:
+            mock_exists.return_value = True
+
+            mock_engine = MagicMock()
+            mock_conn = MagicMock()
+
+            # Mock column check result (geometry column exists)
+            mock_column_result = MagicMock()
+            mock_column_result.scalar.return_value = True
+
+            mock_extent_result = MagicMock()
+            mock_extent_result.fetchone.return_value = (0.0, 0.0, 1.0, 1.0)
+            mock_conn.execute.side_effect = [mock_column_result, mock_extent_result]
+
+            mock_engine.connect.return_value.__enter__ = MagicMock(return_value=mock_conn)
+            mock_engine.connect.return_value.__exit__ = MagicMock(return_value=None)
+
+            mock_get_engine.return_value = mock_engine
+
+            # Test various valid column names
+            valid_names = [
+                "geom",
+                "geometry",
+                "geom_col",
+                "my_geom_123",
+                "_geom",
+                "G",
+            ]
+
+            for valid_name in valid_names:
+                # Should not raise an exception for valid names
+                try:
+                    postgis_resource.get_table_bounds("proc_abc123", "my_table", geom_column=valid_name)
+                except Exception as e:
+                    if "Invalid geometry column name" in str(e):
+                        pytest.fail(f"Valid column name '{valid_name}' was rejected: {e}")

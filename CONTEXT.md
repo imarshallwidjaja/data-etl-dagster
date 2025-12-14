@@ -209,6 +209,10 @@ data-etl-dagster/
 └── configs/               # Configuration templates
 ```
 
+## 10. Geometry Column Contract
+
+In PostGIS compute schemas, vector geometry column is standardized to `geom` (configurable), and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
+
 Each service and library directory contains its own `CONTEXT.md` that describes:
 - The component's specific responsibilities
 - Input/output contracts

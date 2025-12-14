@@ -146,6 +146,76 @@ def test_export_to_datalake_success(mock_path, mock_tempfile):
 
 @patch('services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile')
 @patch('services.dagster.etl_pipelines.ops.export_op.Path')
+def test_export_to_datalake_none_bounds(mock_path, mock_tempfile):
+    """Test export with None bounds (empty geometry)."""
+    # Setup mocks
+    mock_temp_file = Mock()
+    mock_temp_file.name = "/tmp/test_export.parquet"
+    mock_temp_file.close = Mock()
+    mock_tempfile.return_value = mock_temp_file
+
+    mock_path_instance = Mock()
+    mock_path.return_value = mock_path_instance
+    mock_path_instance.unlink = Mock()
+
+    mock_gdal = Mock()
+    mock_gdal.ogr2ogr.return_value = GDALResult(
+        success=True,
+        command=["ogr2ogr", "-f", "Parquet", "PG:...", "/tmp/test_export.parquet"],
+        stdout="Success",
+        stderr="",
+        return_code=0,
+        output_path="/tmp/test_export.parquet",
+    )
+
+    mock_postgis = Mock()
+    mock_postgis.host = "postgis"
+    mock_postgis.database = "spatial_compute"
+    mock_postgis.user = "test_user"
+    mock_postgis.password = "test_password"
+
+    mock_minio = Mock()
+    mock_minio.upload_to_lake = Mock()
+
+    mock_mongodb = Mock()
+    mock_mongodb.get_next_version.return_value = 1
+
+    # Mock Asset with id
+    mock_asset = Mock()
+    mock_asset.id = "507f1f77bcf86cd799439011"
+    mock_mongodb.insert_asset.return_value = mock_asset
+
+    mock_log = Mock()
+
+    # Create transform result with None bounds
+    transform_result_none_bounds = SAMPLE_TRANSFORM_RESULT.copy()
+    transform_result_none_bounds["bounds"] = None
+
+    # Mock file read for hash calculation
+    test_content = b"test parquet content"
+    with patch('builtins.open', mock_open(read_data=test_content)):
+        # Call core function
+        result = _export_to_datalake(
+            gdal=mock_gdal,
+            postgis=mock_postgis,
+            minio=mock_minio,
+            mongodb=mock_mongodb,
+            transform_result=transform_result_none_bounds,
+            run_id="abc12345-def6-7890-abcd-ef1234567890",
+            log=mock_log,
+        )
+
+    # Verify result
+    assert result["asset_id"] == "507f1f77bcf86cd799439011"
+
+    # Verify MongoDB insert was called with asset having None bounds
+    mock_mongodb.insert_asset.assert_called_once()
+    asset_arg = mock_mongodb.insert_asset.call_args[0][0]
+    assert asset_arg.bounds is None
+
+
+@patch('services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile')
+@patch('services.dagster.etl_pipelines.ops.export_op.Path')
 def test_export_to_datalake_dataset_id_generation(mock_path, mock_tempfile):
     """Test dataset_id generation (UUID format)."""
     mock_temp_file = Mock()
