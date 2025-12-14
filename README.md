@@ -384,8 +384,9 @@ pytest -m integration tests/integration -v
 
 #### Test Coverage
 
-**Unit Tests** (`tests/unit/`) - No external dependencies required:
-- `test_models.py` - Pydantic schemas validation (55 tests)
+**Unit Tests** (`tests/unit/`) - No external dependencies required (189 tests):
+
+- **Models & Validation** (`test_models.py` - 55 tests):
   - CRS validation (EPSG, WKT, PROJ formats)
   - Bounds validation
   - Manifest validation and status tracking
@@ -393,20 +394,63 @@ pytest -m integration tests/integration -v
   - Content hash validation
   - Configuration settings loading
   - S3 path/key validation
-- `test_minio_resource.py` - MinIO resource operations (16 tests)
-  - Manifest listing and filtering
-  - Manifest download and JSON parsing
-  - Archive operations (copy and delete)
-  - File upload to data lake with content-type inference
-  - Presigned URL generation for GDAL
 
-**Integration Tests** (`tests/integration/`) - Requires Docker stack:
-- `test_minio.py` - MinIO connectivity and read/write operations
-- `test_mongodb.py` - MongoDB connectivity and CRUD operations
-- `test_postgis.py` - PostGIS connectivity and spatial functions
-- `test_dagster.py` - Dagster GraphQL API connectivity
+- **Resources**:
+  - `test_minio_resource.py` (16 tests) - MinIO resource operations
+    - Manifest listing and filtering
+    - Manifest download and JSON parsing
+    - Archive operations (copy and delete)
+    - File upload to data lake with content-type inference
+    - Presigned URL generation for GDAL
+  - `test_mongodb_resource.py` (6 tests) - MongoDB resource operations
+    - Document CRUD operations
+    - Manifest and asset registry operations
+  - `test_postgis_resource.py` (21 tests) - PostGIS resource operations
+    - Ephemeral schema lifecycle management
+    - SQL execution and transaction handling
+    - Table existence checks and bounds calculation
+  - `resources/test_gdal_resource.py` (20 tests) - GDAL resource operations
+    - ogr2ogr command construction and execution
+    - gdal_translate operations
+    - ogrinfo and gdalinfo commands
+    - Environment variable handling
+    - Failure detection and result serialization
 
-**Total Coverage:** 55 unit tests + 4 integration tests = 59 tests
+- **Transformations** (`libs/`):
+  - `test_registry.py` (6 tests) - Recipe registry and intent mapping
+  - `test_transformations_base.py` (4 tests) - Base transformation step classes
+  - `test_vector_steps.py` (20 tests) - Vector transformation steps
+    - CRS normalization
+    - Geometry simplification
+    - Spatial index creation
+    - Geometry column contract validation
+
+- **Operations** (`ops/`):
+  - `test_load_op.py` (6 tests) - Data loading operations
+  - `test_transform_op.py` (10 tests) - Spatial transformation operations
+  - `test_export_op.py` (10 tests) - Data export operations
+  - `test_cleanup_op.py` (9 tests) - Schema cleanup operations
+
+- **Sensors** (`sensors/test_manifest_sensor.py` - 9 tests):
+  - Manifest detection and validation
+  - Cursor tracking and error handling
+  - Run request generation
+
+- **Utilities** (`test_schema_mapper.py` - 20 tests):
+  - Schema name generation from run IDs
+  - Run ID extraction from schema names
+  - Round-trip validation
+
+**Integration Tests** (`tests/integration/`) - Requires Docker stack (18 tests):
+
+- `test_minio.py` (3 tests) - MinIO connectivity and read/write operations
+- `test_mongodb.py` (3 tests) - MongoDB connectivity and CRUD operations
+- `test_postgis.py` (4 tests) - PostGIS connectivity and spatial functions
+- `test_dagster.py` (3 tests) - Dagster GraphQL API connectivity
+- `test_gdal_health.py` (2 tests) - GDAL installation health check via Dagster
+- `test_schema_cleanup.py` (3 tests) - Ephemeral schema lifecycle verification
+
+**Total Coverage:** 189 unit tests + 18 integration tests = 207 tests
 
 #### Continuous Integration
 
