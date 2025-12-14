@@ -10,7 +10,8 @@ from dagster import op, OpExecutionContext, In, Out
 from sqlalchemy import text
 
 from libs.spatial_utils import RunIdSchemaMapping
-from services.dagster.etl_pipelines.resources.gdal_resource import GDALResult
+from libs.models import Manifest
+from ..resources.gdal_resource import GDALResult
 import json
 from typing import Dict as DictType, List
 
@@ -115,6 +116,42 @@ def _load_files_to_postgis(
     Raises:
         RuntimeError: If any ogr2ogr call fails or schema compatibility check fails
     """
+    # Validate manifest structure and normalize to ensure all required fields exist
+    if not isinstance(manifest, dict):
+        raise ValueError(
+            f"Expected manifest to be a dict, got {type(manifest)}: {manifest}"
+        )
+    
+    # Unwrap 'value' key if present (Dagster wraps op inputs in 'value' when passed via run config)
+    # This handles both direct manifest dicts and Dagster-wrapped manifests
+    if "value" in manifest and isinstance(manifest.get("value"), dict):
+        # Check if this looks like a Dagster-wrapped input (only 'value' key, or 'value' contains manifest fields)
+        value_dict = manifest["value"]
+        # If 'value' contains manifest-like keys (batch_id, files, etc.), use it
+        if any(key in value_dict for key in ["batch_id", "files", "uploader", "intent"]):
+            manifest = value_dict
+    
+    # Validate against Pydantic model to ensure structure is correct
+    try:
+        validated_manifest = Manifest(**manifest)
+        # Convert back to dict for processing (ensures all fields are present)
+        manifest = validated_manifest.model_dump(mode="json")
+    except Exception as e:
+        raise ValueError(
+            f"Manifest validation failed: {e}. "
+            f"Manifest keys: {list(manifest.keys()) if isinstance(manifest, dict) else 'N/A'}. "
+            f"Manifest content: {manifest}"
+        ) from e
+    
+    # Additional validation for files list
+    if not isinstance(manifest["files"], list):
+        raise ValueError(
+            f"Expected manifest['files'] to be a list, got {type(manifest['files'])}: {manifest['files']}"
+        )
+    
+    if len(manifest["files"]) == 0:
+        raise ValueError("Manifest 'files' list is empty")
+    
     # Map run_id to schema name
     mapping = RunIdSchemaMapping.from_run_id(run_id)
     schema = mapping.schema_name

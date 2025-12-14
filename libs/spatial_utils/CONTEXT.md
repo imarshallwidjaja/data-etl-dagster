@@ -96,7 +96,7 @@ mock_wrapper.ogr2ogr.return_value = CompletedProcess(args=[], returncode=0)
 | `CPL_VSIL_CURL_ALLOWED_EXTENSIONS` | Allowed extensions for /vsicurl/ |
 | `AWS_ACCESS_KEY_ID` | For /vsis3/ access |
 | `AWS_SECRET_ACCESS_KEY` | For /vsis3/ access |
-| `AWS_S3_ENDPOINT` | MinIO endpoint for /vsis3/ |
+| `AWS_S3_ENDPOINT` | MinIO endpoint for /vsis3/ (host:port, no scheme) |\n| `AWS_HTTPS` | Whether to use HTTPS for S3 requests (YES/NO) |\n| `AWS_VIRTUAL_HOSTING` | Use virtual-hosted-style requests (TRUE/FALSE); MinIO typically needs FALSE |
 
 ### S3 Virtual File System
 

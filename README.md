@@ -74,16 +74,38 @@ aws --endpoint-url http://localhost:9000 s3 cp your-data.tif s3://landing-zone/b
 
 Create a `manifest.json` file describing your data. The manifest format is currently being standardized, but the following structure is supported:
 
+**Example: Vector Data (Building Footprints)**
 ```json
 {
-  "batch_id": "unique_batch_identifier",
-  "uploader": "user_or_system_id",
-  "intent": "ingest_satellite_raster",
+  "batch_id": "batch_buildings_001",
+  "uploader": "user_123",
+  "intent": "ingest_building_footprints",
   "files": [
     {
-      "path": "s3://landing-zone/batch_001/your-data.tif",
-      "type": "raster",
-      "format": "GTiff",
+      "path": "s3://landing-zone/batch_buildings_001/buildings.geojson",
+      "type": "vector",
+      "format": "GeoJSON",
+      "crs": "EPSG:4326"
+    }
+  ],
+  "metadata": {
+    "project": "BUILDINGS_DEMO",
+    "description": "Building footprints with intent-driven heavy simplification"
+  }
+}
+```
+
+**Example: Vector Data (Default Recipe)**
+```json
+{
+  "batch_id": "batch_vector_001",
+  "uploader": "user_123",
+  "intent": "ingest_vector",
+  "files": [
+    {
+      "path": "s3://landing-zone/batch_vector_001/data.geojson",
+      "type": "vector",
+      "format": "GeoJSON",
       "crs": "EPSG:4326"
     }
   ],
@@ -97,7 +119,11 @@ Create a `manifest.json` file describing your data. The manifest format is curre
 **Manifest Fields:**
 - `batch_id` (required): Unique identifier for this batch
 - `uploader` (required): User or system identifier
-- `intent` (required): Processing intent (e.g., `ingest_satellite_raster`, `ingest_vector`)
+- `intent` (required): Processing intent that determines the transformation recipe:
+  - `ingest_vector`: Default vector recipe (CRS normalization, light simplification, spatial indexing)
+  - `ingest_building_footprints`: Building footprints recipe with stronger geometry simplification (0.001° tolerance ≈ 111m at equator) for visibly simplified outlines
+  - `ingest_road_network`: Road network recipe (currently uses default recipe, can be customized)
+  - Unknown intents fall back to the default recipe
 - `files` (required): Array of file entries, each with:
   - `path`: S3 path to the file (must start with `s3://landing-zone/`)
   - `type`: File type (`raster` or `vector`)
@@ -106,6 +132,14 @@ Create a `manifest.json` file describing your data. The manifest format is curre
 - `metadata` (required): User-supplied metadata with:
   - `project`: Project identifier
   - `description`: Optional description
+
+**Intent-Based Transformations:**
+The pipeline uses a recipe-based transformation architecture where the `intent` field determines which transformation steps are applied. Each recipe includes:
+- CRS normalization to EPSG:4326
+- Geometry simplification (tolerance varies by intent)
+- Spatial index creation (GIST)
+
+See `libs/transformations/CONTEXT.md` for detailed documentation on the recipe system.
 
 **Note:** The manifest schema is subject to change as the system evolves. Check `CONTEXT.md` for the latest schema definition.
 
@@ -128,11 +162,12 @@ The manifest sensor polls the `manifests/` prefix every 30 seconds. Once your ma
    - Validates the manifest against the schema
    - If valid, triggers the ingestion job
 
-2. **Job Execution**:
-   - The ingestion job processes your files
-   - Data is transformed using PostGIS
-   - Processed files are written to the data lake
-   - Metadata is recorded in MongoDB
+2. **Job Execution** (Load → Transform → Export):
+   - **Load**: Files are loaded from MinIO landing zone to PostGIS ephemeral schema using GDAL ogr2ogr
+   - **Transform**: Spatial transformations are applied using recipe-based architecture (CRS normalization, geometry simplification, spatial indexing)
+   - **Export**: Processed data is exported to GeoParquet format and uploaded to MinIO data lake
+   - **Register**: Asset metadata and lineage are recorded in MongoDB ledger
+   - **Cleanup**: PostGIS ephemeral schema is automatically dropped after export
 
 3. **Monitor Progress**:
    - View job status in Dagster UI: http://localhost:3000
@@ -145,8 +180,13 @@ Once a manifest is uploaded, the following sequence occurs:
 
 1. **Sensor Polling**: The manifest sensor checks for new manifests every 30 seconds
 2. **Validation**: The manifest is validated against the Pydantic schema
-3. **Job Trigger**: If valid, a Dagster run is created with the manifest data
-4. **Processing**: The ingestion job executes (currently a placeholder that logs the manifest)
+3. **Job Trigger**: If valid, a Dagster run is created with the manifest data passed as an op input
+4. **Processing**: The ingestion job executes the full ETL pipeline:
+   - Loads spatial data from landing zone to PostGIS ephemeral schema
+   - Transforms data using recipe-based transformations (based on manifest `intent`)
+   - Exports processed GeoParquet to data lake
+   - Registers asset in MongoDB ledger
+   - Cleans up PostGIS ephemeral schema
 5. **Tracking**: The manifest is marked as processed in the sensor cursor (prevents duplicate runs)
 
 **Important Notes:**
@@ -189,22 +229,24 @@ You can manually trigger the ingestion job via the Dagster UI:
 
 ```yaml
 ops:
-  ingest_placeholder:
-    config:
+  load_to_postgis:
+    inputs:
       manifest:
-        batch_id: "batch_001"
-        uploader: "user_123"
-        intent: "ingest_satellite_raster"
-        files:
-          - path: "s3://landing-zone/batch_001/your-data.tif"
-            type: "raster"
-            format: "GTiff"
-            crs: "EPSG:4326"
-        metadata:
-          project: "ALPHA"
-          description: "Retry after fix"
-      manifest_key: "manifests/batch_001_retry.json"
+        value:
+          batch_id: "batch_001"
+          uploader: "user_123"
+          intent: "ingest_vector"
+          files:
+            - path: "s3://landing-zone/batch_001/your-data.geojson"
+              type: "vector"
+              format: "GeoJSON"
+              crs: "EPSG:4326"
+          metadata:
+            project: "ALPHA"
+            description: "Retry after fix"
 ```
+
+**Note:** The manifest is passed as an op input (not op config). The `manifest_key` is not required for manual triggers but can be added as a tag if needed for traceability.
 
 **When to use:**
 - Full control over run configuration

@@ -16,7 +16,7 @@ from dagster import op, OpExecutionContext, In, Out
 
 from libs.models import Asset, AssetMetadata, Bounds, OutputFormat, CRS
 from libs.spatial_utils import RunIdSchemaMapping
-from services.dagster.etl_pipelines.resources.gdal_resource import GDALResult
+from ..resources.gdal_resource import GDALResult
 
 
 def _export_to_datalake(

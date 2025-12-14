@@ -41,10 +41,19 @@ class RecipeRegistry:
             CreateSpatialIndexStep(geom_column=geom_column),
         ]
 
-        # Future: intent-specific recipes
+        # Building footprints recipe with stronger simplification for visible geometry changes
+        # Tolerance of 0.001 degrees ≈ 111m at equator, produces obviously simplified outlines
+        building_footprints_recipe = [
+            NormalizeCRSStep(target_crs=4326, geom_column=geom_column),
+            SimplifyGeometryStep(tolerance=0.001, geom_column=geom_column),
+            CreateSpatialIndexStep(geom_column=geom_column),
+        ]
+
+        # Intent-specific recipes
         recipes = {
             "ingest_vector": default_recipe,
             "ingest_road_network": default_recipe,  # Can customize later
+            "ingest_building_footprints": building_footprints_recipe,
         }
 
         return recipes.get(intent, default_recipe)

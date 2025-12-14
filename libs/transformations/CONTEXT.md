@@ -84,6 +84,22 @@ All vector transformation steps enforce a **single-geometry-column** contract:
 - Steps are instantiated fresh each time (no shared state)
 - All steps configured with specified geometry column
 
+**Available Recipes:**
+
+1. **Default Recipe** (`ingest_vector` and unknown intents):
+   - CRS normalization to EPSG:4326
+   - Geometry simplification with tolerance 0.0001 degrees (≈ 11m at equator)
+   - Spatial index creation (GIST)
+
+2. **Building Footprints Recipe** (`ingest_building_footprints`):
+   - CRS normalization to EPSG:4326
+   - Geometry simplification with tolerance 0.001 degrees (≈ 111m at equator) for visibly simplified building outlines
+   - Spatial index creation (GIST)
+   - **Use case**: Building footprint datasets where stronger simplification is desired for performance while maintaining recognizable building shapes
+
+3. **Road Network Recipe** (`ingest_road_network`):
+   - Currently uses default recipe (can be customized in the future)
+
 ## Design Principles
 
 ### SQL Safety

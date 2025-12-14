@@ -1,29 +1,26 @@
-"""Placeholder ingestion job for Phase 3 manifest sensor implementation."""
+"""Main ingestion job: Load → Transform → Export pipeline."""
 
-from dagster import job, op, OpExecutionContext
+from dagster import job
 
-
-@op
-def ingest_placeholder(context: OpExecutionContext):
-    """
-    Placeholder op for ingest job.
-    
-    This will be replaced with the full ETL pipeline in Phase 4/5.
-    For now, it just logs the manifest data from run config.
-    """
-    manifest_data = context.op_config.get("manifest", {})
-    manifest_key = context.op_config.get("manifest_key", "unknown")
-    context.log.info(f"Processing manifest: {manifest_data.get('batch_id', 'unknown')}")
-    context.log.info(f"Manifest key: {manifest_key}")
-    context.log.info(f"Manifest data: {manifest_data}")
-    return manifest_data
+from ..ops import load_to_postgis, spatial_transform, export_to_datalake
 
 
 @job(
     name="ingest_job",
-    description="Main ingestion job triggered by manifest sensor (placeholder for Phase 3)",
+    description="Main ingestion job: Loads spatial data from landing zone to PostGIS, transforms it, and exports to data lake",
 )
 def ingest_job():
-    """Placeholder ingestion job."""
-    ingest_placeholder()
+    """
+    Main ingestion job triggered by manifest sensor.
+    
+    Pipeline flow:
+    1. load_to_postgis: Loads spatial data from MinIO landing zone to PostGIS ephemeral schema
+    2. spatial_transform: Executes spatial transformations using recipe-based architecture
+    3. export_to_datalake: Exports processed data to MinIO data lake and registers in MongoDB
+    
+    The manifest is passed as an op input to load_to_postgis via run config.
+    """
+    schema_info = load_to_postgis()
+    transform_result = spatial_transform(schema_info)
+    export_to_datalake(transform_result)
 

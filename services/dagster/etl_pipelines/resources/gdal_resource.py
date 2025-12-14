@@ -82,7 +82,7 @@ class GDALResource(ConfigurableResource):
     )
     aws_s3_endpoint: str = Field(
         "",
-        description="MinIO endpoint URL (e.g., http://minio:9000)",
+        description="MinIO endpoint for GDAL /vsis3/ access (host:port, or URL like http://minio:9000)",
     )
     gdal_data_path: str = Field(
         "",
@@ -94,32 +94,73 @@ class GDALResource(ConfigurableResource):
     )
     
     def _get_env(self) -> Dict[str, str]:
-        """
-        Build environment variables for GDAL subprocess calls.
-        
-        Includes S3 credentials for /vsis3/ access and optional GDAL paths.
-        
+        """Build environment variables for GDAL subprocess calls.
+
+        Includes S3 credentials and endpoint settings for GDAL's /vsis3/ virtual
+        file system (MinIO access), plus optional GDAL/PROJ paths.
+
+        Notes on MinIO/GDAL configuration:
+        - GDAL expects AWS_S3_ENDPOINT as host[:port] (no scheme). If a URL is
+          provided (http://... or https://...), we normalize it.
+        - We default to path-style addressing for MinIO by disabling virtual
+          hosting unless explicitly overridden.
+
         Returns:
-            Dictionary of environment variables to pass to subprocess
+            Dictionary of environment variables to pass to subprocess.
         """
         import os
-        
+        from urllib.parse import urlparse
+
         env = os.environ.copy()
-        
+
         # S3 credentials for /vsis3/ virtual file system (MinIO access)
         if self.aws_access_key_id:
             env["AWS_ACCESS_KEY_ID"] = self.aws_access_key_id
         if self.aws_secret_access_key:
             env["AWS_SECRET_ACCESS_KEY"] = self.aws_secret_access_key
+
         if self.aws_s3_endpoint:
-            env["AWS_S3_ENDPOINT"] = self.aws_s3_endpoint
-        
+            raw_endpoint = self.aws_s3_endpoint.strip()
+
+            # Normalize endpoint to host[:port] (no scheme)
+            endpoint_host = raw_endpoint
+            https_hint: bool | None = None
+
+            parsed = urlparse(raw_endpoint)
+            if parsed.scheme in {"http", "https"}:
+                endpoint_host = parsed.netloc
+                https_hint = parsed.scheme == "https"
+            elif "://" in raw_endpoint:
+                # Unknown scheme; strip it and keep the remainder
+                endpoint_host = raw_endpoint.split("://", 1)[1]
+
+            endpoint_host = endpoint_host.strip().rstrip("/")
+            if "/" in endpoint_host:
+                endpoint_host = endpoint_host.split("/", 1)[0]
+
+            env["AWS_S3_ENDPOINT"] = endpoint_host
+
+            # Prefer path-style addressing for MinIO by default
+            env.setdefault("AWS_VIRTUAL_HOSTING", "FALSE")
+
+            # Ensure HTTP/HTTPS is explicit and consistent
+            if "AWS_HTTPS" not in env:
+                if https_hint is not None:
+                    env["AWS_HTTPS"] = "YES" if https_hint else "NO"
+                else:
+                    # Fall back to MINIO_USE_SSL if present, otherwise assume HTTP
+                    minio_use_ssl = env.get("MINIO_USE_SSL")
+                    if minio_use_ssl is not None:
+                        env["AWS_HTTPS"] = "YES" if minio_use_ssl.strip().lower() in {"1", "true", "yes"} else "NO"
+                    else:
+                        env["AWS_HTTPS"] = "NO"
+
         # Optional GDAL/PROJ paths (typically already set in Dockerfile)
         if self.gdal_data_path:
             env["GDAL_DATA"] = self.gdal_data_path
         if self.proj_lib_path:
             env["PROJ_LIB"] = self.proj_lib_path
-        
+
         return env
     
     def ogr2ogr(

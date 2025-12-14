@@ -190,7 +190,14 @@ Thin wrapper for GDAL CLI operations (ogr2ogr, gdal_translate, ogrinfo, gdalinfo
 - **Pipes-Ready:** Can be moved to separate process/container without modification
 - **S3-Compatible:** Uses MinIO credentials via `/vsis3/` virtual file system
 
-**Configuration:** Uses `EnvVar` for MinIO credentials: `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_ENDPOINT` (reused from MinIO config). GDAL/PROJ paths (`GDAL_DATA`, `PROJ_LIB`) are optional and typically set in Dockerfile.
+**Configuration:** Uses `EnvVar` for MinIO credentials: `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`, `MINIO_ENDPOINT` (reused from MinIO config).
+
+For GDAL `/vsis3/` access to MinIO, the effective GDAL environment is:
+- `AWS_S3_ENDPOINT`: `host:port` (no scheme). If a URL like `http://minio:9000` is provided, it is normalized.
+- `AWS_HTTPS`: `NO` for the default Docker setup (set `MINIO_USE_SSL=true` or provide an `https://...` endpoint for TLS).
+- `AWS_VIRTUAL_HOSTING`: `FALSE` (path-style), which is required for typical MinIO deployments.
+
+GDAL/PROJ paths (`GDAL_DATA`, `PROJ_LIB`) are optional and typically set in Dockerfile.
 
 **Testing:**
 - Unit tests: `tests/unit/resources/test_gdal_resource.py` (mock `subprocess.run`)
@@ -334,11 +341,55 @@ Standalone op for dropping PostGIS schemas. While schema cleanup is automaticall
 
 **Note:** The cleanup hooks (`cleanup_schema_on_success`, `cleanup_schema_on_failure`) are defined but not currently used, as cleanup is handled directly in `export_to_datalake`'s finally block for better reliability.
 
+### Implemented Jobs
+
+#### ingest_job (`etl_pipelines/jobs/ingest_job.py`)
+
+**Status:** ✅ Implemented (Phase 5)
+
+Main ingestion job that orchestrates the full ETL pipeline: Load → Transform → Export.
+
+**Pipeline Flow:**
+1. **load_to_postgis**: Loads spatial data from MinIO landing zone to PostGIS ephemeral schema
+2. **spatial_transform**: Executes spatial transformations using recipe-based architecture
+3. **export_to_datalake**: Exports processed data to MinIO data lake and registers in MongoDB
+
+**Job Composition:**
+```python
+schema_info = load_to_postgis()
+transform_result = spatial_transform(schema_info)
+export_to_datalake(transform_result)
+```
+
+**Input:**
+The manifest is passed as an op input to `load_to_postgis` via run config:
+```yaml
+ops:
+  load_to_postgis:
+    inputs:
+      manifest:
+        value:
+          batch_id: "..."
+          uploader: "..."
+          intent: "..."
+          files: [...]
+          metadata: {...}
+```
+
+**Manual Trigger:**
+The job can be manually triggered via Dagster UI/API by providing the run config above. The sensor automatically triggers this job when new manifests are detected.
+
+**Resources Required:** All ETL resources (`gdal`, `postgis`, `minio`, `mongodb`)
+
+**Testing:**
+- Unit tests: Individual ops are tested separately
+- Integration tests: Full pipeline tested in `tests/integration/test_dagster.py` (Phase 6)
+
 ### Implemented Sensors
 
 #### ManifestSensor (`etl_pipelines/sensors/manifest_sensor.py`)
 
-**Status:** ✅ Implemented (Phase 3)
+**Status:** ✅ Implemented (Phase 5)
 
 Polls MinIO landing zone for new manifest files and triggers ingestion jobs.
 
@@ -347,7 +398,24 @@ Polls MinIO landing zone for new manifest files and triggers ingestion jobs.
 - Uses sensor cursor to track processed manifests
 - Validates manifests against `Manifest` Pydantic model
 - Handles validation errors gracefully (logs, doesn't crash)
-- Yields `RunRequest` with manifest data as run config
+- Yields `RunRequest` with manifest data as op input to `load_to_postgis`
+
+**Run Config Structure:**
+The sensor passes the validated manifest as an op input to `load_to_postgis`:
+```yaml
+ops:
+  load_to_postgis:
+    inputs:
+      manifest:
+        value:
+          batch_id: "..."
+          uploader: "..."
+          intent: "..."
+          files: [...]
+          metadata: {...}
+```
+
+The `manifest_key` is stored as a Dagster tag for traceability, not in op config.
 
 **Configuration:**
 - Poll interval: 30 seconds (configurable via `minimum_interval_seconds`)

@@ -256,23 +256,27 @@ class TestGDALResourceInfo:
 
 class TestGDALEnvironment:
     """Test suite for environment variable handling."""
-    
+
     def test_environment_variables_passed_to_subprocess(self, gdal_resource):
-        """Test that S3 credentials are passed to subprocess."""
+        """Test that S3 credentials and MinIO endpoint settings are passed to subprocess."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
                 returncode=0,
                 stdout="",
                 stderr="",
             )
-            
+
             gdal_resource.ogrinfo("/vsis3/test/data.shp")
-            
+
             call_kwargs = mock_run.call_args[1]
             env = call_kwargs["env"]
             assert env["AWS_ACCESS_KEY_ID"] == "test_key"
             assert env["AWS_SECRET_ACCESS_KEY"] == "test_secret"
-            assert env["AWS_S3_ENDPOINT"] == "http://minio:9000"
+
+            # Normalized endpoint (no scheme) + explicit MinIO-friendly settings
+            assert env["AWS_S3_ENDPOINT"] == "minio:9000"
+            assert env["AWS_HTTPS"] == "NO"
+            assert env["AWS_VIRTUAL_HOSTING"] == "FALSE"
     
     def test_gdal_paths_in_environment(self, gdal_resource):
         """Test that GDAL/PROJ paths are passed to subprocess."""

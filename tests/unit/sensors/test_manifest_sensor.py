@@ -68,8 +68,14 @@ def test_valid_manifest_yields_run_request(mock_sensor_context, mock_minio_resou
     assert len(results) == 1
     assert isinstance(results[0], RunRequest)
     assert results[0].run_key == valid_manifest_dict["batch_id"]
-    assert "manifest" in results[0].run_config["ops"]["ingest_placeholder"]["config"]
-    assert results[0].run_config["ops"]["ingest_placeholder"]["config"]["manifest_key"] == manifest_key
+    # Check that manifest is passed as op input
+    assert "load_to_postgis" in results[0].run_config["ops"]
+    assert "inputs" in results[0].run_config["ops"]["load_to_postgis"]
+    assert "manifest" in results[0].run_config["ops"]["load_to_postgis"]["inputs"]
+    assert "value" in results[0].run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]
+    assert results[0].run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]["value"]["batch_id"] == valid_manifest_dict["batch_id"]
+    # Check that manifest_key is in tags, not op config
+    assert results[0].tags["manifest_key"] == manifest_key
     assert mock_sensor_context.update_cursor.called
 
 
@@ -226,9 +232,12 @@ def test_run_request_has_correct_tags_and_config(mock_sensor_context, mock_minio
     assert run_request.tags["intent"] == valid_manifest_dict["intent"]
     assert run_request.tags["manifest_key"] == manifest_key
     
-    # Check run config
-    config = run_request.run_config["ops"]["ingest_placeholder"]["config"]
-    assert "manifest" in config
-    assert config["manifest"]["batch_id"] == valid_manifest_dict["batch_id"]
-    assert config["manifest_key"] == manifest_key
+    # Check run config - manifest should be passed as op input, not op config
+    assert "load_to_postgis" in run_request.run_config["ops"]
+    manifest_input = run_request.run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]["value"]
+    assert manifest_input["batch_id"] == valid_manifest_dict["batch_id"]
+    assert manifest_input["uploader"] == valid_manifest_dict["uploader"]
+    assert manifest_input["intent"] == valid_manifest_dict["intent"]
+    # manifest_key should NOT be in op config, only in tags
+    assert "ingest_placeholder" not in run_request.run_config["ops"]
 

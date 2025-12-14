@@ -90,10 +90,11 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 run_key=manifest.batch_id,  # Unique run key per batch
                 run_config={
                     "ops": {
-                        "ingest_placeholder": {
-                            "config": {
-                                "manifest": manifest.model_dump(mode="json"),
-                                "manifest_key": manifest_key,
+                        "load_to_postgis": {
+                            "inputs": {
+                                "manifest": {
+                                    "value": manifest.model_dump(mode="json"),
+                                }
                             }
                         }
                     }

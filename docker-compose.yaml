@@ -166,6 +166,9 @@ services:
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-mongo}
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-mongo_password}
       MONGO_DATABASE: ${MONGO_DATABASE:-spatial_etl}
+      MONGO_AUTH_SOURCE: ${MONGO_AUTH_SOURCE:-admin}
+      # Build connection string from individual components
+      MONGO_CONNECTION_STRING: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo_password}@mongodb:27017/${MONGO_DATABASE:-spatial_etl}?authSource=${MONGO_AUTH_SOURCE:-admin}
       # PostGIS Configuration
       POSTGRES_HOST: postgis
       POSTGRES_PORT: "5432"
