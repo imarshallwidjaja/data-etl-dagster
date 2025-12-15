@@ -51,11 +51,20 @@ Notes:
 - Bucket names (`landing-zone`, `data-lake`) and DB names (`spatial_etl`, `spatial_compute`) are currently hardcoded in `etl_pipelines/definitions.py` to match architectural defaults.
 - Manifest schema is documented in the repo-root guide: `../../AGENTS.md`.
 
-### Retry semantics (Option A)
+### Retry semantics
 
 - **Sensor is one-shot**: The manifest sensor uses a cursor to mark processed manifests, preventing infinite retries. Once a manifest is processed (valid or invalid), it is marked in the cursor and will not be retried automatically.
 - **`batch_id` is immutable**: The `batch_id` field in manifests is globally unique and immutable. A new object key (different manifest filename) does not guarantee a new run when `run_key = batch_id`.
 - **Retries via Dagster rerun/re-execute**: Failed runs should be retried using Dagster's built-in rerun/re-execute functionality in the UI. This is the supported retry path.
+
+### Manifest router
+
+- **Routing by intent**:
+  - `ingest_tabular` → `ingest_tabular_job`
+  - `join_datasets` → `join_datasets_job` (requires `metadata.join_config`)
+  - all other intents → legacy `ingest_job`
+- **Traffic controller**: env var `MANIFEST_ROUTER_ENABLED_ROUTES` (comma-separated) gates routes. Default `legacy` only; add `tabular`, `join` to enable new lanes.
+- **One-shot + archive**: every manifest key is acknowledged once (valid, invalid, gated, or errored), written to the bounded JSON cursor (`{"v":1,...}`), and moved to `archive/<manifest_key>` in the landing bucket. Archival failures are logged but do not block cursor updates.
 
 ## Common tasks
 

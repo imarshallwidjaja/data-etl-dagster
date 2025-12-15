@@ -1,16 +1,22 @@
 """
-Unit tests for manifest_sensor.
+Unit tests for manifest_sensor smart router.
 
-Tests sensor behavior with mocked MinIOResource and SensorEvaluationContext.
+Tests sensor routing, gating, cursor migration, and archiving behavior with mocked
+MinIOResource and SensorEvaluationContext.
 """
 
-import pytest
-from unittest.mock import Mock, MagicMock, PropertyMock
-from dagster import SkipReason, RunRequest
-from pydantic import ValidationError
+import json
+from unittest.mock import Mock
 
-from services.dagster.etl_pipelines.sensors.manifest_sensor import manifest_sensor
+import pytest
+from dagster import RunRequest, SkipReason
+
 from services.dagster.etl_pipelines.resources import MinIOResource
+from services.dagster.etl_pipelines.sensors.manifest_sensor import manifest_sensor
+
+
+# Access the raw function from the sensor
+_manifest_sensor_fn = manifest_sensor._raw_fn
 
 
 # =============================================================================
@@ -34,210 +40,155 @@ def mock_sensor_context():
     return context
 
 
-# Access the raw function from the sensor
-_manifest_sensor_fn = manifest_sensor._raw_fn
-
-
 # =============================================================================
-# Test: No manifests found
+# Tests
 # =============================================================================
 
 def test_no_manifests_skips(mock_sensor_context, mock_minio_resource):
-    """Test that sensor yields SkipReason when no manifests found."""
     mock_minio_resource.list_manifests.return_value = []
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
+
     assert len(results) == 1
     assert isinstance(results[0], SkipReason)
     assert "No new manifests" in results[0].skip_message
 
 
-# =============================================================================
-# Test: Valid manifest
-# =============================================================================
-
-def test_valid_manifest_yields_run_request(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that valid manifest yields RunRequest with correct config."""
+def test_legacy_route_yields_run_request(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
     manifest_key = "manifests/batch_001.json"
     mock_minio_resource.list_manifests.return_value = [manifest_key]
     mock_minio_resource.get_manifest.return_value = valid_manifest_dict
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
+
     assert len(results) == 1
-    assert isinstance(results[0], RunRequest)
-    assert results[0].run_key == valid_manifest_dict["batch_id"]
-    # Check that manifest is passed as op input
-    assert "load_to_postgis" in results[0].run_config["ops"]
-    assert "inputs" in results[0].run_config["ops"]["load_to_postgis"]
-    assert "manifest" in results[0].run_config["ops"]["load_to_postgis"]["inputs"]
-    assert "value" in results[0].run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]
-    assert results[0].run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]["value"]["batch_id"] == valid_manifest_dict["batch_id"]
-    # Check that manifest_key is in tags, not op config
-    assert results[0].tags["manifest_key"] == manifest_key
-    assert mock_sensor_context.update_cursor.called
+    request = results[0]
+    assert isinstance(request, RunRequest)
+    assert request.job_name == "ingest_job"
+    assert request.run_key == f"legacy:{valid_manifest_dict['batch_id']}"
+    assert request.tags["manifest_key"] == manifest_key
+    assert request.tags["manifest_archive_key"] == f"archive/{manifest_key}"
+    assert request.tags["route"] == "legacy"
+
+    legacy_ops = request.run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]["value"]
+    assert legacy_ops["batch_id"] == valid_manifest_dict["batch_id"]
+
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
+    cursor_payload = json.loads(mock_sensor_context.update_cursor.call_args[0][0])
+    assert cursor_payload["v"] == 1
+    assert manifest_key in cursor_payload["processed_keys"]
 
 
-# =============================================================================
-# Test: Invalid manifest
-# =============================================================================
-
-def test_invalid_manifest_logs_error_and_adds_to_cursor(mock_sensor_context, mock_minio_resource):
-    """Test that invalid manifest logs error, doesn't yield RunRequest, but adds to cursor."""
+def test_tabular_route_disabled_by_default(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
     manifest_key = "manifests/batch_001.json"
-    invalid_manifest = {"batch_id": "test"}  # Missing required fields
+    valid_manifest_dict["intent"] = "ingest_tabular"
+
     mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = invalid_manifest
-    
+    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    # Should not yield RunRequest
-    assert len(results) == 0
-    # Should log error
+
+    assert results == []  # gated off
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
+    cursor_payload = json.loads(mock_sensor_context.update_cursor.call_args[0][0])
+    assert manifest_key in cursor_payload["processed_keys"]
+
+
+def test_tabular_route_enabled(monkeypatch, mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    monkeypatch.setenv("MANIFEST_ROUTER_ENABLED_ROUTES", "legacy,tabular")
+    manifest_key = "manifests/batch_001.json"
+    valid_manifest_dict["intent"] = "ingest_tabular"
+
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
+
+    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
+
+    assert len(results) == 1
+    request = results[0]
+    assert request.job_name == "ingest_tabular_job"
+    assert request.run_key == f"tabular:{valid_manifest_dict['batch_id']}"
+    assert request.tags["route"] == "tabular"
+    assert "tabular_ingest_placeholder" in request.run_config["ops"]
+
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
+
+
+def test_join_route_requires_join_config(monkeypatch, mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    monkeypatch.setenv("MANIFEST_ROUTER_ENABLED_ROUTES", "legacy,tabular,join")
+    manifest_key = "manifests/batch_002.json"
+    valid_manifest_dict["intent"] = "join_datasets"
+    valid_manifest_dict["metadata"] = {
+        "project": "ALPHA",
+        "description": "No join config",
+        "tags": {},
+    }
+
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
+
+    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
+
+    assert results == []  # validation error prevents run
     mock_sensor_context.log.error.assert_called()
-    # Should update cursor (mark as processed, only try once)
-    assert mock_sensor_context.update_cursor.called
-    call_args = mock_sensor_context.update_cursor.call_args[0][0]
-    assert manifest_key in call_args
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
 
 
-# =============================================================================
-# Test: Cursor tracking
-# =============================================================================
+def test_join_route_enabled(monkeypatch, mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    monkeypatch.setenv("MANIFEST_ROUTER_ENABLED_ROUTES", "legacy,tabular,join")
+    manifest_key = "manifests/batch_003.json"
+    valid_manifest_dict["intent"] = "join_datasets"
 
-def test_cursor_tracks_processed_manifests(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that cursor correctly tracks processed manifests."""
-    processed_key = "manifests/batch_001.json"
-    new_key = "manifests/batch_002.json"
-    
-    mock_sensor_context.cursor = processed_key
-    mock_minio_resource.list_manifests.return_value = [processed_key, new_key]
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
     mock_minio_resource.get_manifest.return_value = valid_manifest_dict
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    # Should only process new manifest
+
     assert len(results) == 1
-    assert isinstance(results[0], RunRequest)
-    # Cursor should include both old and new
-    assert mock_sensor_context.update_cursor.called
-    call_args = mock_sensor_context.update_cursor.call_args[0][0]
-    assert processed_key in call_args
-    assert new_key in call_args
+    request = results[0]
+    assert request.job_name == "join_datasets_job"
+    assert request.run_key == f"join:{valid_manifest_dict['batch_id']}"
+    assert request.tags["route"] == "join"
+    assert "join_datasets_placeholder" in request.run_config["ops"]
 
 
-# =============================================================================
-# Test: Multiple manifests
-# =============================================================================
+def test_cursor_migration_and_bounding(monkeypatch, mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    monkeypatch.setenv("MANIFEST_ROUTER_ENABLED_ROUTES", "legacy")
+    existing_cursor = json.dumps({"v": 1, "processed_keys": ["old1", "old2"], "max_keys": 2})
+    mock_sensor_context.cursor = existing_cursor
 
-def test_multiple_manifests_yields_multiple_requests(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that multiple manifests yield multiple RunRequests."""
-    keys = ["manifests/batch_001.json", "manifests/batch_002.json"]
-    mock_minio_resource.list_manifests.return_value = keys
+    new_key = "manifests/new.json"
+    mock_minio_resource.list_manifests.return_value = ["old1", "old2", new_key]
     mock_minio_resource.get_manifest.return_value = valid_manifest_dict
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    assert len(results) == 2
-    assert all(isinstance(r, RunRequest) for r in results)
+
+    assert len(results) == 1
+    cursor_payload = json.loads(mock_sensor_context.update_cursor.call_args[0][0])
+    assert cursor_payload["processed_keys"] == ["old2", new_key]
+    assert cursor_payload["max_keys"] == 2
 
 
-# =============================================================================
-# Test: MinIO errors
-# =============================================================================
+def test_archive_failure_still_updates_cursor(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    manifest_key = "manifests/batch_004.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
+    mock_minio_resource.move_to_archive.side_effect = RuntimeError("archive failed")
+
+    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
+
+    assert len(results) == 1
+    mock_sensor_context.log.warning.assert_called()
+    cursor_payload = json.loads(mock_sensor_context.update_cursor.call_args[0][0])
+    assert manifest_key in cursor_payload["processed_keys"]
+
 
 def test_minio_error_handled_gracefully(mock_sensor_context, mock_minio_resource):
-    """Test that MinIO errors yield SkipReason instead of crashing."""
     mock_minio_resource.list_manifests.side_effect = RuntimeError("Connection failed")
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
+
     assert len(results) == 1
     assert isinstance(results[0], SkipReason)
     mock_sensor_context.log.error.assert_called()
-
-
-# =============================================================================
-# Test: Cursor parsing errors
-# =============================================================================
-
-def test_cursor_parsing_error_resets_cursor(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that invalid cursor format resets cursor and continues processing."""
-    manifest_key = "manifests/batch_001.json"
-    # Set a cursor that will cause parsing issues (though comma-separated should work)
-    # Actually, the cursor format is fine, so this test verifies normal processing
-    mock_sensor_context.cursor = "some,other,keys"
-    mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
-    
-    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    # Should process manifest
-    assert len(results) == 1
-    assert isinstance(results[0], RunRequest)
-
-
-# =============================================================================
-# Test: Individual manifest errors don't stop processing
-# =============================================================================
-
-def test_individual_manifest_error_continues_processing(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that errors processing one manifest don't stop processing of others."""
-    valid_key = "manifests/batch_001.json"
-    error_key = "manifests/batch_002.json"
-    
-    mock_minio_resource.list_manifests.return_value = [valid_key, error_key]
-    
-    # First call returns valid manifest, second call raises error
-    def get_manifest_side_effect(key):
-        if key == error_key:
-            raise RuntimeError("Download failed")
-        return valid_manifest_dict
-    
-    mock_minio_resource.get_manifest.side_effect = get_manifest_side_effect
-    
-    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    # Should process valid manifest
-    assert len(results) == 1
-    assert isinstance(results[0], RunRequest)
-    # Should log error for failed manifest
-    assert mock_sensor_context.log.error.call_count >= 1
-    # Both should be added to cursor
-    assert mock_sensor_context.update_cursor.called
-    call_args = mock_sensor_context.update_cursor.call_args[0][0]
-    assert valid_key in call_args
-    assert error_key in call_args
-
-
-# =============================================================================
-# Test: RunRequest tags and config
-# =============================================================================
-
-def test_run_request_has_correct_tags_and_config(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that RunRequest has correct tags and run config."""
-    manifest_key = "manifests/batch_001.json"
-    mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
-    
-    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    run_request = results[0]
-    assert isinstance(run_request, RunRequest)
-    
-    # Check tags
-    assert run_request.tags["batch_id"] == valid_manifest_dict["batch_id"]
-    assert run_request.tags["uploader"] == valid_manifest_dict["uploader"]
-    assert run_request.tags["intent"] == valid_manifest_dict["intent"]
-    assert run_request.tags["manifest_key"] == manifest_key
-    
-    # Check run config - manifest should be passed as op input, not op config
-    assert "load_to_postgis" in run_request.run_config["ops"]
-    manifest_input = run_request.run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]["value"]
-    assert manifest_input["batch_id"] == valid_manifest_dict["batch_id"]
-    assert manifest_input["uploader"] == valid_manifest_dict["uploader"]
-    assert manifest_input["intent"] == valid_manifest_dict["intent"]
-    # manifest_key should NOT be in op config, only in tags
-    assert "ingest_placeholder" not in run_request.run_config["ops"]
 

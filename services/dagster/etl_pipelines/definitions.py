@@ -4,7 +4,7 @@ from dagster import Definitions, EnvVar, define_asset_job
 
 from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
 from .assets import gdal_health_check
-from .jobs import ingest_job
+from .jobs import ingest_job, ingest_tabular_job, join_datasets_job
 from .sensors import manifest_sensor
 
 gdal_health_check_job = define_asset_job(
@@ -15,7 +15,7 @@ gdal_health_check_job = define_asset_job(
 
 defs = Definitions(
     assets=[gdal_health_check],
-    jobs=[gdal_health_check_job, ingest_job],
+    jobs=[gdal_health_check_job, ingest_job, ingest_tabular_job, join_datasets_job],
     resources={
         "minio": MinIOResource(
             endpoint=EnvVar("MINIO_ENDPOINT"),
