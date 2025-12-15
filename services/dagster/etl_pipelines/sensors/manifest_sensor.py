@@ -79,7 +79,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 context.log.error(
                     f"Invalid manifest '{manifest_key}': {e.errors()}. "
                     f"Marking as processed to prevent retry. "
-                    f"To retry, re-upload with a new key or use retry mechanism."
+                    f"To retry, rerun/re-execute the Dagster run (sensor is one-shot)."
                 )
                 # Add to processed even if invalid - only try once
                 processed_this_run.add(manifest_key)
@@ -120,7 +120,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
             context.log.error(
                 f"Error processing manifest '{manifest_key}': {e}. "
                 f"Marking as processed to prevent retry. "
-                f"To retry, re-upload with a new key or use retry mechanism."
+                f"To retry, rerun/re-execute the Dagster run (sensor is one-shot)."
             )
             # Add to processed even on error - only try once
             processed_this_run.add(manifest_key)

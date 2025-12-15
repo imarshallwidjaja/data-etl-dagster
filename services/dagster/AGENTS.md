@@ -43,13 +43,19 @@ Most runtime config is set via env vars in `../../docker-compose.yaml`. Dagster 
 Common env vars:
 
 - **Dagster metadata DB**: `DAGSTER_POSTGRES_HOST`, `DAGSTER_POSTGRES_USER`, `DAGSTER_POSTGRES_PASSWORD`, `DAGSTER_POSTGRES_DB`
-- **MinIO**: `MINIO_ENDPOINT`, `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
+- **MinIO**: `MINIO_ENDPOINT` (must be `host:port` without scheme, e.g., `minio:9000`), `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
 - **MongoDB**: `MONGO_CONNECTION_STRING`
 - **PostGIS**: `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
 
 Notes:
 - Bucket names (`landing-zone`, `data-lake`) and DB names (`spatial_etl`, `spatial_compute`) are currently hardcoded in `etl_pipelines/definitions.py` to match architectural defaults.
 - Manifest schema is documented in the repo-root guide: `../../AGENTS.md`.
+
+### Retry semantics (Option A)
+
+- **Sensor is one-shot**: The manifest sensor uses a cursor to mark processed manifests, preventing infinite retries. Once a manifest is processed (valid or invalid), it is marked in the cursor and will not be retried automatically.
+- **`batch_id` is immutable**: The `batch_id` field in manifests is globally unique and immutable. A new object key (different manifest filename) does not guarantee a new run when `run_key = batch_id`.
+- **Retries via Dagster rerun/re-execute**: Failed runs should be retried using Dagster's built-in rerun/re-execute functionality in the UI. This is the supported retry path.
 
 ## Common tasks
 

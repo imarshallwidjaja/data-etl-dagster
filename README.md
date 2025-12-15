@@ -196,28 +196,27 @@ Once a manifest is uploaded, the following sequence occurs:
 
 ### Retrying Failed Ingestion
 
-If ingestion fails or you need to reprocess a manifest, you have several options:
+If ingestion fails or you need to reprocess a manifest, use the following retry mechanisms:
 
-#### Option 1: Re-upload with New Key (Recommended for Phase 3)
+**Important:** The `batch_id` is **globally unique and immutable**. A "new object key" (different manifest filename) **does not guarantee** a new run when `run_key = batch_id`. If your data truly changes (new dataset version), you must generate a **new `batch_id`**.
 
-The simplest approach is to upload the manifest with a different filename:
+#### Option 1: Dagster Rerun / Re-execute (Recommended)
 
-```bash
-# Original manifest
-s3://landing-zone/manifests/batch_001.json
+The supported retry mechanism is to rerun or re-execute the failed Dagster run:
 
-# Retry with new key
-s3://landing-zone/manifests/batch_001_retry.json
-```
+1. Navigate to http://localhost:3000
+2. Go to the "Runs" section
+3. Find the failed run for your `batch_id`
+4. Click "Re-execute" or "Rerun" to retry the same run
 
-**Why this works:** The sensor tracks processed manifests by their S3 key. A new key is treated as a new manifest.
+**Why this works:** The sensor is one-shot (cursor marks processed manifests to avoid infinite retries). Failed runs can be safely retried via Dagster's built-in rerun/re-execute functionality.
 
-**When to use:** 
-- Quick retry after fixing manifest errors
+**When to use:**
+- Retrying after fixing manifest errors
 - Reprocessing with corrected data
-- Testing different processing parameters
+- Re-running failed pipeline steps
 
-#### Option 2: Manual Job Trigger (Always Available)
+#### Option 2: Manual Job Trigger
 
 You can manually trigger the ingestion job via the Dagster UI:
 
@@ -243,7 +242,7 @@ ops:
               crs: "EPSG:4326"
           metadata:
             project: "ALPHA"
-            description: "Retry after fix"
+            description: "Manual retry"
 ```
 
 **Note:** The manifest is passed as an op input (not op config). The `manifest_key` is not required for manual triggers but can be added as a tag if needed for traceability.
@@ -252,16 +251,7 @@ ops:
 - Full control over run configuration
 - Testing specific scenarios
 - Bypassing sensor entirely
-
-#### Option 3: Future Retry Mechanisms (Phase 4+)
-
-Future enhancements will provide automated retry mechanisms:
-
-- **Retry Prefix/Folder**: Move manifest to `manifests/retry/` to bypass cursor check
-- **MongoDB Status Check**: Update manifest status in MongoDB to allow retry
-- **Automatic Retry**: Failed runs automatically retry based on status
-
-These options will be documented when implemented.
+- Launching runs for new `batch_id` values
 
 ### Troubleshooting
 
@@ -282,6 +272,12 @@ These options will be documented when implemented.
 - Verify resources (MinIO, MongoDB, PostGIS) are accessible
 - Review job logs for errors
 - Ensure the manifest was successfully validated
+
+**MinIO endpoint configuration:**
+- `MINIO_ENDPOINT` must be `host:port` **without** `http://` or `https://` (e.g., `minio:9000`).
+- `AWS_S3_ENDPOINT` (used by GDAL) is the endpoint that **includes** the scheme (e.g., `http://minio:9000`).
+- **Symptom**: If you see "double scheme" errors or malformed endpoint URLs, check that `MINIO_ENDPOINT` does not include `http://` or `https://`.
+- **Fix**: Use `minio:9000` for `MINIO_ENDPOINT`, not `http://minio:9000`.
 
 ## Architecture
 
@@ -484,6 +480,8 @@ pytest -m integration tests/integration -v
   - Round-trip validation
 
 **Integration Tests** (`tests/integration/`) - Requires Docker stack (18 tests):
+
+Existing integration tests are **connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup). They verify service reachability and basic operations, but do not include end-to-end `ingest_job` E2E tests. An `ingest_job` E2E test is **planned for Phase 6**.
 
 - `test_minio.py` (3 tests) - MinIO connectivity and read/write operations
 - `test_mongodb.py` (3 tests) - MongoDB connectivity and CRUD operations

@@ -48,7 +48,7 @@ It is the application-level validation layer and the contract between ingestion,
 These are the env vars read by `libs/models/config.py` (via `validation_alias`). Defaults shown are code defaults.
 
 - **MinIO** (`MinIOSettings`)
-  - `MINIO_ENDPOINT` (required in dev)
+  - `MINIO_ENDPOINT` (required in dev; must be `host:port` **without** scheme, e.g., `minio:9000` - no `http://` or `https://`)
   - `MINIO_ROOT_USER` (required)
   - `MINIO_ROOT_PASSWORD` (required)
   - `MINIO_USE_SSL` (default: `false`)
@@ -84,7 +84,7 @@ These are the env vars read by `libs/models/config.py` (via `validation_alias`).
 - **GDAL** (`GDALSettings`)
   - `AWS_ACCESS_KEY_ID`
   - `AWS_SECRET_ACCESS_KEY`
-  - `AWS_S3_ENDPOINT` (example in container: `http://minio:9000`)
+  - `AWS_S3_ENDPOINT` (example in container: `http://minio:9000`; **includes** scheme, unlike `MINIO_ENDPOINT`)
   - `GDAL_DATA` (optional)
   - `PROJ_LIB` (optional)
 

@@ -91,6 +91,20 @@ graph TD
   - Dagster pins live in `services/dagster/requirements.txt` and `services/dagster/requirements-user-code.txt`.
   - Keep Dagster core packages on the same patch version; keep integration track versions aligned.
 
+### Pinned Dagster versions
+
+Current pinned versions (as of Phase 5):
+
+- **Core packages** (same patch version):
+  - `dagster==1.12.5`
+  - `dagster-webserver==1.12.5`
+
+- **Integration packages** (aligned track versions):
+  - `dagster-postgres==0.28.5`
+  - `dagster-aws==0.28.5`
+
+See `services/dagster/requirements.txt` and `services/dagster/requirements-user-code.txt` for the complete dependency lists.
+
 ## Common tasks
 
 - **Add a new Dagster asset/op/sensor**: implement under `services/dagster/etl_pipelines/`, then register in `services/dagster/etl_pipelines/definitions.py`.

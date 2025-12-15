@@ -5,6 +5,8 @@
 Integration tests validate behavior against **live services** running in Docker:
 MinIO, MongoDB, PostGIS, Dagster (and GDAL availability inside the user-code container).
 
+**Note:** Current integration tests are connectivity/health tests. An `ingest_job` E2E test is planned for Phase 6.
+
 ## Key invariants / non-negotiables
 
 - Mark integration tests with `@pytest.mark.integration`.
