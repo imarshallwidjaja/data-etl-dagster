@@ -46,12 +46,50 @@ Common env vars:
 - **MinIO**: `MINIO_ENDPOINT` (must be `host:port` without scheme, e.g., `minio:9000`), `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
 - **MongoDB**: `MONGO_CONNECTION_STRING`
 - **PostGIS**: `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
+- **Manifest Router (Traffic Controller)**: `MANIFEST_ROUTER_ENABLED_LANES` (comma-separated: `ingest,tabular,join`; defaults to `ingest` when unset)
 
 Notes:
 - Bucket names (`landing-zone`, `data-lake`) and DB names (`spatial_etl`, `spatial_compute`) are currently hardcoded in `etl_pipelines/definitions.py` to match architectural defaults.
 - Manifest schema is documented in the repo-root guide: `../../AGENTS.md`.
 
-### Retry semantics (Option A)
+### Manifest Sensor (Multi-Lane Router)
+
+The `manifest_sensor` is a multi-lane router that routes manifests to different jobs based on the `intent` field.
+
+**Lane Mapping:**
+- `intent == "ingest_tabular"` → `tabular` lane → `ingest_tabular_job`
+- `intent == "join_datasets"` → `join` lane → `join_datasets_job` (requires `metadata.join_config`)
+- All other intents → `ingest` lane → `ingest_job` (default)
+
+**Traffic Controller (`MANIFEST_ROUTER_ENABLED_LANES`):**
+- Controls which lanes may launch runs
+- Comma-separated values: `ingest`, `tabular`, `join`
+- Default when unset: `ingest` only
+- If a manifest maps to a disabled lane, the sensor:
+  - Logs that the lane is disabled
+  - Marks the manifest as processed (one-shot)
+  - Archives the manifest to `archive/{manifest_key}`
+  - Yields no `RunRequest`
+
+**Run Key Format:**
+- Lane-prefixed to avoid collisions: `{lane}:{batch_id}` (e.g., `ingest:batch_001`, `tabular:batch_002`)
+
+**Tags:**
+- Standard tags: `batch_id`, `uploader`, `intent`, `manifest_key`
+- Lane tag: `lane` (values: `ingest`, `tabular`, `join`)
+- Archive tag: `manifest_archive_key` (value: `archive/{manifest_key}`)
+
+**Manifest Archiving:**
+- After processing (valid, invalid, or error), manifests are automatically archived via `minio.move_to_archive(manifest_key)`
+- Archive path: `archive/{manifest_key}` (e.g., `archive/manifests/batch_001.json`)
+- Archive failures are logged as warnings but do not prevent cursor updates
+
+**Cursor Format:**
+- Versioned JSON format: `{"v": 1, "processed_keys": [...], "max_keys": 500}`
+- Migrates automatically from legacy comma-separated format
+- Bounded to `max_keys` (500) to prevent unbounded growth
+
+### Retry semantics
 
 - **Sensor is one-shot**: The manifest sensor uses a cursor to mark processed manifests, preventing infinite retries. Once a manifest is processed (valid or invalid), it is marked in the cursor and will not be retried automatically.
 - **`batch_id` is immutable**: The `batch_id` field in manifests is globally unique and immutable. A new object key (different manifest filename) does not guarantee a new run when `run_key = batch_id`.
