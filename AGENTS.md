@@ -114,7 +114,8 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 ## Testing / verification
 
 - **Unit tests**: `pytest tests/unit`
-- **Integration tests** (requires Docker stack): `pytest -m integration tests/integration`
+- **Integration tests** (requires Docker stack): `pytest -m "integration and not e2e" tests/integration`
+- **E2E tests** (GraphQL-launched `ingest_job`, requires Docker stack): `pytest -m "integration and e2e" tests/integration`
 
 ## Links
 

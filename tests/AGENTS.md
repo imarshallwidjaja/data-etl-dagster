@@ -9,6 +9,7 @@ It is split into **unit tests** (fast, mocked) and **integration tests** (live s
 
 - **Unit tests must not require Docker** (mock external services and subprocess calls).
 - **Integration tests must be explicit**: use `@pytest.mark.integration` and assume Docker is running.
+- **E2E tests must be explicit**: use `@pytest.mark.e2e` (these are still integration tests and require Docker).
 
 ## Entry points / key files
 
@@ -34,7 +35,8 @@ pytest tests/unit
 ```bash
 docker compose up -d
 python scripts/wait_for_services.py
-pytest -m integration tests/integration
+pytest -m "integration and not e2e" tests/integration
+pytest -m "integration and e2e" tests/integration
 ```
 
 ## Links

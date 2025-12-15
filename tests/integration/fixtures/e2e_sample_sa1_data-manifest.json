@@ -1,0 +1,17 @@
+{
+  "batch_id": "test",
+  "uploader": "user_123",
+  "intent": "ingest_building_footprints",
+  "files": [
+    {
+      "path": "s3://landing-zone/test-zone/ausurbhi_hhvi_nsw_sa1_sample_2021.json",
+      "type": "vector",
+      "format": "GeoJSON",
+      "crs": "EPSG:4326"
+    }
+  ],
+  "metadata": {
+    "project": "ALPHA",
+    "description": "User supplied context"
+  }
+}

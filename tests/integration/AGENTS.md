@@ -5,12 +5,16 @@
 Integration tests validate behavior against **live services** running in Docker:
 MinIO, MongoDB, PostGIS, Dagster (and GDAL availability inside the user-code container).
 
-**Note:** Current integration tests are connectivity/health tests. An `ingest_job` E2E test is planned for Phase 6.
+This directory includes:
+- **Connectivity/health** tests for each service
+- A **GraphQL-launched E2E** test for `ingest_job` that validates the full offline-first loop:
+  landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup.
 
 ## Key invariants / non-negotiables
 
 - Mark integration tests with `@pytest.mark.integration`.
 - These tests will fail if Docker is not running / services are not healthy.
+- E2E tests must be explicitly marked with `@pytest.mark.e2e` (see `pytest.ini` markers).
 
 ## Entry points / key files
 
@@ -18,13 +22,16 @@ MinIO, MongoDB, PostGIS, Dagster (and GDAL availability inside the user-code con
 - `test_dagster.py`: Dagster GraphQL/API reachability
 - `test_gdal_health.py`: GDAL tooling availability
 - `test_schema_cleanup.py`: verifies ephemeral schema lifecycle
+- `test_ingest_job_e2e.py`: launches `ingest_job` via GraphQL and asserts lake + ledger + cleanup
+- `fixtures/`: versioned E2E sample inputs used by `test_ingest_job_e2e.py`
 
 ## Running
 
 ```bash
 docker compose up -d
 python scripts/wait_for_services.py
-pytest -m integration tests/integration -v
+pytest -m "integration and not e2e" tests/integration -v
+pytest -m "integration and e2e" tests/integration -v
 ```
 
 ## Links

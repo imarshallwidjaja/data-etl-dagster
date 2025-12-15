@@ -377,7 +377,7 @@ pytest tests/unit -v
 
 #### Integration Tests
 
-Integration tests verify connectivity and basic operations against running services. These require the Docker stack to be running.
+Integration tests verify behavior against running services. These require the Docker stack to be running.
 
 **1. Start the Docker stack:**
 
@@ -396,11 +396,20 @@ python scripts/wait_for_services.py
 
 This script polls each service (MinIO, MongoDB, PostGIS, Dagster) until they're ready or timeout is reached.
 
-**3. Run integration tests:**
+**3. Run integration tests (non-E2E):**
 
 ```bash
-# Run integration tests
-pytest -m integration tests/integration -v
+# Run integration tests excluding E2E
+pytest -m "integration and not e2e" tests/integration -v
+```
+
+**4. Run E2E tests (GraphQL-launched ingest_job):**
+
+The E2E test uses versioned fixtures under `tests/integration/fixtures/` and launches `ingest_job` via Dagster GraphQL,
+asserting the full loop (landing-zone → PostGIS ephemeral → data-lake + MongoDB ledger + schema cleanup):
+
+```bash
+pytest -m "integration and e2e" tests/integration -v
 ```
 
 **4. Stop the Docker stack:**
@@ -417,7 +426,8 @@ docker compose -f docker-compose.yaml down -v
 pytest tests/unit -v
 
 # Then run integration tests (if Docker stack is running)
-pytest -m integration tests/integration -v
+pytest -m "integration and not e2e" tests/integration -v
+pytest -m "integration and e2e" tests/integration -v
 ```
 
 #### Test Coverage
@@ -481,7 +491,12 @@ pytest -m integration tests/integration -v
 
 **Integration Tests** (`tests/integration/`) - Requires Docker stack (18 tests):
 
-Existing integration tests are **connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup). They verify service reachability and basic operations, but do not include end-to-end `ingest_job` E2E tests. An `ingest_job` E2E test is **planned for Phase 6**.
+Integration tests include:
+- **Connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup)
+- An **E2E `ingest_job`** test launched via Dagster GraphQL that validates:
+  - an `assets` record exists in MongoDB for `dagster_run_id`
+  - the referenced object exists in MinIO `data-lake`
+  - the PostGIS `proc_<run_id>` schema is cleaned up
 
 - `test_minio.py` (3 tests) - MinIO connectivity and read/write operations
 - `test_mongodb.py` (3 tests) - MongoDB connectivity and CRUD operations
@@ -489,6 +504,7 @@ Existing integration tests are **connectivity/health** tests (MinIO/MongoDB/Post
 - `test_dagster.py` (3 tests) - Dagster GraphQL API connectivity
 - `test_gdal_health.py` (2 tests) - GDAL installation health check via Dagster
 - `test_schema_cleanup.py` (3 tests) - Ephemeral schema lifecycle verification
+- `test_ingest_job_e2e.py` (E2E) - `ingest_job` end-to-end run launched via GraphQL (uses `tests/integration/fixtures/`)
 
 **Total Coverage:** 189 unit tests + 18 integration tests = 207 tests
 
@@ -508,6 +524,10 @@ Detect changed files
 ```
 
 **Workflow file:** `.github/workflows/integration.yml`
+
+This workflow runs two jobs:
+- `test`: unit tests + integration tests excluding E2E (`-m "integration and not e2e"`)
+- `e2e`: runs after `test` succeeds and executes E2E tests (`-m "integration and e2e"`)
 
 **Benefits:**
 - ⚡ Fast feedback: Unit tests run in ~5 seconds
