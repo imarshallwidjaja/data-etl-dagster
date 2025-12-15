@@ -111,7 +111,8 @@ db.createCollection('manifests', {
               path: { bsonType: 'string' },
               type: { enum: ['raster', 'vector'] },
               format: { bsonType: 'string' }
-            }
+            },
+            additionalProperties: false
           }
         },
         metadata: {
@@ -123,7 +124,7 @@ db.createCollection('manifests', {
             tags: {
               bsonType: 'object',
               additionalProperties: {
-                bsonType: ['string', 'int', 'double', 'bool']
+                bsonType: ['string', 'int', 'long', 'double', 'bool']
               }
             },
             join_config: {
