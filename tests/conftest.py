@@ -31,8 +31,7 @@ def valid_file_entry_dict():
     return {
         "path": "s3://landing-zone/batch_001/image.tif",
         "type": "raster",
-        "format": "GTiff",
-        "crs": "EPSG:4326"
+        "format": "GTiff"
     }
 
 
@@ -56,7 +55,14 @@ def valid_manifest_dict(valid_file_entry_dict):
         "files": [valid_file_entry_dict],
         "metadata": {
             "project": "ALPHA",
-            "description": "Test satellite imagery"
+            "description": "Test satellite imagery",
+            "tags": {"priority": 1, "source": "unit-test", "published": False},
+            "join_config": {
+                "left_key": "parcel_id",
+                "right_key": "parcel_id",
+                "how": "left",
+                "target_asset_id": "dataset_ab12cd34ef56",
+            },
         }
     }
 

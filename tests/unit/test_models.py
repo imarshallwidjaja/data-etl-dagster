@@ -30,7 +30,6 @@ from libs.models import (
 from libs.models.spatial import validate_crs
 from libs.models.asset import validate_content_hash, validate_s3_key
 from libs.models.manifest import validate_s3_path
-from pydantic import ValidationError, validate_call
 
 
 # =============================================================================
@@ -42,40 +41,16 @@ class TestCRSValidation:
     
     def test_valid_epsg_codes(self):
         """Test that valid EPSG codes pass validation."""
-        # Standard EPSG codes - test via FileEntry model
-        entry = FileEntry(
-            path="s3://bucket/file.tif",
-            type=FileType.RASTER,
-            format="GTiff",
-            crs="EPSG:4326"
-        )
-        assert entry.crs == "EPSG:4326"
-        
-        entry2 = FileEntry(
-            path="s3://bucket/file.tif",
-            type=FileType.RASTER,
-            format="GTiff",
-            crs="EPSG:28354"
-        )
-        assert entry2.crs == "EPSG:28354"
+        assert validate_crs("EPSG:4326") == "EPSG:4326"
+        assert validate_crs("epsg:28354") == "EPSG:28354"
     
     def test_case_insensitive_epsg(self):
         """Test that EPSG codes are case-insensitive and normalized to uppercase."""
-        # Test via validator function
         crs_lower = validate_crs("epsg:4326")
         assert crs_lower == "EPSG:4326"
         
         crs_mixed = validate_crs("Epsg:4326")
         assert crs_mixed == "EPSG:4326"
-        
-        # Test via model
-        entry = FileEntry(
-            path="s3://bucket/file.tif",
-            type=FileType.RASTER,
-            format="GTiff",
-            crs="epsg:4326"
-        )
-        assert entry.crs == "EPSG:4326"
     
     def test_valid_wkt_strings(self, sample_wkt_crs):
         """Test that valid WKT strings pass validation."""
@@ -235,12 +210,40 @@ class TestManifestValidation:
         with pytest.raises(ValueError, match="Duplicate file paths"):
             Manifest(**data)
     
-    def test_invalid_crs_in_file_entry_bubbles_up(self, valid_manifest_dict):
-        """Test that invalid CRS in FileEntry bubbles up."""
+    def test_extra_field_in_file_entry_rejected(self, valid_manifest_dict):
+        """Test that unexpected fields in FileEntry are rejected."""
         data = valid_manifest_dict.copy()
-        data["files"][0]["crs"] = "INVALID:123"
+        data["files"][0]["crs"] = "EPSG:4326"
         with pytest.raises(ValidationError):
             Manifest(**data)
+
+    def test_metadata_rejects_unknown_keys(self, valid_manifest_dict):
+        """Test that metadata forbids unknown keys."""
+        data = valid_manifest_dict.copy()
+        data["metadata"]["unexpected"] = "nope"
+        with pytest.raises(ValidationError):
+            Manifest(**data)
+
+    def test_metadata_tags_accept_primitives(self, valid_manifest_dict):
+        """Test that metadata.tags accepts primitive scalar values."""
+        manifest = Manifest(**valid_manifest_dict)
+        assert manifest.metadata.tags == {"priority": 1, "source": "unit-test", "published": False}
+
+    def test_metadata_tags_reject_non_primitive(self, valid_manifest_dict):
+        """Test that metadata.tags rejects non-primitive values."""
+        data = valid_manifest_dict.copy()
+        data["metadata"]["tags"] = {"bad": {"nested": True}}
+        with pytest.raises(ValidationError):
+            Manifest(**data)
+
+    def test_join_config_defaults_right_key(self, valid_manifest_dict):
+        """Test that join_config defaults right_key when omitted."""
+        data = valid_manifest_dict.copy()
+        data["metadata"]["join_config"] = {"left_key": "id"}
+        manifest = Manifest(**data)
+        assert manifest.metadata.join_config is not None
+        assert manifest.metadata.join_config.right_key == "id"
+        assert manifest.metadata.join_config.how == "left"
 
 
 # =============================================================================
@@ -470,8 +473,7 @@ class TestS3PathValidation:
         entry = FileEntry(
             path="bucket-name/path/to/file.ext",
             type=FileType.RASTER,
-            format="GTiff",
-            crs="EPSG:4326"
+            format="GTiff"
         )
         assert entry.path == "s3://bucket-name/path/to/file.ext"
     

@@ -11,18 +11,20 @@
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, Literal
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 
-from .spatial import CRS, FileType
+from .spatial import FileType
 
 __all__ = [
     "FileEntry",
+    "JoinConfig",
     "ManifestMetadata",
     "Manifest",
     "ManifestStatus",
     "ManifestRecord",
     "S3Path",
+    "TagValue",
 ]
 
 
@@ -105,6 +107,14 @@ S3Path = Annotated[
 
 
 # =============================================================================
+# Tag Value Type
+# =============================================================================
+
+TagValue = str | int | float | bool
+"""Allowed tag value types for manifest metadata."""
+
+
+# =============================================================================
 # Manifest Status Enum
 # =============================================================================
 
@@ -125,27 +135,74 @@ class FileEntry(BaseModel):
     Metadata for a single file in a manifest.
     
     Represents a spatial data file (raster or vector) with its location,
-    format, and coordinate reference system.
+    format, and type.
     
     Attributes:
         path: S3 path to the file (validated format)
         type: File type classification (raster or vector)
         format: Input format string (e.g., "GTiff", "GPKG", "SHP")
-        crs: Coordinate Reference System (validated)
     """
     
     path: S3Path = Field(..., description="S3 path to the file")
     type: FileType = Field(..., description="File type: raster or vector")
     format: str = Field(..., description="Input format (e.g., GTiff, GPKG, SHP, GeoJSON)")
-    crs: CRS = Field(..., description="Coordinate Reference System")
     
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "path": "s3://landing-zone/batch_001/image.tif",
                 "type": "raster",
-                "format": "GTiff",
-                "crs": "EPSG:4326"
+                "format": "GTiff"
+            }
+        }
+    )
+
+
+# =============================================================================
+# Join Config Model
+# =============================================================================
+
+class JoinConfig(BaseModel):
+    """
+    Optional join configuration for associating ingested data with existing assets.
+    
+    Attributes:
+        target_asset_id: Identifier of the asset to join against (optional)
+        left_key: Field in the incoming dataset used for the join
+        right_key: Field in the target asset (defaults to left_key when omitted)
+        how: Join strategy (defaults to left join)
+    """
+    
+    target_asset_id: str | None = Field(
+        None,
+        description="Identifier of the existing asset to join against (optional)",
+    )
+    left_key: str = Field(..., description="Field in incoming data used for join")
+    right_key: str | None = Field(
+        None,
+        description="Field in target asset used for join (defaults to left_key)",
+    )
+    how: Literal["left", "inner", "right", "outer"] = Field(
+        "left",
+        description="Join strategy",
+    )
+    
+    @model_validator(mode='after')
+    def default_right_key(self) -> 'JoinConfig':
+        """Default right_key to left_key when not provided."""
+        if self.right_key is None:
+            self.right_key = self.left_key
+        return self
+    
+    model_config = ConfigDict(
+        extra="forbid",
+        json_schema_extra={
+            "example": {
+                "target_asset_id": "dataset_ab12cd34ef56",
+                "left_key": "parcel_id",
+                "right_key": "parcel_id",
+                "how": "left",
             }
         }
     )
@@ -165,16 +222,34 @@ class ManifestMetadata(BaseModel):
     Attributes:
         project: Project identifier or name
         description: Optional description of the data
+        tags: Arbitrary queryable tags (primitive scalars only)
+        join_config: Optional join instructions for downstream matching
     """
     
     project: str = Field(..., description="Project identifier or name")
     description: str | None = Field(None, description="Optional description of the data")
+    tags: dict[str, TagValue] = Field(
+        default_factory=dict,
+        description="User-supplied tags (str/int/float/bool values only)",
+    )
+    join_config: JoinConfig | None = Field(
+        None,
+        description="Optional join configuration for downstream matching",
+    )
     
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "project": "ALPHA",
-                "description": "Satellite imagery for urban analysis"
+                "description": "Satellite imagery for urban analysis",
+                "tags": {"priority": 1, "source": "user"},
+                "join_config": {
+                    "target_asset_id": "dataset_ab12cd34ef56",
+                    "left_key": "parcel_id",
+                    "right_key": "parcel_id",
+                    "how": "left",
+                }
             }
         }
     )
@@ -222,6 +297,7 @@ class Manifest(BaseModel):
         return self
     
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "batch_id": "batch_001",
@@ -231,13 +307,18 @@ class Manifest(BaseModel):
                     {
                         "path": "s3://landing-zone/batch_001/file.gpkg",
                         "type": "vector",
-                        "format": "GPKG",
-                        "crs": "EPSG:4326"
+                        "format": "GPKG"
                     }
                 ],
                 "metadata": {
                     "project": "ALPHA",
-                    "description": "Test dataset"
+                    "description": "Test dataset",
+                    "tags": {"source": "user", "priority": 1},
+                    "join_config": {
+                        "left_key": "parcel_id",
+                        "right_key": "parcel_id",
+                        "how": "left"
+                    }
                 }
             }
         }
@@ -303,6 +384,7 @@ class ManifestRecord(Manifest):
         )
     
     model_config = ConfigDict(
+        extra="forbid",
         json_schema_extra={
             "example": {
                 "batch_id": "batch_001",
@@ -312,13 +394,18 @@ class ManifestRecord(Manifest):
                     {
                         "path": "s3://landing-zone/batch_001/file.gpkg",
                         "type": "vector",
-                        "format": "GPKG",
-                        "crs": "EPSG:4326"
+                        "format": "GPKG"
                     }
                 ],
                 "metadata": {
                     "project": "ALPHA",
-                    "description": "Test dataset"
+                    "description": "Test dataset",
+                    "tags": {"source": "user", "priority": 1},
+                    "join_config": {
+                        "left_key": "parcel_id",
+                        "right_key": "parcel_id",
+                        "how": "left"
+                    }
                 },
                 "status": "completed",
                 "dagster_run_id": "run_12345",

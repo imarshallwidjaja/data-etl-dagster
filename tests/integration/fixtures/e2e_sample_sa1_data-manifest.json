@@ -6,12 +6,22 @@
     {
       "path": "s3://landing-zone/test-zone/ausurbhi_hhvi_nsw_sa1_sample_2021.json",
       "type": "vector",
-      "format": "GeoJSON",
-      "crs": "EPSG:4326"
+      "format": "GeoJSON"
     }
   ],
   "metadata": {
     "project": "ALPHA",
-    "description": "User supplied context"
+    "description": "User supplied context",
+    "tags": {
+      "priority": 1,
+      "source": "integration-fixture",
+      "sample": true
+    },
+    "join_config": {
+      "target_asset_id": "dataset_sample_target",
+      "left_key": "sa1_code",
+      "right_key": "sa1_code",
+      "how": "left"
+    }
   }
 }

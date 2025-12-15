@@ -22,13 +22,14 @@ SAMPLE_MANIFEST = {
         {
             "path": "s3://landing-zone/batch_001/data.geojson",
             "type": "vector",
-            "format": "GeoJSON",
-            "crs": "EPSG:3857"
+            "format": "GeoJSON"
         }
     ],
     "metadata": {
         "project": "TEST_PROJECT",
-        "description": "Test dataset"
+        "description": "Test dataset",
+        "tags": {},
+        "join_config": None,
     }
 }
 
@@ -40,19 +41,19 @@ MULTI_FILE_MANIFEST = {
         {
             "path": "s3://landing-zone/batch_002/file1.geojson",
             "type": "vector",
-            "format": "GeoJSON",
-            "crs": "EPSG:4326"
+            "format": "GeoJSON"
         },
         {
             "path": "s3://landing-zone/batch_002/file2.geojson",
             "type": "vector",
-            "format": "GeoJSON",
-            "crs": "EPSG:4326"
+            "format": "GeoJSON"
         }
     ],
     "metadata": {
         "project": "TEST_PROJECT",
-        "description": "Multi-file test dataset"
+        "description": "Multi-file test dataset",
+        "tags": {},
+        "join_config": None,
     }
 }
 
@@ -116,7 +117,7 @@ def test_load_files_to_postgis_success():
     assert "PG:host=postgis" in call_args.kwargs["output_path"]
     assert call_args.kwargs["output_format"] == "PostgreSQL"
     assert call_args.kwargs["layer_name"] == "proc_abc12345_def6_7890_abcd_ef1234567890.raw_data"
-    assert call_args.kwargs["target_crs"] == "EPSG:3857"
+    assert call_args.kwargs["target_crs"] is None
     assert call_args.kwargs["options"] == {"-overwrite": "", "-lco": "GEOMETRY_NAME=geom"}
 
 

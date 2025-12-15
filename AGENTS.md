@@ -69,19 +69,30 @@ graph TD
     {
       "path": "s3://landing-zone/batch_XYZ/input.geojson",
       "type": "vector",
-      "format": "GeoJSON",
-      "crs": "EPSG:4326"
+      "format": "GeoJSON"
     }
   ],
   "metadata": {
     "project": "ALPHA",
-    "description": "User supplied context"
+    "description": "User supplied context",
+    "tags": {
+      "priority": 1,
+      "source": "user",
+      "published": false
+    },
+    "join_config": {
+      "target_asset_id": "dataset_ab12cd34ef56",
+      "left_key": "parcel_id",
+      "right_key": "parcel_id",
+      "how": "left"
+    }
   }
 }
 ```
 
 - The `intent` selects a transformation recipe. Unknown intents fall back to the default.
 - Vector geometry column is standardized to `geom` in PostGIS compute schemas.
+- `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.
 
 ## How to work here
 

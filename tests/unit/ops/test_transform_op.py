@@ -25,13 +25,14 @@ SAMPLE_SCHEMA_INFO = {
             {
                 "path": "s3://landing-zone/batch_001/data.geojson",
                 "type": "vector",
-                "format": "GeoJSON",
-                "crs": "EPSG:3857"
+            "format": "GeoJSON"
             }
         ],
         "metadata": {
             "project": "TEST_PROJECT",
-            "description": "Test dataset"
+        "description": "Test dataset",
+        "tags": {},
+        "join_config": None,
         }
     },
     "tables": ["raw_data"],

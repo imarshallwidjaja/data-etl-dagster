@@ -240,8 +240,8 @@ def _load_files_to_postgis(
 
             log.info(f"Loading file: {s3_path} -> {layer_name}")
 
-            # Get target CRS if provided
-            target_crs = file_entry.get("crs")
+            # CRS is inferred from source data; uploader-specified CRS is no longer accepted
+            target_crs = None
 
             # Set options based on whether this is the first file or subsequent files
             # First file: create table with -overwrite and geometry column name

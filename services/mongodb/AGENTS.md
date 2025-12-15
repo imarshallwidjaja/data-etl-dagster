@@ -9,6 +9,7 @@ MongoDB is the Source of Truth: if it’s not recorded in Mongo, it doesn’t ex
 
 - **Ledger law**: MongoDB is canonical for manifests/assets/lineage.
 - **Schema validation lives in init scripts**: keep them aligned with `libs/models/`.
+- **Manifest metadata is disciplined**: only `project`, `description`, `tags` (primitive scalars), and `join_config` (structured join fields) are allowed; everything else is rejected.
 
 ## Entry points / key files
 

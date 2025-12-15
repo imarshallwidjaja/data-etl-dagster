@@ -84,13 +84,22 @@ Create a `manifest.json` file describing your data. The manifest format is curre
     {
       "path": "s3://landing-zone/batch_buildings_001/buildings.geojson",
       "type": "vector",
-      "format": "GeoJSON",
-      "crs": "EPSG:4326"
+      "format": "GeoJSON"
     }
   ],
   "metadata": {
     "project": "BUILDINGS_DEMO",
-    "description": "Building footprints with intent-driven heavy simplification"
+    "description": "Building footprints with intent-driven heavy simplification",
+    "tags": {
+      "source": "survey",
+      "priority": 1
+    },
+    "join_config": {
+      "target_asset_id": "dataset_ab12cd34ef56",
+      "left_key": "parcel_id",
+      "right_key": "parcel_id",
+      "how": "left"
+    }
   }
 }
 ```
@@ -105,13 +114,15 @@ Create a `manifest.json` file describing your data. The manifest format is curre
     {
       "path": "s3://landing-zone/batch_vector_001/data.geojson",
       "type": "vector",
-      "format": "GeoJSON",
-      "crs": "EPSG:4326"
+      "format": "GeoJSON"
     }
   ],
   "metadata": {
     "project": "ALPHA",
-    "description": "User supplied context"
+    "description": "User supplied context",
+    "tags": {
+      "source": "user"
+    }
   }
 }
 ```
@@ -128,10 +139,16 @@ Create a `manifest.json` file describing your data. The manifest format is curre
   - `path`: S3 path to the file (must start with `s3://landing-zone/`)
   - `type`: File type (`raster` or `vector`)
   - `format`: Input format (e.g., `GTiff`, `GPKG`, `SHP`, `GeoJSON`)
-  - `crs`: Coordinate Reference System (e.g., `EPSG:4326`)
-- `metadata` (required): User-supplied metadata with:
+- CRS is inferred from the data during processing; manifests must not include a `crs` field in `files`.
+- `metadata` (required): User-supplied metadata with explicit shape:
   - `project`: Project identifier
   - `description`: Optional description
+  - `tags`: Optional dictionary of primitive scalars only (`str`/`int`/`float`/`bool`)
+  - `join_config`: Optional join configuration:
+    - `left_key` (required): Field in the incoming data to join on
+    - `right_key` (optional): Field in the target asset (defaults to `left_key`)
+    - `how` (optional): Join strategy (`left`|`inner`|`right`|`outer`, default `left`)
+    - `target_asset_id` (optional): Existing asset identifier to join against
 
 **Intent-Based Transformations:**
 The pipeline uses a recipe-based transformation architecture where the `intent` field determines which transformation steps are applied. Each recipe includes:
@@ -239,10 +256,16 @@ ops:
             - path: "s3://landing-zone/batch_001/your-data.geojson"
               type: "vector"
               format: "GeoJSON"
-              crs: "EPSG:4326"
           metadata:
             project: "ALPHA"
             description: "Manual retry"
+            tags:
+              source: "manual"
+              priority: 1
+            join_config:
+              left_key: "parcel_id"
+              right_key: "parcel_id"
+              how: "left"
 ```
 
 **Note:** The manifest is passed as an op input (not op config). The `manifest_key` is not required for manual triggers but can be added as a tag if needed for traceability.
@@ -265,7 +288,7 @@ ops:
 - Check Dagster logs for validation error details
 - Verify all required fields are present
 - Ensure S3 paths are correct and files exist
-- Check CRS format (must be valid EPSG code, WKT, or PROJ string)
+- Ensure metadata only contains `project`, `description`, `tags`, and `join_config` (tags must be primitive scalars)
 
 **Job not executing:**
 - Check Dagster UI for run status

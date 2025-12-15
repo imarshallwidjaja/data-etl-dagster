@@ -10,6 +10,7 @@ It is the application-level validation layer and the contract between ingestion,
 - **Pydantic v2 only**: use `model_config`, `model_dump`, `@field_validator` (no v1 patterns like `class Config` / `.dict()` / `@validator`).
 - **Strict, explicit typing**: prefer clear types over implicit coercions.
 - **Ledger alignment**: models that represent MongoDB documents must match Mongo init/schema expectations.
+- **Manifest contract is disciplined**: `FileEntry` forbids extras (no uploader CRS); `ManifestMetadata` only allows `project`, `description`, `tags` (primitive scalars), and structured `join_config`.
 - **Stable env var aliases**: settings fields must map to the env vars used in `docker-compose.yaml`.
 
 ## Entry points / key files

@@ -29,11 +29,13 @@ from .spatial import (
 # Manifest models
 from .manifest import (
     FileEntry,
+    JoinConfig,
     ManifestMetadata,
     Manifest,
     ManifestStatus,
     ManifestRecord,
     S3Path,
+    TagValue,
 )
 
 # Asset models
@@ -62,11 +64,13 @@ __all__ = [
     "validate_crs",
     # Manifest models
     "FileEntry",
+    "JoinConfig",
     "ManifestMetadata",
     "Manifest",
     "ManifestStatus",
     "ManifestRecord",
     "S3Path",
+    "TagValue",
     # Asset models
     "S3Key",
     "ContentHash",

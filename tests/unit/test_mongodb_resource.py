@@ -53,7 +53,6 @@ def manifest_record():
             path="s3://landing-zone/batch_001/dataset.gpkg",
             type=FileType.VECTOR,
             format="GPKG",
-            crs="EPSG:4326",
         )
     ]
     manifest = Manifest(

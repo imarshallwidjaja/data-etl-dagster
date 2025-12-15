@@ -88,7 +88,7 @@ db.createCollection('manifests', {
   validator: {
     $jsonSchema: {
       bsonType: 'object',
-      required: ['batch_id', 'uploader', 'intent', 'files', 'status', 'ingested_at'],
+      required: ['batch_id', 'uploader', 'intent', 'files', 'metadata', 'status', 'ingested_at'],
       properties: {
         batch_id: {
           bsonType: 'string',
@@ -110,13 +110,35 @@ db.createCollection('manifests', {
             properties: {
               path: { bsonType: 'string' },
               type: { enum: ['raster', 'vector'] },
-              format: { bsonType: 'string' },
-              crs: { bsonType: 'string' }
+              format: { bsonType: 'string' }
             }
           }
         },
         metadata: {
-          bsonType: 'object'
+          bsonType: 'object',
+          required: ['project'],
+          properties: {
+            project: { bsonType: 'string' },
+            description: { bsonType: 'string' },
+            tags: {
+              bsonType: 'object',
+              additionalProperties: {
+                bsonType: ['string', 'int', 'double', 'bool']
+              }
+            },
+            join_config: {
+              bsonType: 'object',
+              required: ['left_key'],
+              additionalProperties: false,
+              properties: {
+                target_asset_id: { bsonType: 'string' },
+                left_key: { bsonType: 'string' },
+                right_key: { bsonType: 'string' },
+                how: { enum: ['left', 'inner', 'right', 'outer'] }
+              }
+            }
+          },
+          additionalProperties: false
         },
         status: {
           enum: ['pending', 'processing', 'completed', 'failed'],
