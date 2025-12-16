@@ -18,6 +18,7 @@ from libs.models import (
     Bounds,
     FileType,
     OutputFormat,
+    AssetKind,
 )
 
 
@@ -39,6 +40,22 @@ def valid_file_entry_dict():
 def valid_file_entry(valid_file_entry_dict):
     """Single valid FileEntry model instance."""
     return FileEntry(**valid_file_entry_dict)
+
+
+@pytest.fixture
+def valid_tabular_file_entry_dict():
+    """Single valid tabular file entry dictionary."""
+    return {
+        "path": "s3://landing-zone/batch_tabular/data.csv",
+        "type": "tabular",
+        "format": "CSV"
+    }
+
+
+@pytest.fixture
+def valid_tabular_file_entry(valid_tabular_file_entry_dict):
+    """Single valid tabular FileEntry model instance."""
+    return FileEntry(**valid_tabular_file_entry_dict)
 
 
 # =============================================================================
@@ -71,6 +88,34 @@ def valid_manifest_dict(valid_file_entry_dict):
 def valid_manifest(valid_manifest_dict):
     """Complete valid Manifest model instance."""
     return Manifest(**valid_manifest_dict)
+
+
+@pytest.fixture
+def valid_tabular_manifest_dict(valid_tabular_file_entry_dict):
+    """Complete valid tabular manifest dictionary."""
+    return {
+        "batch_id": "batch_tabular_001",
+        "uploader": "user_123",
+        "intent": "ingest_tabular",
+        "files": [valid_tabular_file_entry_dict],
+        "metadata": {
+            "project": "ALPHA",
+            "description": "Test tabular data",
+            "tags": {"priority": 1, "source": "unit-test", "published": False},
+            "join_config": {
+                "left_key": "parcel_id",
+                "right_key": "parcel_id",
+                "how": "left",
+                "target_asset_id": "dataset_ab12cd34ef56",
+            },
+        }
+    }
+
+
+@pytest.fixture
+def valid_tabular_manifest(valid_tabular_manifest_dict):
+    """Complete valid tabular Manifest model instance."""
+    return Manifest(**valid_tabular_manifest_dict)
 
 
 @pytest.fixture
@@ -115,13 +160,14 @@ def valid_bounds(valid_bounds_dict):
 
 @pytest.fixture
 def valid_asset_dict(valid_bounds_dict):
-    """Complete valid asset dictionary."""
+    """Complete valid spatial asset dictionary."""
     return {
         "s3_key": "data-lake/dataset_001/v1/data.parquet",
         "dataset_id": "dataset_001",
         "version": 1,
         "content_hash": "sha256:" + "a" * 64,  # 64 hex chars
         "dagster_run_id": "run_12345",
+        "kind": "spatial",
         "format": "geoparquet",
         "crs": "EPSG:4326",
         "bounds": valid_bounds_dict,
@@ -129,11 +175,45 @@ def valid_asset_dict(valid_bounds_dict):
             "title": "Test Dataset",
             "description": "A test dataset for validation",
             "source": "Test Source",
-            "license": "CC-BY-4.0"
+            "license": "CC-BY-4.0",
+            "tags": {"project": "ALPHA", "source": "unit-test"},
+            "header_mapping": None
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
         "updated_at": None
     }
+
+
+@pytest.fixture
+def valid_tabular_asset_dict():
+    """Complete valid tabular asset dictionary."""
+    return {
+        "s3_key": "data-lake/dataset_tabular_001/v1/data.parquet",
+        "dataset_id": "dataset_tabular_001",
+        "version": 1,
+        "content_hash": "sha256:" + "b" * 64,  # 64 hex chars
+        "dagster_run_id": "run_tabular_12345",
+        "kind": "tabular",
+        "format": "parquet",
+        "crs": None,
+        "bounds": None,
+        "metadata": {
+            "title": "Test Tabular Dataset",
+            "description": "A test tabular dataset for validation",
+            "source": "Test Source",
+            "license": "CC-BY-4.0",
+            "tags": {"project": "ALPHA", "source": "unit-test"},
+            "header_mapping": {"original_col": "cleaned_col", "Another Col": "another_col"}
+        },
+        "created_at": datetime(2024, 1, 1, 12, 0, 0),
+        "updated_at": None
+    }
+
+
+@pytest.fixture
+def valid_tabular_asset(valid_tabular_asset_dict):
+    """Complete valid tabular Asset model instance."""
+    return Asset(**valid_tabular_asset_dict)
 
 
 @pytest.fixture

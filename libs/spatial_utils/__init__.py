@@ -17,10 +17,12 @@ This library provides:
 """
 
 from .schema_mapper import RunIdSchemaMapping
+from .tabular_headers import normalize_tabular_headers
 
 __version__ = "0.1.0"
 
 __all__ = [
     "RunIdSchemaMapping",
+    "normalize_tabular_headers",
 ]
 

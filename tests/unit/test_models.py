@@ -350,6 +350,90 @@ class TestAssetValidation:
 
 
 # =============================================================================
+# FileType Tests
+# =============================================================================
+
+class TestFileType:
+    """Test FileType enum."""
+
+    def test_file_type_enum_values(self):
+        """Test that FileType enum has expected values."""
+        assert FileType.RASTER == "raster"
+        assert FileType.VECTOR == "vector"
+        assert FileType.TABULAR == "tabular"
+
+    def test_file_type_accepts_tabular(self):
+        """Test that FileType accepts 'tabular' value."""
+        file_type = FileType("tabular")
+        assert file_type == FileType.TABULAR
+
+        # Test via FileEntry model
+        entry = FileEntry(
+            path="s3://landing-zone/data.csv",
+            type="tabular",
+            format="CSV"
+        )
+        assert entry.type == FileType.TABULAR
+
+
+# =============================================================================
+# Manifest Intent/Type Coherence Tests
+# =============================================================================
+
+class TestManifestIntentTypeCoherence:
+    """Test intent/type coherence validation."""
+
+    def test_tabular_intent_requires_tabular_files(self, valid_tabular_manifest):
+        """Test that intent='ingest_tabular' requires all files to be tabular."""
+        # This should pass
+        assert valid_tabular_manifest.intent == "ingest_tabular"
+        assert all(f.type == FileType.TABULAR for f in valid_tabular_manifest.files)
+
+    def test_tabular_intent_with_non_tabular_files_rejected(self, valid_file_entry_dict):
+        """Test that intent='ingest_tabular' rejects non-tabular files."""
+        data = {
+            "batch_id": "batch_mixed",
+            "uploader": "user_123",
+            "intent": "ingest_tabular",
+            "files": [
+                valid_file_entry_dict,  # This is 'raster'
+                {
+                    "path": "s3://landing-zone/data.csv",
+                    "type": "tabular",
+                    "format": "CSV"
+                }
+            ],
+            "metadata": {
+                "project": "ALPHA",
+                "description": "Mixed types"
+            }
+        }
+        with pytest.raises(ValueError, match="intent 'ingest_tabular' but contains non-tabular files"):
+            Manifest(**data)
+
+    def test_non_tabular_intent_forbids_tabular_files(self, valid_tabular_file_entry_dict):
+        """Test that non-tabular intents forbid tabular files."""
+        data = {
+            "batch_id": "batch_wrong_intent",
+            "uploader": "user_123",
+            "intent": "ingest_vector",  # Not tabular intent
+            "files": [valid_tabular_file_entry_dict],  # But tabular file
+            "metadata": {
+                "project": "ALPHA",
+                "description": "Wrong intent"
+            }
+        }
+        with pytest.raises(ValueError, match="intent 'ingest_vector' but contains tabular files"):
+            Manifest(**data)
+
+    def test_spatial_intent_with_spatial_files_allowed(self, valid_manifest):
+        """Test that spatial intents with spatial files are allowed."""
+        # This should pass
+        assert valid_manifest.intent == "ingest_satellite_raster"
+        assert all(f.type in [FileType.RASTER, FileType.VECTOR] for f in valid_manifest.files)
+
+
+# =============================================================================
 # ContentHash Validation Tests
 # =============================================================================
 
@@ -369,6 +453,7 @@ class TestContentHashValidation:
             version=1,
             content_hash=hash_str,
             dagster_run_id="run_123",
+            kind="spatial",
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
             bounds=Bounds(minx=-180, miny=-90, maxx=180, maxy=90),
@@ -524,6 +609,7 @@ class TestS3KeyValidation:
             version=1,
             content_hash="sha256:" + "a" * 64,
             dagster_run_id="run_123",
+            kind="spatial",
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
             bounds=Bounds(minx=-180, miny=-90, maxx=180, maxy=90),

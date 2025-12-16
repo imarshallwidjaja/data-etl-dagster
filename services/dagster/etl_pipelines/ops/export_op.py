@@ -14,7 +14,7 @@ from typing import Dict, Any
 
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Asset, AssetMetadata, Bounds, OutputFormat, CRS
+from libs.models import Asset, AssetMetadata, Bounds, OutputFormat, CRS, AssetKind
 from libs.spatial_utils import RunIdSchemaMapping
 from ..resources.gdal_resource import GDALResult
 
@@ -119,6 +119,8 @@ def _export_to_datalake(
             description=manifest["metadata"].get("description"),
             source=None,
             license=None,
+            tags=manifest["metadata"].get("tags", {}),
+            header_mapping=None,
         )
 
         # Handle optional bounds
@@ -137,6 +139,7 @@ def _export_to_datalake(
             version=version,
             content_hash=content_hash,
             dagster_run_id=run_id,
+            kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs=CRS(crs),
             bounds=bounds,

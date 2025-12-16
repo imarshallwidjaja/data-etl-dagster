@@ -133,14 +133,14 @@ class ManifestStatus(str, Enum):
 class FileEntry(BaseModel):
     """
     Metadata for a single file in a manifest.
-    
-    Represents a spatial data file (raster or vector) with its location,
+
+    Represents a data file (raster, vector, or tabular) with its location,
     format, and type.
-    
+
     Attributes:
         path: S3 path to the file (validated format)
-        type: File type classification (raster or vector)
-        format: Input format string (e.g., "GTiff", "GPKG", "SHP")
+        type: File type classification (raster, vector, or tabular)
+        format: Input format string (e.g., "GTiff", "GPKG", "SHP", "CSV")
     """
     
     path: S3Path = Field(..., description="S3 path to the file")
@@ -284,7 +284,7 @@ class Manifest(BaseModel):
     def validate_unique_paths(self) -> 'Manifest':
         """
         Validate that all file paths in the manifest are unique.
-        
+
         Raises:
             ValueError: If duplicate file paths are found
         """
@@ -294,6 +294,40 @@ class Manifest(BaseModel):
             raise ValueError(
                 f"Duplicate file paths found in manifest '{self.batch_id}': {set(duplicates)}"
             )
+        return self
+
+    @model_validator(mode='after')
+    def validate_intent_type_coherence(self) -> 'Manifest':
+        """
+        Validate coherence between intent and file types.
+
+        For tabular ingestion:
+        - intent == "ingest_tabular" → all files must be tabular
+        - other intents → forbid tabular files (to prevent accidental routing to spatial pipeline)
+
+        Raises:
+            ValueError: If intent/type combination is invalid
+        """
+        from .spatial import FileType
+
+        if self.intent == "ingest_tabular":
+            # All files must be tabular for tabular ingestion
+            non_tabular = [f for f in self.files if f.type != FileType.TABULAR]
+            if non_tabular:
+                raise ValueError(
+                    f"Manifest '{self.batch_id}' has intent 'ingest_tabular' but contains "
+                    f"non-tabular files: {[f.path for f in non_tabular]}"
+                )
+        else:
+            # Forbid tabular files in non-tabular ingestion intents
+            tabular_files = [f for f in self.files if f.type == FileType.TABULAR]
+            if tabular_files:
+                raise ValueError(
+                    f"Manifest '{self.batch_id}' has intent '{self.intent}' but contains "
+                    f"tabular files (only allowed for 'ingest_tabular' intent): "
+                    f"{[f.path for f in tabular_files]}"
+                )
+
         return self
     
     model_config = ConfigDict(

@@ -1,18 +1,22 @@
-# Spatial Data ETL Pipeline
+# Spatial and Tabular Data ETL Pipeline
 
-An automated, containerized ETL pipeline specialized for processing spatial data (vector and raster) using Dagster, PostGIS, MinIO, and MongoDB.
+An automated, containerized ETL pipeline specialized for processing spatial data (vector and raster) and tabular data (CSV) using Dagster, PostGIS, MinIO, and MongoDB.
 
 ## Overview
 
-This platform processes spatial data through a strict manifest-based ingestion protocol:
+This platform processes spatial and tabular data through a strict manifest-based ingestion protocol:
 
 1. **Upload** raw files to MinIO landing zone
 2. **Trigger** processing via manifest JSON
-3. **Transform** data using PostGIS as a compute engine with recipe-based transformations (geometry column standardized to `geom`)
-4. **Store** processed GeoParquet in the data lake
+3. **Transform** data:
+   - **Spatial**: PostGIS compute engine with recipe-based transformations (geometry column standardized to `geom`)
+   - **Tabular**: Direct CSV processing with header cleaning and normalization
+4. **Store** processed data in the data lake (GeoParquet for spatial, Parquet for tabular)
 5. **Track** lineage in MongoDB ledger
 
-**Recipe-Based Transformations:** The pipeline uses a recipe-based transformation architecture that maps manifest `intent` fields to ordered lists of transformation steps (CRS normalization, geometry simplification, spatial indexing). See `libs/transformations/AGENTS.md` for details.
+**Spatial Recipe-Based Transformations:** The pipeline uses a recipe-based transformation architecture that maps manifest `intent` fields to ordered lists of transformation steps (CRS normalization, geometry simplification, spatial indexing). See `libs/transformations/AGENTS.md` for details.
+
+**Tabular Header Cleaning:** CSV files undergo deterministic header normalization to ensure Postgres-compatible column names (^[a-z_][a-z0-9_]*$, max 63 chars).
 
 **Geometry Column Contract:** In PostGIS compute schemas, vector geometry column is standardized to `geom`, and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
 
@@ -58,21 +62,30 @@ The pipeline uses a manifest-based ingestion protocol. To trigger processing, up
 
 #### Step 1: Upload Your Data Files
 
-First, upload your raw spatial data files (GeoTIFF, Shapefile, GeoJSON, etc.) to the landing zone bucket:
+Upload your raw data files to the landing zone bucket. The platform supports both spatial and tabular data:
 
+**Spatial Data Files:**
 ```bash
-# Using MinIO client (mc)
-mc cp your-data.tif minio/landing-zone/batch_001/your-data.tif
+# Vector files (GeoJSON, Shapefile, GeoPackage, etc.)
+mc cp buildings.geojson minio/landing-zone/batch_001/buildings.geojson
 
-# Or using AWS CLI (configured for MinIO)
-aws --endpoint-url http://localhost:9000 s3 cp your-data.tif s3://landing-zone/batch_001/your-data.tif
+# Raster files (GeoTIFF, etc.)
+mc cp satellite.tif minio/landing-zone/batch_001/satellite.tif
 ```
 
-**Note:** Organize files in subdirectories (e.g., `batch_001/`) to keep batches separate.
+**Tabular Data Files:**
+```bash
+# CSV files only (single file per manifest)
+mc cp census_data.csv minio/landing-zone/batch_tabular_001/census_data.csv
+```
+
+**Note:** Organize files in subdirectories (e.g., `batch_001/`) to keep batches separate. Tabular manifests require exactly one CSV file.
 
 #### Step 2: Create and Upload Manifest
 
-Create a `manifest.json` file describing your data. The manifest format is currently being standardized, but the following structure is supported:
+Create a `manifest.json` file describing your data. The platform supports both spatial and tabular data ingestion.
+
+### Spatial Data Ingestion
 
 **Example: Vector Data (Building Footprints)**
 ```json
@@ -104,51 +117,97 @@ Create a `manifest.json` file describing your data. The manifest format is curre
 }
 ```
 
-**Example: Vector Data (Default Recipe)**
+**Example: Raster Data (Satellite Imagery)**
 ```json
 {
-  "batch_id": "batch_vector_001",
+  "batch_id": "batch_satellite_001",
   "uploader": "user_123",
-  "intent": "ingest_vector",
+  "intent": "ingest_raster",
   "files": [
     {
-      "path": "s3://landing-zone/batch_vector_001/data.geojson",
-      "type": "vector",
-      "format": "GeoJSON"
+      "path": "s3://landing-zone/batch_satellite_001/image.tif",
+      "type": "raster",
+      "format": "GTiff"
     }
   ],
   "metadata": {
-    "project": "ALPHA",
-    "description": "User supplied context",
+    "project": "SATELLITE_ANALYSIS",
+    "description": "High-resolution satellite imagery",
     "tags": {
-      "source": "user"
+      "source": "satellite",
+      "resolution": "0.5m"
+    }
+  }
+}
+```
+
+### Tabular Data Ingestion
+
+**Example: CSV Data (Census Statistics)**
+```json
+{
+  "batch_id": "batch_census_001",
+  "uploader": "user_123",
+  "intent": "ingest_tabular",
+  "files": [
+    {
+      "path": "s3://landing-zone/batch_census_001/census_data.csv",
+      "type": "tabular",
+      "format": "CSV"
+    }
+  ],
+  "metadata": {
+    "project": "DEMOGRAPHICS",
+    "description": "Census data by statistical area",
+    "tags": {
+      "source": "abs",
+      "dataset_id": "census_sa1_2021",
+      "join_key": "sa1_code",
+      "period": "2021-01-01/2021-12-31",
+      "organization": "abs"
     }
   }
 }
 ```
 
 **Manifest Fields:**
+
+**Common Fields:**
 - `batch_id` (required): Unique identifier for this batch
 - `uploader` (required): User or system identifier
-- `intent` (required): Processing intent that determines the transformation recipe:
-  - `ingest_vector`: Default vector recipe (CRS normalization, light simplification, spatial indexing)
-  - `ingest_building_footprints`: Building footprints recipe with stronger geometry simplification (0.001° tolerance ≈ 111m at equator) for visibly simplified outlines
-  - `ingest_road_network`: Road network recipe (currently uses default recipe, can be customized)
-  - Unknown intents fall back to the default recipe
-- `files` (required): Array of file entries, each with:
-  - `path`: S3 path to the file (must start with `s3://landing-zone/`)
-  - `type`: File type (`raster` or `vector`)
-  - `format`: Input format (e.g., `GTiff`, `GPKG`, `SHP`, `GeoJSON`)
-- CRS is inferred from the data during processing; manifests must not include a `crs` field in `files`.
-- `metadata` (required): User-supplied metadata with explicit shape:
-  - `project`: Project identifier
-  - `description`: Optional description
-  - `tags`: Optional dictionary of primitive scalars only (`str`/`int`/`float`/`bool`)
-  - `join_config`: Optional join configuration:
-    - `left_key` (required): Field in the incoming data to join on
-    - `right_key` (optional): Field in the target asset (defaults to `left_key`)
-    - `how` (optional): Join strategy (`left`|`inner`|`right`|`outer`, default `left`)
-    - `target_asset_id` (optional): Existing asset identifier to join against
+- `intent` (required): Processing intent (see below)
+- `files` (required): Array of file entries (see below)
+- `metadata` (required): User-supplied metadata (see below)
+
+**File Entries:**
+- `path`: S3 path to the file (must start with `s3://landing-zone/`)
+- `type`: File type (`raster`, `vector`, or `tabular`)
+- `format`: Input format (`GTiff`, `GPKG`, `SHP`, `GeoJSON`, `CSV`)
+
+**Metadata:**
+- `project`: Project identifier
+- `description`: Optional description
+- `tags`: Optional dictionary of primitive scalars only (`str`/`int`/`float`/`bool`)
+- `join_config`: Optional join configuration (spatial only):
+  - `left_key` (required): Field in the incoming data to join on
+  - `right_key` (optional): Field in the target asset (defaults to `left_key`)
+  - `how` (optional): Join strategy (`left`|`inner`|`right`|`outer`, default `left`)
+  - `target_asset_id` (optional): Existing asset identifier to join against
+
+**Intent-Based Processing:**
+
+| Intent | Data Type | Processing | Output |
+|--------|-----------|------------|---------|
+| `ingest_vector` | Spatial (vector) | PostGIS → recipe-based transforms | GeoParquet |
+| `ingest_raster` | Spatial (raster) | GDAL → format conversion | COG |
+| `ingest_building_footprints` | Spatial (vector) | PostGIS → heavy simplification | GeoParquet |
+| `ingest_tabular` | Tabular (CSV) | Header cleaning → Parquet | Parquet |
+
+**Key Differences:**
+- **Spatial**: Multiple files allowed, PostGIS processing, CRS/bounds in output
+- **Tabular**: Exactly 1 CSV file required, direct processing, no spatial metadata
+- **CRS**: Never specified in manifests (inferred for spatial, N/A for tabular)
+- **Join Keys**: Optional for both, but recommended for join-capable tabular datasets
 
 **Intent-Based Transformations:**
 The pipeline uses a recipe-based transformation architecture where the `intent` field determines which transformation steps are applied. Each recipe includes:
@@ -198,12 +257,22 @@ Once a manifest is uploaded, the following sequence occurs:
 1. **Sensor Polling**: The manifest sensor checks for new manifests every 30 seconds
 2. **Validation**: The manifest is validated against the Pydantic schema
 3. **Job Trigger**: If valid, a Dagster run is created with the manifest data passed as an op input
-4. **Processing**: The ingestion job executes the full ETL pipeline:
-   - Loads spatial data from landing zone to PostGIS ephemeral schema
-   - Transforms data using recipe-based transformations (based on manifest `intent`)
+4. **Processing**: The ingestion job executes the appropriate ETL pipeline:
+
+   **Spatial Processing (`ingest_*` intents except `ingest_tabular`):**
+   - Loads spatial data from landing zone to PostGIS ephemeral schema using GDAL
+   - Transforms data using recipe-based transformations (CRS normalization, geometry simplification, spatial indexing)
    - Exports processed GeoParquet to data lake
-   - Registers asset in MongoDB ledger
+   - Registers spatial asset in MongoDB ledger (with CRS, bounds, geometry metadata)
    - Cleans up PostGIS ephemeral schema
+
+   **Tabular Processing (`ingest_tabular` intent):**
+   - Downloads CSV from landing zone
+   - Applies deterministic header cleaning (Postgres-compatible column names)
+   - Validates join keys if specified
+   - Exports cleaned Parquet directly to data lake (no PostGIS)
+   - Registers tabular asset in MongoDB ledger (with header mapping, no spatial metadata)
+
 5. **Tracking**: The manifest is marked as processed in the sensor cursor (prevents duplicate runs)
 
 **Important Notes:**
@@ -311,22 +380,32 @@ graph TD
         Daemon[Dagster Daemon]
         Sensor[Dagster Sensor]
         CodeLoc["User Code Container (Python + GDAL Libs)"]
-        
+
         %% Storage & Compute
         Landing[(MinIO: Landing Zone)]
         Lake[(MinIO: Data Lake)]
         Mongo[(MongoDB: Ledger)]
         PostGIS[(PostGIS: Compute)]
-        
+
         %% Data Flow
         User -->|1. Upload Files + Manifest| Landing
         Landing -->|2. Manifest detected| Sensor
         Sensor -->|3. Signal run| Daemon
         Daemon -->|4. Launch Run| CodeLoc
-        CodeLoc -->|5. Read Raw Data| Landing
-        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
-        CodeLoc -->|7. Write GeoParquet| Lake
-        CodeLoc -->|8. Log Lineage| Mongo
+
+        %% Spatial processing branch
+        CodeLoc -->|Spatial: Read Raw Data| Landing
+        Landing -->|Spatial: GDAL Load| PostGIS
+        PostGIS -->|Spatial: Transform| PostGIS
+        PostGIS -->|Spatial: Write GeoParquet| Lake
+
+        %% Tabular processing branch
+        CodeLoc -->|Tabular: Read CSV| Landing
+        Landing -->|Tabular: Clean Headers| CodeLoc
+        CodeLoc -->|Tabular: Write Parquet| Lake
+
+        %% Common final steps
+        Lake -->|Register Asset| Mongo
     end
 ```
 

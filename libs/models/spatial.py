@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Annotated
 from pydantic import BaseModel, Field, BeforeValidator, model_validator
 
-__all__ = ["CRS", "Bounds", "FileType", "OutputFormat", "validate_crs"]
+__all__ = ["CRS", "Bounds", "FileType", "OutputFormat", "AssetKind", "validate_crs"]
 
 
 # =============================================================================
@@ -21,16 +21,25 @@ __all__ = ["CRS", "Bounds", "FileType", "OutputFormat", "validate_crs"]
 # =============================================================================
 
 class FileType(str, Enum):
-    """File type classification: raster (imagery) or vector (features)."""
+    """File type classification: raster (imagery), vector (features), or tabular (data)."""
     RASTER = "raster"
     VECTOR = "vector"
+    TABULAR = "tabular"
 
 
 class OutputFormat(str, Enum):
-    """Supported output formats for processed spatial data."""
+    """Supported output formats for processed spatial and tabular data."""
     GEOPARQUET = "geoparquet"
     COG = "cog"
     GEOJSON = "geojson"
+    PARQUET = "parquet"
+
+
+class AssetKind(str, Enum):
+    """Asset kind classification: spatial, tabular, or joined."""
+    SPATIAL = "spatial"
+    TABULAR = "tabular"
+    JOINED = "joined"
 
 
 # =============================================================================

@@ -3,7 +3,7 @@
 from dagster import Definitions, EnvVar, define_asset_job
 
 from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
-from .assets import gdal_health_check
+from .assets import gdal_health_check, raw_manifest_json, raw_spatial_asset, raw_tabular_asset
 from .jobs import ingest_job, ingest_tabular_job, join_datasets_job
 from .sensors import manifest_sensor
 
@@ -13,9 +13,29 @@ gdal_health_check_job = define_asset_job(
     description="Health check for GDAL installation and dependencies",
 )
 
+# Asset jobs for graph-backed ingestion (Phase 3 - registered but not yet routed by sensor)
+raw_spatial_asset_job = define_asset_job(
+    "raw_spatial_asset_job",
+    selection=[raw_spatial_asset],
+    description="Graph-backed spatial data ingestion asset job",
+)
+
+raw_tabular_asset_job = define_asset_job(
+    "raw_tabular_asset_job",
+    selection=[raw_tabular_asset],
+    description="Graph-backed tabular data ingestion asset job",
+)
+
 defs = Definitions(
-    assets=[gdal_health_check],
-    jobs=[gdal_health_check_job, ingest_job, ingest_tabular_job, join_datasets_job],
+    assets=[gdal_health_check, raw_manifest_json, raw_spatial_asset, raw_tabular_asset],
+    jobs=[
+        gdal_health_check_job,
+        raw_spatial_asset_job,
+        raw_tabular_asset_job,
+        ingest_job,
+        ingest_tabular_job,
+        join_datasets_job,
+    ],
     resources={
         "minio": MinIOResource(
             endpoint=EnvVar("MINIO_ENDPOINT"),

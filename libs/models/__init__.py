@@ -23,6 +23,7 @@ from .spatial import (
     Bounds,
     FileType,
     OutputFormat,
+    AssetKind,
     validate_crs,
 )
 
@@ -61,6 +62,7 @@ __all__ = [
     "Bounds",
     "FileType",
     "OutputFormat",
+    "AssetKind",
     "validate_crs",
     # Manifest models
     "FileEntry",

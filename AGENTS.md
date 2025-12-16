@@ -2,8 +2,8 @@
 
 ## What this repo is / owns
 
-This repo implements an offline-first Spatial Data ETL platform orchestrated by Dagster.
-It ingests raw spatial files via a manifest protocol, uses PostGIS for transient compute, stores outputs in MinIO (data lake), and records lineage/metadata in MongoDB (ledger).
+This repo implements an offline-first Spatial and Tabular Data ETL platform orchestrated by Dagster.
+It ingests raw spatial files (vector/raster) and tabular files (CSV) via a manifest protocol, uses PostGIS for transient spatial compute, stores outputs in MinIO (data lake), and records lineage/metadata in MongoDB (ledger).
 
 ## Key invariants / non-negotiables
 
@@ -39,10 +39,20 @@ graph TD
         Landing -->|2. Manifest detected| Sensor
         Sensor -->|3. Signal run| Daemon
         Daemon -->|4. Launch Run| CodeLoc
-        CodeLoc -->|5. Read Raw Data| Landing
-        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
-        CodeLoc -->|7. Write GeoParquet| Lake
-        CodeLoc -->|8. Log Lineage| Mongo
+
+        %% Spatial processing branch
+        CodeLoc -->|Spatial: Read Raw Data| Landing
+        Landing -->|Spatial: GDAL Load| PostGIS
+        PostGIS -->|Spatial: Transform| PostGIS
+        PostGIS -->|Spatial: Write GeoParquet| Lake
+
+        %% Tabular processing branch
+        CodeLoc -->|Tabular: Read CSV| Landing
+        Landing -->|Tabular: Clean Headers| CodeLoc
+        CodeLoc -->|Tabular: Write Parquet| Lake
+
+        %% Common final steps
+        Lake -->|Register Asset| Mongo
     end
 ```
 
@@ -58,7 +68,11 @@ graph TD
 1. Upload raw files to a batch prefix (example: `s3://landing-zone/batch_XYZ/...`).
 2. Upload a manifest JSON to `s3://landing-zone/manifests/<batch_id>.json`.
 
-### Manifest schema (current)
+### Manifest schema (Phase 3: Spatial + Tabular)
+
+The platform supports both spatial and tabular data ingestion via manifest-driven processing.
+
+#### Spatial Ingestion (Vector/Raster)
 
 ```json
 {
@@ -90,8 +104,49 @@ graph TD
 }
 ```
 
-- The `intent` selects a transformation recipe. Unknown intents fall back to the default.
-- Vector geometry column is standardized to `geom` in PostGIS compute schemas.
+#### Tabular Ingestion (CSV)
+
+```json
+{
+  "batch_id": "unique_batch_identifier",
+  "uploader": "user_or_system_id",
+  "intent": "ingest_tabular",
+  "files": [
+    {
+      "path": "s3://landing-zone/batch_XYZ/data.csv",
+      "type": "tabular",
+      "format": "CSV"
+    }
+  ],
+  "metadata": {
+    "project": "ALPHA",
+    "description": "Tabular dataset for analysis",
+    "tags": {
+      "priority": 1,
+      "source": "user",
+      "dataset_id": "custom_dataset_001",
+      "join_key": "parcel_id"
+    }
+  }
+}
+```
+
+### Key Differences: Spatial vs Tabular Ingestion
+
+| Aspect | Spatial | Tabular |
+|--------|---------|---------|
+| **File Types** | `vector`, `raster` | `tabular` only |
+| **Intents** | Various (e.g., `ingest_vector`, `ingest_building_footprints`) | `ingest_tabular` only |
+| **Processing** | PostGIS compute → GeoParquet | Direct CSV → Parquet |
+| **Output Format** | GeoParquet (with CRS/bounds) | Parquet (no spatial metadata) |
+| **Files per Manifest** | Multiple allowed | Exactly 1 required |
+| **Join Keys** | Optional | Optional, but recommended for join-capable datasets |
+| **CRS/Bounds** | Required in output | None in output |
+
+- **Spatial**: Uses PostGIS for geometry processing, applies transformation recipes, outputs GeoParquet with spatial metadata
+- **Tabular**: Direct CSV processing with header cleaning, outputs standard Parquet, no PostGIS involvement
+- **Intent enforcement**: `intent == "ingest_tabular"` requires all files to be `tabular`; other intents forbid `tabular` files
+- **Dataset ID**: For tabular, can be auto-generated or specified via `metadata.tags.dataset_id`
 - `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.
 
 ## How to work here

@@ -106,10 +106,10 @@ def test_valid_manifest_yields_run_request_ingest_lane(mock_sensor_context, mock
 # =============================================================================
 
 @patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest,tabular"}, clear=False)
-def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
     """Test that intent='ingest_tabular' routes to tabular lane."""
     manifest_key = "manifests/batch_tabular.json"
-    tabular_manifest = {**valid_manifest_dict, "intent": "ingest_tabular", "batch_id": "batch_tabular"}
+    tabular_manifest = valid_tabular_manifest_dict
     mock_minio_resource.list_manifests.return_value = [manifest_key]
     mock_minio_resource.get_manifest.return_value = tabular_manifest
     
@@ -194,10 +194,10 @@ def test_join_lane_requires_join_config(mock_sensor_context, mock_minio_resource
 # =============================================================================
 
 @patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest"}, clear=False)
-def test_disabled_lane_not_processed(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+def test_disabled_lane_not_processed(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
     """Test that disabled lanes are skipped but still archived."""
     manifest_key = "manifests/batch_tabular.json"
-    tabular_manifest = {**valid_manifest_dict, "intent": "ingest_tabular", "batch_id": "batch_tabular"}
+    tabular_manifest = valid_tabular_manifest_dict
     mock_minio_resource.list_manifests.return_value = [manifest_key]
     mock_minio_resource.get_manifest.return_value = tabular_manifest
     

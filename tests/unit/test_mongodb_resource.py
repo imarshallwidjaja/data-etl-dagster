@@ -73,6 +73,7 @@ def asset():
         version=1,
         content_hash=f"sha256:{'a' * 64}",
         dagster_run_id="run_123",
+        kind="spatial",
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=Bounds(minx=0.0, miny=0.0, maxx=1.0, maxy=1.0),
