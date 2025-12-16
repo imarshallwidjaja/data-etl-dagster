@@ -417,16 +417,25 @@ docker compose -f docker-compose.yaml up -d --build \
 python scripts/wait_for_services.py
 ```
 
-This script polls each service (MinIO, MongoDB, PostGIS, Dagster) until they're ready or timeout is reached.
+This script polls each service (MinIO, MongoDB, PostGIS, Dagster) until they're ready or timeout is reached. It also verifies that the user-code container can load Dagster modules successfully.
 
-**3. Run integration tests (non-E2E):**
+**3. (Optional) Check container stability:**
+
+```bash
+# Monitor container restart counts over 30 seconds
+python scripts/check_container_stability.py
+```
+
+This script monitors critical containers for restarts, which can indicate configuration or runtime issues. It's automatically run in CI workflows.
+
+**4. Run integration tests (non-E2E):**
 
 ```bash
 # Run integration tests excluding E2E
 pytest -m "integration and not e2e" tests/integration -v
 ```
 
-**4. Run E2E tests (GraphQL-launched ingest_job):**
+**5. Run E2E tests (GraphQL-launched ingest_job):**
 
 The E2E test uses versioned fixtures under `tests/integration/fixtures/` and launches `ingest_job` via Dagster GraphQL,
 asserting the full loop (landing-zone → PostGIS ephemeral → data-lake + MongoDB ledger + schema cleanup):
@@ -435,7 +444,7 @@ asserting the full loop (landing-zone → PostGIS ephemeral → data-lake + Mong
 pytest -m "integration and e2e" tests/integration -v
 ```
 
-**4. Stop the Docker stack:**
+**6. Stop the Docker stack:**
 
 ```bash
 # Stop and remove containers and volumes
@@ -512,10 +521,11 @@ pytest -m "integration and e2e" tests/integration -v
   - Run ID extraction from schema names
   - Round-trip validation
 
-**Integration Tests** (`tests/integration/`) - Requires Docker stack (18 tests):
+**Integration Tests** (`tests/integration/`) - Requires Docker stack (26 tests):
 
 Integration tests include:
 - **Connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup)
+- **Initialization verification** tests (MongoDB collections/indexes, PostGIS extensions/functions)
 - An **E2E `ingest_job`** test launched via Dagster GraphQL that validates:
   - an `assets` record exists in MongoDB for `dagster_run_id`
   - the referenced object exists in MinIO `data-lake`
@@ -527,9 +537,11 @@ Integration tests include:
 - `test_dagster.py` (3 tests) - Dagster GraphQL API connectivity
 - `test_gdal_health.py` (2 tests) - GDAL installation health check via Dagster
 - `test_schema_cleanup.py` (3 tests) - Ephemeral schema lifecycle verification
+- `test_mongodb_init.py` (5 tests) - MongoDB initialization verification (collections, indexes)
+- `test_postgis_init.py` (6 tests) - PostGIS initialization verification (extensions, utility functions)
 - `test_ingest_job_e2e.py` (E2E) - `ingest_job` end-to-end run launched via GraphQL (uses `tests/integration/fixtures/`)
 
-**Total Coverage:** 189 unit tests + 18 integration tests = 207 tests
+**Total Coverage:** 189 unit tests + 26 integration tests = 215 tests
 
 #### Continuous Integration
 
@@ -550,7 +562,11 @@ Detect changed files
 
 This workflow runs two jobs:
 - `test`: unit tests + integration tests excluding E2E (`-m "integration and not e2e"`)
+  - After services start, runs container stability check (`scripts/check_container_stability.py`)
+  - Runs initialization verification tests early for fast failure (`test_mongodb_init.py`, `test_postgis_init.py`)
+  - Dumps logs for unstable containers if stability check fails
 - `e2e`: runs after `test` succeeds and executes E2E tests (`-m "integration and e2e"`)
+  - Also includes stability checks and init verification before E2E tests
 
 **Benefits:**
 - ⚡ Fast feedback: Unit tests run in ~5 seconds

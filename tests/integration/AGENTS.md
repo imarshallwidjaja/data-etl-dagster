@@ -22,6 +22,8 @@ This directory includes:
 - `test_dagster.py`: Dagster GraphQL/API reachability
 - `test_gdal_health.py`: GDAL tooling availability
 - `test_schema_cleanup.py`: verifies ephemeral schema lifecycle
+- `test_mongodb_init.py`: verifies MongoDB initialization (collections, indexes)
+- `test_postgis_init.py`: verifies PostGIS initialization (extensions, utility functions)
 - `test_ingest_job_e2e.py`: launches `ingest_job` via GraphQL and asserts lake + ledger + cleanup
 - `fixtures/`: versioned E2E sample inputs used by `test_ingest_job_e2e.py`
 

@@ -127,6 +127,8 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 - **Unit tests**: `pytest tests/unit`
 - **Integration tests** (requires Docker stack): `pytest -m "integration and not e2e" tests/integration`
 - **E2E tests** (GraphQL-launched `ingest_job`, requires Docker stack): `pytest -m "integration and e2e" tests/integration`
+- **Service readiness**: `python scripts/wait_for_services.py` (checks reachability and user-code loadability)
+- **Container stability**: `python scripts/check_container_stability.py` (monitors restart counts, used in CI)
 
 ## Links
 
