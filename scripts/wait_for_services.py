@@ -112,6 +112,94 @@ def check_dagster(port: int = 3000, timeout: int = 30) -> bool:
         return False
 
 
+def verify_user_code_dagster(port: int = 3000, timeout: int = 30) -> bool:
+    """
+    Verify that user-code container is loadable by checking Dagster GraphQL API.
+    
+    Queries for available jobs and verifies that gdal_health_check_job exists,
+    which proves that the user-code container can load modules successfully.
+    
+    Args:
+        port: Dagster webserver port (default 3000)
+        timeout: Request timeout in seconds (default 30)
+        
+    Returns:
+        True if user-code is verified, False otherwise
+    """
+    try:
+        url = f"http://localhost:{port}/graphql"
+        
+        # Query for available jobs
+        query = {
+            "query": """
+                {
+                    workspaceOrError {
+                        ... on Workspace {
+                            locationEntries {
+                                name
+                                locationOrLoadError {
+                                    ... on RepositoryLocation {
+                                        repositories {
+                                            name
+                                            jobs {
+                                                name
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            """
+        }
+        
+        response = requests.post(
+            url,
+            json=query,
+            timeout=timeout,
+        )
+        
+        if response.status_code != 200:
+            print(f"  User-code verification: GraphQL returned status {response.status_code}")
+            return False
+        
+        data = response.json()
+        
+        # Check for GraphQL errors
+        if "errors" in data:
+            error_messages = [err.get("message", "Unknown error") for err in data["errors"]]
+            print(f"  User-code verification: GraphQL errors: {', '.join(error_messages)}")
+            return False
+        
+        # Navigate through the response structure to find jobs
+        workspace = data.get("data", {}).get("workspaceOrError", {})
+        if "locationEntries" not in workspace:
+            print("  User-code verification: No location entries found")
+            return False
+        
+        # Collect all job names from all locations
+        all_jobs = []
+        for location_entry in workspace["locationEntries"]:
+            location = location_entry.get("locationOrLoadError", {})
+            if "repositories" in location:
+                for repo in location["repositories"]:
+                    jobs = repo.get("jobs", [])
+                    all_jobs.extend([job.get("name") for job in jobs])
+        
+        # Check if gdal_health_check_job exists
+        if "gdal_health_check_job" in all_jobs:
+            print(f"  User-code verification: gdal_health_check_job found (total jobs: {len(all_jobs)})")
+            return True
+        else:
+            print(f"  User-code verification: gdal_health_check_job not found. Available jobs: {all_jobs}")
+            return False
+            
+    except Exception as e:
+        print(f"  User-code verification failed: {e}")
+        return False
+
+
 # =============================================================================
 # Retry Logic
 # =============================================================================
@@ -181,6 +269,7 @@ def main():
         ("MongoDB", lambda: check_mongodb(mongo_settings, timeout)),
         ("PostGIS", lambda: check_postgis(postgis_settings, timeout)),
         ("Dagster", lambda: check_dagster(dagster_port, timeout)),
+        ("User-code (Dagster)", lambda: verify_user_code_dagster(dagster_port, timeout)),
     ]
     
     failed = []

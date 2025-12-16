@@ -118,6 +118,47 @@ jobs:
           python scripts/wait_for_services.py
         timeout-minutes: 5
       
+      - name: Check container stability
+        id: stability_check
+        if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
+          if [ ${STABILITY_EXIT:-0} -ne 0 ]; then
+            echo "stability_failed=true" >> $GITHUB_OUTPUT
+            cat unstable_containers.txt
+            exit 1
+          else
+            echo "stability_failed=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+        timeout-minutes: 2
+      
+      - name: Dump logs for unstable containers
+        if: ${{ (steps.stability_check.outcome == 'failure' || steps.stability_check.outputs.stability_failed == 'true') && (steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch') }}
+        run: |
+          echo "=== Unstable Container Logs ==="
+          if [ -f unstable_containers.txt ]; then
+            # Extract container names from the output (lines after "Unstable containers" marker)
+            in_section=false
+            while IFS= read -r line; do
+              if [[ "$line" == *"Unstable containers"* ]]; then
+                in_section=true
+                continue
+              fi
+              if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
+                echo ""
+                echo "=== Logs for $line ==="
+                docker compose -f docker-compose.yaml logs "$line" || true
+              fi
+            done < unstable_containers.txt
+          fi
+      
+      - name: Run init verification tests
+        if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          pytest tests/integration/test_mongodb_init.py tests/integration/test_postgis_init.py -v
+        timeout-minutes: 5
+      
       - name: Run integration tests
         if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
@@ -147,6 +188,9 @@ jobs:
           echo ""
           echo "=== All Container Status ==="
           docker compose -f docker-compose.yaml ps || true
+          echo ""
+          echo "=== Container Restart Counts ==="
+          docker compose -f docker-compose.yaml ps -a --format "table {{.Name}}\t{{.Status}}" || true
       
       - name: Cleanup
         if: always() && (steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch')
@@ -228,6 +272,45 @@ jobs:
           python scripts/wait_for_services.py
         timeout-minutes: 5
       
+      - name: Check container stability
+        id: stability_check
+        run: |
+          python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
+          if [ ${STABILITY_EXIT:-0} -ne 0 ]; then
+            echo "stability_failed=true" >> $GITHUB_OUTPUT
+            cat unstable_containers.txt
+            exit 1
+          else
+            echo "stability_failed=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+        timeout-minutes: 2
+      
+      - name: Dump logs for unstable containers
+        if: ${{ steps.stability_check.outcome == 'failure' || steps.stability_check.outputs.stability_failed == 'true' }}
+        run: |
+          echo "=== Unstable Container Logs ==="
+          if [ -f unstable_containers.txt ]; then
+            # Extract container names from the output (lines after "Unstable containers" marker)
+            in_section=false
+            while IFS= read -r line; do
+              if [[ "$line" == *"Unstable containers"* ]]; then
+                in_section=true
+                continue
+              fi
+              if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
+                echo ""
+                echo "=== Logs for $line ==="
+                docker compose -f docker-compose.yaml logs "$line" || true
+              fi
+            done < unstable_containers.txt
+          fi
+      
+      - name: Run init verification tests
+        run: |
+          pytest tests/integration/test_mongodb_init.py tests/integration/test_postgis_init.py -v
+        timeout-minutes: 5
+      
       - name: Run E2E tests
         run: |
           pytest -m "integration and e2e" tests/integration -v
@@ -256,6 +339,9 @@ jobs:
           echo ""
           echo "=== All Container Status ==="
           docker compose -f docker-compose.yaml ps || true
+          echo ""
+          echo "=== Container Restart Counts ==="
+          docker compose -f docker-compose.yaml ps -a --format "table {{.Name}}\t{{.Status}}" || true
       
       - name: Cleanup
         if: always()
