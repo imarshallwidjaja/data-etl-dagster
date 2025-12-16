@@ -439,10 +439,11 @@ This script monitors critical containers for restarts, which can indicate config
 pytest -m "integration and not e2e" tests/integration -v
 ```
 
-**5. Run E2E tests (GraphQL-launched ingest_job):**
+**5. Run E2E tests (GraphQL-launched jobs):**
 
-The E2E test uses versioned fixtures under `tests/integration/fixtures/` and launches `ingest_job` via Dagster GraphQL,
-asserting the full loop (landing-zone → PostGIS ephemeral → data-lake + MongoDB ledger + schema cleanup):
+E2E tests launch jobs via Dagster GraphQL and validate offline-first loops:
+- `ingest_job` (spatial): landing-zone → PostGIS ephemeral → data-lake + MongoDB ledger + schema cleanup (uses fixtures under `tests/integration/fixtures/`)
+- `ingest_tabular_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
 
 ```bash
 pytest -m "integration and e2e" tests/integration -v
@@ -530,10 +531,9 @@ pytest -m "integration and e2e" tests/integration -v
 Integration tests include:
 - **Connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup)
 - **Initialization verification** tests (MongoDB collections/indexes, PostGIS extensions/functions)
-- An **E2E `ingest_job`** test launched via Dagster GraphQL that validates:
-  - an `assets` record exists in MongoDB for `dagster_run_id`
-  - the referenced object exists in MinIO `data-lake`
-  - the PostGIS `proc_<run_id>` schema is cleaned up
+- **E2E tests** launched via Dagster GraphQL that validate offline-first loops:
+  - `ingest_job` (spatial): asset record exists in MongoDB, object exists in MinIO `data-lake`, PostGIS `proc_<run_id>` schema cleaned up
+  - `ingest_tabular_job` (tabular): asset record exists in MongoDB, Parquet object exists in MinIO `data-lake`, header mapping persisted, join key normalization persisted (no PostGIS)
 
 - `test_minio.py` (3 tests) - MinIO connectivity and read/write operations
 - `test_mongodb.py` (3 tests) - MongoDB connectivity and CRUD operations
@@ -544,6 +544,7 @@ Integration tests include:
 - `test_mongodb_init.py` (5 tests) - MongoDB initialization verification (collections, indexes)
 - `test_postgis_init.py` (6 tests) - PostGIS initialization verification (extensions, utility functions)
 - `test_ingest_job_e2e.py` (E2E) - `ingest_job` end-to-end run launched via GraphQL (uses `tests/integration/fixtures/`)
+- `test_ingest_tabular_e2e.py` (E2E) - `ingest_tabular_job` end-to-end run launched via GraphQL (CSV → Parquet → Mongo)
 
 **Total Coverage:** 189 unit tests + 26 integration tests = 215 tests
 

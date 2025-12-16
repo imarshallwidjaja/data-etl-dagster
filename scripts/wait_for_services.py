@@ -228,12 +228,14 @@ def wait_for_service(
     while time.time() - start_time < timeout:
         if check_fn():
             elapsed = time.time() - start_time
-            print(f"✓ {name} is ready (took {elapsed:.1f}s)")
+            # NOTE: ASCII-only output for Windows console compatibility.
+            # Some environments (e.g., cp1252) cannot encode Unicode glyphs like ✓/✗.
+            print(f"[OK] {name} is ready (took {elapsed:.1f}s)")
             return True
         time.sleep(interval)
     
     elapsed = time.time() - start_time
-    print(f"✗ {name} failed to become ready after {elapsed:.1f}s")
+    print(f"[FAIL] {name} failed to become ready after {elapsed:.1f}s")
     return False
 
 

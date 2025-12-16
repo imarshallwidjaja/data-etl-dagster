@@ -7,8 +7,9 @@ MinIO, MongoDB, PostGIS, Dagster (and GDAL availability inside the user-code con
 
 This directory includes:
 - **Connectivity/health** tests for each service
-- A **GraphQL-launched E2E** test for `ingest_job` that validates the full offline-first loop:
-  landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup.
+- **GraphQL-launched E2E** tests that validate offline-first loops:
+  - `ingest_job` (spatial): landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup
+  - `ingest_tabular_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
 
 ## Key invariants / non-negotiables
 
@@ -25,6 +26,7 @@ This directory includes:
 - `test_mongodb_init.py`: verifies MongoDB initialization (collections, indexes)
 - `test_postgis_init.py`: verifies PostGIS initialization (extensions, utility functions)
 - `test_ingest_job_e2e.py`: launches `ingest_job` via GraphQL and asserts lake + ledger + cleanup
+- `test_ingest_tabular_e2e.py`: launches `ingest_tabular_job` via GraphQL and asserts lake + ledger + header mapping + join key normalization
 - `fixtures/`: versioned E2E sample inputs used by `test_ingest_job_e2e.py`
 
 ## Running
