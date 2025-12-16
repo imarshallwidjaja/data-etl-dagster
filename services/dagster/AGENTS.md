@@ -87,7 +87,9 @@ The `manifest_sensor` is a multi-lane router that routes manifests to different 
 **Cursor Format:**
 - Versioned JSON format: `{"v": 1, "processed_keys": [...], "max_keys": 500}`
 - Migrates automatically from legacy comma-separated format
-- Bounded to `max_keys` (500) to prevent unbounded growth
+- Bounded to `MAX_CURSOR_KEYS` (500) to prevent unbounded growth
+- `max_keys` is informational only; implementation ignores any persisted value
+- "Most recent" refers to **most recently processed by the sensor** (preserves processing order)
 
 ### Retry semantics
 

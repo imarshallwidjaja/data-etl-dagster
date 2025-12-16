@@ -312,32 +312,67 @@ def test_cursor_migration_from_legacy_format(mock_sensor_context, mock_minio_res
 
 
 # =============================================================================
-# Test: Cursor bounding
+# Test: Cursor ordering (non-lexicographic)
 # =============================================================================
 
 @patch.dict(os.environ, {}, clear=False)
-def test_cursor_bounding_max_keys(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that cursor is bounded to max_keys."""
-    # Create many processed keys
+def test_cursor_preserves_processing_order_not_lexicographic(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    """Test that cursor preserves processing order, not lexicographic order."""
+    # Start with intentionally non-sorted cursor (z before a)
+    processed_keys = ["manifests/z.json", "manifests/a.json"]
+    new_key = "manifests/m.json"
+
+    cursor_data = {"v": 1, "processed_keys": processed_keys, "max_keys": 500}
+    mock_sensor_context.cursor = json.dumps(cursor_data)
+    mock_minio_resource.list_manifests.return_value = processed_keys + [new_key]
+    mock_minio_resource.get_manifest.return_value = valid_manifest_dict
+
+    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
+
+    # Should process new manifest
+    assert len(results) == 1
+    # Updated cursor should preserve order: existing + new
+    assert mock_sensor_context.update_cursor.called
+    cursor_str = mock_sensor_context.update_cursor.call_args[0][0]
+    cursor_obj = json.loads(cursor_str)
+    expected_keys = ["manifests/z.json", "manifests/a.json", "manifests/m.json"]
+    assert cursor_obj["processed_keys"] == expected_keys
+
+
+# =============================================================================
+# Test: Cursor bounding preserves tail
+# =============================================================================
+
+@patch.dict(os.environ, {}, clear=False)
+def test_cursor_bounding_preserves_tail_processing_order(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+    """Test that cursor bounding keeps the most recently processed keys (tail)."""
+    # Create keys in known order, with last few being identifiable
     many_keys = [f"manifests/batch_{i:03d}.json" for i in range(600)]
+    # Last few keys that should survive bounding
+    tail_keys = many_keys[-10:]  # batch_590.json through batch_599.json
     new_key = "manifests/batch_new.json"
-    
+
     # Set cursor with many keys
     cursor_data = {"v": 1, "processed_keys": many_keys, "max_keys": 500}
     mock_sensor_context.cursor = json.dumps(cursor_data)
     mock_minio_resource.list_manifests.return_value = many_keys + [new_key]
     mock_minio_resource.get_manifest.return_value = valid_manifest_dict
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
+
     # Should process new manifest
     assert len(results) == 1
     # Updated cursor should be bounded
     assert mock_sensor_context.update_cursor.called
     cursor_str = mock_sensor_context.update_cursor.call_args[0][0]
     cursor_obj = json.loads(cursor_str)
-    # Should cap to max_keys (most recent)
-    assert len(cursor_obj["processed_keys"]) <= 500
+    # Should cap to max_keys (500)
+    assert len(cursor_obj["processed_keys"]) == 500
+    # Should preserve the tail of the original keys + new key
+    # Original: 600 keys, add 1 new = 601 total, keep last 500
+    # So: keys 101-599 (499 keys) + new_key (1 key) = 500 keys
+    expected_tail = many_keys[101:] + [new_key]
+    assert cursor_obj["processed_keys"] == expected_tail
 
 
 # =============================================================================

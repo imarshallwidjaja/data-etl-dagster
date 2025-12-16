@@ -1,19 +1,3 @@
-"""Manifest sensor for detecting new manifest files in MinIO landing zone."""
-
-from dagster import (
-    sensor,
-    RunRequest,
-    SkipReason,
-    SensorEvaluationContext,
-    DefaultSensorStatus,
-)
-from pydantic import ValidationError
-
-from ..resources import MinIOResource
-from ..jobs import ingest_job
-from libs.models import Manifest
-
-
 """Manifest sensor for detecting new manifest files in MinIO landing zone.
 
 Multi-lane router that routes manifests to different jobs based on intent.
@@ -23,7 +7,6 @@ Controlled by MANIFEST_ROUTER_ENABLED_LANES environment variable.
 import json
 import os
 from enum import Enum
-from typing import Literal
 
 from dagster import (
     sensor,
@@ -35,7 +18,6 @@ from dagster import (
 from pydantic import ValidationError
 
 from ..resources import MinIOResource
-from ..jobs import ingest_job
 from libs.models import Manifest
 
 
@@ -66,55 +48,99 @@ CURSOR_VERSION = 1
 MAX_CURSOR_KEYS = 500
 
 
-def parse_cursor(cursor: str | None) -> set[str]:
+def merge_processed_keys(existing: list[str], new: list[str]) -> list[str]:
     """
-    Parse cursor into set of processed manifest keys.
-    
+    Merge existing processed keys with new ones, preserving order.
+
+    Keys that appear in both lists are moved to the end (most recent occurrence wins).
+    Maintains uniqueness while preserving processing order.
+
+    Args:
+        existing: Existing processed keys in order
+        new: New processed keys in order
+
+    Returns:
+        Merged list with preserved order and uniqueness
+    """
+    # Start with existing keys
+    result = existing[:]
+
+    # Add new keys, moving duplicates to end
+    for key in new:
+        if key in result:
+            result.remove(key)
+        result.append(key)
+
+    return result
+
+
+def parse_cursor(cursor: str | None) -> list[str]:
+    """
+    Parse cursor into ordered list of processed manifest keys.
+
     Supports migration from old comma-separated format to JSON format.
-    
+    Preserves processing order for "most recently processed" semantics.
+
     Args:
         cursor: Cursor string (JSON v1 format or comma-separated legacy format)
-        
+
     Returns:
-        Set of processed manifest keys
+        Ordered list of processed manifest keys
     """
     if not cursor:
-        return set()
-    
+        return []
+
     try:
         # Try parsing as JSON (v1 format)
         cursor_data = json.loads(cursor)
         if isinstance(cursor_data, dict) and cursor_data.get("v") == CURSOR_VERSION:
             processed_keys = cursor_data.get("processed_keys", [])
-            return set(processed_keys)
+            # Filter to strings, drop blanks, de-dupe preserving order
+            seen = set()
+            result = []
+            for key in processed_keys:
+                if isinstance(key, str) and key.strip() and key not in seen:
+                    result.append(key)
+                    seen.add(key)
+            return result
     except (json.JSONDecodeError, TypeError, AttributeError):
         pass
-    
+
     # Fall back to legacy comma-separated format
     try:
-        return set(cursor.split(",")) if cursor else set()
+        keys = cursor.split(",")
+        # Filter out blanks, de-dupe preserving order
+        seen = set()
+        result = []
+        for key in keys:
+            key = key.strip()
+            if key and key not in seen:
+                result.append(key)
+                seen.add(key)
+        return result
     except Exception:
-        return set()
+        return []
 
 
-def build_cursor(processed_keys: set[str]) -> str:
+def build_cursor(processed_keys: list[str]) -> str:
     """
-    Build JSON cursor from processed keys.
-    
-    Caps to MAX_CURSOR_KEYS to prevent unbounded growth.
-    
+    Build JSON cursor from ordered processed keys.
+
+    Caps to MAX_CURSOR_KEYS by keeping the most recently processed keys (tail).
+    Preserves processing order for "most recently processed" semantics.
+
     Args:
-        processed_keys: Set of processed manifest keys
-        
+        processed_keys: Ordered list of processed manifest keys
+
     Returns:
         JSON cursor string
     """
-    # Cap to max keys (keep most recent)
-    keys_list = sorted(processed_keys)
+    # Cap to max keys (keep most recent - tail of the list)
+    keys_list = processed_keys
     if len(keys_list) > MAX_CURSOR_KEYS:
         keys_list = keys_list[-MAX_CURSOR_KEYS:]
         # Log warning if we're capping (would need logger, but keeping simple for now)
-    
+
     cursor_data = {
         "v": CURSOR_VERSION,
         "processed_keys": keys_list,
@@ -301,11 +327,12 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
         yield SkipReason(f"Error listing manifests: {e}")
         return
     
-    # Parse cursor to get processed manifests
-    processed = parse_cursor(context.cursor)
-    
+    # Parse cursor to get processed manifests (ordered list)
+    processed_order = parse_cursor(context.cursor)
+    processed_set = set(processed_order)
+
     # Filter to new manifests only
-    new_manifests = [m for m in manifests if m not in processed]
+    new_manifests = [m for m in manifests if m not in processed_set]
     
     if not new_manifests:
         yield SkipReason("No new manifests found")
@@ -313,9 +340,9 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
     
     # Get enabled lanes (Traffic Controller)
     enabled = enabled_lanes()
-    
-    # Process each new manifest
-    processed_this_run = set()
+
+    # Process each new manifest (track in order)
+    processed_this_run = []
     for manifest_key in new_manifests:
         try:
             # Download manifest
@@ -331,7 +358,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     f"To retry, rerun/re-execute the Dagster run (sensor is one-shot)."
                 )
                 # Add to processed even if invalid - only try once
-                processed_this_run.add(manifest_key)
+                processed_this_run.append(manifest_key)
                 # Archive invalid manifest
                 try:
                     minio.move_to_archive(manifest_key)
@@ -347,7 +374,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     f"Lane determination failed for manifest '{manifest_key}': {e}. "
                     f"Marking as processed to prevent retry."
                 )
-                processed_this_run.add(manifest_key)
+                processed_this_run.append(manifest_key)
                 # Archive manifest with invalid lane config
                 try:
                     minio.move_to_archive(manifest_key)
@@ -363,7 +390,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     f"Enabled lanes: {[l.value for l in enabled]}. "
                     f"Marking as processed (one-shot)."
                 )
-                processed_this_run.add(manifest_key)
+                processed_this_run.append(manifest_key)
                 # Archive disabled lane manifest
                 try:
                     minio.move_to_archive(manifest_key)
@@ -381,7 +408,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
             )
             
             # Mark as processed
-            processed_this_run.add(manifest_key)
+            processed_this_run.append(manifest_key)
             
             # Archive manifest after successful routing
             try:
@@ -397,7 +424,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 f"To retry, rerun/re-execute the Dagster run (sensor is one-shot)."
             )
             # Add to processed even on error - only try once
-            processed_this_run.add(manifest_key)
+            processed_this_run.append(manifest_key)
             # Archive manifest even on error
             try:
                 minio.move_to_archive(manifest_key)
@@ -406,7 +433,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
     
     # Update cursor with all processed manifests (old + new)
     if processed_this_run:
-        all_processed = processed | processed_this_run
+        all_processed = merge_processed_keys(processed_order, processed_this_run)
         cursor_str = build_cursor(all_processed)
         context.update_cursor(cursor_str)
 
