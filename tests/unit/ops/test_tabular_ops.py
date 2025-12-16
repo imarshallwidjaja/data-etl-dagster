@@ -16,7 +16,6 @@ from services.dagster.etl_pipelines.ops.tabular_ops import (
     _download_tabular_from_landing,
     _load_and_clean_tabular,
     _export_tabular_parquet_to_datalake,
-    _extract_s3_key_from_path,
 )
 
 
@@ -46,17 +45,6 @@ SAMPLE_TABULAR_MANIFEST = {
         },
     }
 }
-
-
-# =============================================================================
-# Test: Helper Functions
-# =============================================================================
-
-def test_extract_s3_key_from_path():
-    """Test S3 key extraction from full path."""
-    assert _extract_s3_key_from_path("s3://landing-zone/batch_001/data.csv") == "batch_001/data.csv"
-    assert _extract_s3_key_from_path("batch_001/data.csv") == "batch_001/data.csv"
-    assert _extract_s3_key_from_path("s3://bucket/path/to/file.csv") == "path/to/file.csv"
 
 
 # =============================================================================
@@ -282,6 +270,39 @@ def test_load_and_clean_tabular_join_key_not_found():
                 download_result=download_result,
                 log=mock_log,
             )
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+def test_load_and_clean_tabular_join_key_whitespace_trimmed():
+    """Test that whitespace in join key values is trimmed."""
+    # Create CSV with whitespace in join key values
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.csv', delete=False) as f:
+        # Note: values have leading/trailing spaces
+        f.write("id,name,age\n  ABC123  ,Alice,30\n XYZ789,Bob,25\n")
+        temp_path = f.name
+    
+    try:
+        download_result = {
+            "local_file_path": temp_path,
+            "manifest": SAMPLE_TABULAR_MANIFEST,
+        }
+        
+        mock_log = Mock()
+        
+        result = _load_and_clean_tabular(
+            download_result=download_result,
+            log=mock_log,
+        )
+        
+        # Check that join key column is string type
+        table = result["table"]
+        assert table.schema.field("id").type == pa.string()
+        
+        # Check that whitespace was trimmed from join key values
+        id_values = table.column("id").to_pylist()
+        assert id_values == ["ABC123", "XYZ789"]  # No leading/trailing whitespace
+        
     finally:
         Path(temp_path).unlink(missing_ok=True)
 

@@ -10,6 +10,7 @@ from dagster import op, OpExecutionContext, In, Out
 from sqlalchemy import text
 
 from libs.spatial_utils import RunIdSchemaMapping
+from libs.s3_utils import s3_to_vsis3
 from libs.models import Manifest
 from ..resources.gdal_resource import GDALResult
 import json
@@ -164,10 +165,7 @@ def _load_files_to_postgis(
 
         for file_entry in manifest["files"]:
             s3_path = file_entry["path"]
-            if s3_path.startswith("s3://"):
-                vsis3_path = s3_path.replace("s3://", "/vsis3/", 1)
-            else:
-                vsis3_path = s3_path
+            vsis3_path = s3_to_vsis3(s3_path)
 
             # Get layer info using ogrinfo JSON output
             layer_info = gdal.ogrinfo(vsis3_path, layer=None, as_json=True)
@@ -230,13 +228,8 @@ def _load_files_to_postgis(
         for i, file_entry in enumerate(manifest["files"]):
             s3_path = file_entry["path"]
 
-            # Convert s3:// path to /vsis3/ path
-            # s3://landing-zone/path -> /vsis3/landing-zone/path
-            if s3_path.startswith("s3://"):
-                vsis3_path = s3_path.replace("s3://", "/vsis3/", 1)
-            else:
-                # Already in /vsis3/ format or unexpected format
-                vsis3_path = s3_path
+            # Convert s3:// path to /vsis3/ path for GDAL
+            vsis3_path = s3_to_vsis3(s3_path)
 
             log.info(f"Loading file: {s3_path} -> {layer_name}")
 

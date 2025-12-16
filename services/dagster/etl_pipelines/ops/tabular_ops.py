@@ -13,30 +13,15 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.csv as csv
 import pyarrow.parquet as pq
 
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.models import Asset, AssetKind, AssetMetadata, OutputFormat, Manifest
+from libs.s3_utils import extract_s3_key
 from libs.spatial_utils import normalize_headers
-
-
-def _extract_s3_key_from_path(s3_path: str) -> str:
-    """
-    Extract S3 key from s3://bucket/key format.
-    
-    Args:
-        s3_path: Full S3 path (e.g., "s3://landing-zone/batch_001/data.csv")
-    
-    Returns:
-        S3 key (e.g., "batch_001/data.csv")
-    """
-    if s3_path.startswith("s3://"):
-        parts = s3_path[5:].split("/", 1)
-        if len(parts) == 2:
-            return parts[1]
-    return s3_path
 
 
 def _download_tabular_from_landing(
@@ -73,7 +58,7 @@ def _download_tabular_from_landing(
     s3_path = file_entry.path
     
     # Extract S3 key from path
-    s3_key = _extract_s3_key_from_path(s3_path)
+    s3_key = extract_s3_key(s3_path)
     
     # Create temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
@@ -157,14 +142,12 @@ def _load_and_clean_tabular(
                         f"Join key '{left_key}' (cleaned: '{join_key_clean}') not found in cleaned headers"
                     )
                 
-                # Normalize join key column to string type
+                # Normalize join key column to string type and trim whitespace
                 col_idx = cleaned_headers.index(join_key_clean)
-                table = table.set_column(
-                    col_idx,
-                    join_key_clean,
-                    table.column(join_key_clean).cast(pa.string())
-                )
-                log.info(f"Normalized join key column '{join_key_clean}' to string type")
+                col = table.column(join_key_clean).cast(pa.string())
+                col = pc.utf8_trim_whitespace(col)
+                table = table.set_column(col_idx, join_key_clean, col)
+                log.info(f"Normalized join key column '{join_key_clean}' to string (trimmed whitespace)")
             else:
                 raise ValueError(
                     f"Join key '{left_key}' not found in original headers: {original_headers}"
