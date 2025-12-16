@@ -5,7 +5,7 @@ from libs.models import Manifest
 
 
 @op
-def validate_and_log(context: OpExecutionContext, manifest: dict) -> dict:
+def join_validate_and_log(context: OpExecutionContext, manifest: dict) -> dict:
     """
     Placeholder op for join datasets job.
     
@@ -58,4 +58,4 @@ def validate_and_log(context: OpExecutionContext, manifest: dict) -> dict:
 )
 def join_datasets_job():
     """Placeholder join datasets job."""
-    validate_and_log()
+    join_validate_and_log()

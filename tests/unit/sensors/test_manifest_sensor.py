@@ -120,7 +120,7 @@ def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_r
     assert run_request.run_key == f"tabular:{tabular_manifest['batch_id']}"
     assert run_request.job_name == "ingest_tabular_job"
     assert run_request.tags["lane"] == "tabular"
-    assert "validate_and_log" in run_request.run_config["ops"]
+    assert "tabular_validate_and_log" in run_request.run_config["ops"]
 
 
 # =============================================================================
@@ -155,7 +155,7 @@ def test_join_intent_routes_to_join_lane(mock_sensor_context, mock_minio_resourc
     assert run_request.run_key == f"join:{join_manifest['batch_id']}"
     assert run_request.job_name == "join_datasets_job"
     assert run_request.tags["lane"] == "join"
-    assert "validate_and_log" in run_request.run_config["ops"]
+    assert "join_validate_and_log" in run_request.run_config["ops"]
 
 
 # =============================================================================

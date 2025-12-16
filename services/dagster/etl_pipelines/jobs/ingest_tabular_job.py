@@ -5,7 +5,7 @@ from libs.models import Manifest
 
 
 @op
-def validate_and_log(context: OpExecutionContext, manifest: dict) -> dict:
+def tabular_validate_and_log(context: OpExecutionContext, manifest: dict) -> dict:
     """
     Placeholder op for tabular ingest job.
     
@@ -41,4 +41,4 @@ def validate_and_log(context: OpExecutionContext, manifest: dict) -> dict:
 )
 def ingest_tabular_job():
     """Placeholder tabular ingestion job."""
-    validate_and_log()
+    tabular_validate_and_log()

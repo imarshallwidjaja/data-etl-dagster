@@ -39,6 +39,12 @@ LANE_TO_JOB: dict[Lane, str] = {
     Lane.JOIN: "join_datasets_job",
 }
 
+# Lane to op name mapping for placeholder jobs
+LANE_TO_OP: dict[Lane, str] = {
+    Lane.TABULAR: "tabular_validate_and_log",
+    Lane.JOIN: "join_validate_and_log",
+}
+
 
 # =============================================================================
 # Cursor Format
@@ -255,7 +261,7 @@ def build_run_request(
         }
     else:
         # Placeholder jobs expect manifest as op input to their placeholder op
-        op_name = "validate_and_log"  # Placeholder op name
+        op_name = LANE_TO_OP[lane]
         run_config = {
             "ops": {
                 op_name: {
