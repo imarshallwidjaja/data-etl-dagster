@@ -145,6 +145,12 @@ services:
       - etl_pipelines
     ports:
       - "4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.socket(); s.settimeout(2); result=s.connect_ex(('localhost', 4000)); s.close(); exit(0 if result == 0 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     environment:
       # Dagster Metadata DB Configuration
       DAGSTER_HOME: /opt/dagster/dagster_home

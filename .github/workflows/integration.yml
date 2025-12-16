@@ -118,6 +118,26 @@ jobs:
           python scripts/wait_for_services.py
         timeout-minutes: 5
       
+      - name: Check container stability
+        id: stability_check
+        if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          python scripts/check_container_stability.py --duration 30
+        continue-on-error: true
+        timeout-minutes: 1
+      
+      - name: Dump failing container logs
+        if: ${{ steps.stability_check.outcome == 'failure' && (steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch') }}
+        run: |
+          echo "=== Container Stability Check Failed ==="
+          echo "Dumping logs for all critical containers..."
+          for container in dagster-webserver dagster-daemon dagster-user-code mongodb postgis minio; do
+            echo ""
+            echo "=== $container Logs ==="
+            docker compose -f docker-compose.yaml logs --tail=100 "$container" || true
+          done
+        continue-on-error: true
+      
       - name: Run integration tests
         if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
@@ -227,6 +247,25 @@ jobs:
         run: |
           python scripts/wait_for_services.py
         timeout-minutes: 5
+      
+      - name: Check container stability
+        id: stability_check
+        run: |
+          python scripts/check_container_stability.py --duration 30
+        continue-on-error: true
+        timeout-minutes: 1
+      
+      - name: Dump failing container logs
+        if: ${{ steps.stability_check.outcome == 'failure' }}
+        run: |
+          echo "=== Container Stability Check Failed ==="
+          echo "Dumping logs for all critical containers..."
+          for container in dagster-webserver dagster-daemon dagster-user-code mongodb postgis minio; do
+            echo ""
+            echo "=== $container Logs ==="
+            docker compose -f docker-compose.yaml logs --tail=100 "$container" || true
+          done
+        continue-on-error: true
       
       - name: Run E2E tests
         run: |
