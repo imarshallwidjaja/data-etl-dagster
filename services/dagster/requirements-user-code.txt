@@ -35,3 +35,7 @@ pyproj==3.6.1
 python-dotenv==1.0.1
 structlog==23.3.0
 
+# Natural language processing (for tabular header normalization)
+# Note: After installation, run: python -c "import nltk; nltk.download('stopwords')"
+nltk>=3.8.0
+

@@ -17,12 +17,22 @@ This library provides:
 """
 
 from .schema_mapper import RunIdSchemaMapping
-from .tabular_headers import normalize_headers
+from .tabular_headers import (
+    DEFAULT_ETL_ABBREVIATIONS,
+    deduplicate_words,
+    normalize_headers,
+    normalize_headers_advanced,
+    remove_inner_vowels,
+)
 
 __version__ = "0.1.0"
 
 __all__ = [
     "RunIdSchemaMapping",
     "normalize_headers",
+    "normalize_headers_advanced",
+    "deduplicate_words",
+    "remove_inner_vowels",
+    "DEFAULT_ETL_ABBREVIATIONS",
 ]
 
