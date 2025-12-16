@@ -14,7 +14,7 @@ from typing import Dict, Any
 
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Asset, AssetMetadata, Bounds, OutputFormat, CRS
+from libs.models import Asset, AssetKind, AssetMetadata, Bounds, OutputFormat, CRS
 from libs.spatial_utils import RunIdSchemaMapping
 from ..resources.gdal_resource import GDALResult
 
@@ -114,11 +114,14 @@ def _export_to_datalake(
         log.info(f"Uploaded to MinIO data lake: {s3_key}")
         
         # Create Asset model
+        # Populate tags from manifest metadata.tags
+        manifest_tags = manifest["metadata"].get("tags", {})
         asset_metadata = AssetMetadata(
             title=manifest["metadata"].get("project", dataset_id),
             description=manifest["metadata"].get("description"),
             source=None,
             license=None,
+            tags=manifest_tags,
         )
 
         # Handle optional bounds
@@ -137,6 +140,7 @@ def _export_to_datalake(
             version=version,
             content_hash=content_hash,
             dagster_run_id=run_id,
+            kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs=CRS(crs),
             bounds=bounds,

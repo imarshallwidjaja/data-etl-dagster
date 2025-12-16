@@ -3,7 +3,7 @@
 ## What this repo is / owns
 
 This repo implements an offline-first Spatial Data ETL platform orchestrated by Dagster.
-It ingests raw spatial files via a manifest protocol, uses PostGIS for transient compute, stores outputs in MinIO (data lake), and records lineage/metadata in MongoDB (ledger).
+It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS for transient compute (spatial only), stores outputs in MinIO (data lake), and records lineage/metadata in MongoDB (ledger).
 
 ## Key invariants / non-negotiables
 
@@ -12,6 +12,7 @@ It ingests raw spatial files via a manifest protocol, uses PostGIS for transient
 - **Persistence**: PostGIS is transient compute only. Never store permanent data there.
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
+- **Tabular processing**: Tabular data (CSV) is processed directly to Parquet without PostGIS. Headers are cleaned to valid Postgres identifiers for reliable joins.
 
 ## Entry points / key files
 
@@ -40,8 +41,9 @@ graph TD
         Sensor -->|3. Signal run| Daemon
         Daemon -->|4. Launch Run| CodeLoc
         CodeLoc -->|5. Read Raw Data| Landing
-        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
-        CodeLoc -->|7. Write GeoParquet| Lake
+        CodeLoc -->|6a. Spatial Ops - SQL| PostGIS
+        CodeLoc -->|6b. Tabular Ops - Direct| CodeLoc
+        CodeLoc -->|7. Write GeoParquet/Parquet| Lake
         CodeLoc -->|8. Log Lineage| Mongo
     end
 ```
@@ -72,6 +74,9 @@ graph TD
       "format": "GeoJSON"
     }
   ],
+  // For tabular ingestion:
+  // "intent": "ingest_tabular",
+  // "files": [{"path": "s3://landing-zone/batch_XYZ/data.csv", "type": "tabular", "format": "CSV"}]
   "metadata": {
     "project": "ALPHA",
     "description": "User supplied context",
@@ -90,9 +95,14 @@ graph TD
 }
 ```
 
-- The `intent` selects a transformation recipe. Unknown intents fall back to the default.
+- The `intent` selects a transformation recipe or processing lane:
+  - **Spatial intents** (e.g., `ingest_vector`, `ingest_building_footprints`): Route to spatial pipeline using PostGIS
+  - **Tabular intent** (`ingest_tabular`): Routes to tabular pipeline (CSV → Parquet, no PostGIS)
+  - Unknown spatial intents fall back to the default recipe
 - Vector geometry column is standardized to `geom` in PostGIS compute schemas.
+- Tabular ingestion requires exactly one file per manifest. Headers are automatically cleaned to valid Postgres identifiers.
 - `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.
+- Intent/type coherence: `intent="ingest_tabular"` requires all files to have `type="tabular"`; other intents forbid tabular files.
 
 ## How to work here
 

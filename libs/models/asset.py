@@ -9,14 +9,17 @@
 
 import re
 from datetime import datetime
+from enum import Enum
 from typing import Annotated
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict
+from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 
 from .spatial import CRS, Bounds, OutputFormat
+from .manifest import TagValue
 
 __all__ = [
     "S3Key",
     "ContentHash",
+    "AssetKind",
     "AssetMetadata",
     "Asset",
 ]
@@ -134,6 +137,17 @@ Examples:
 
 
 # =============================================================================
+# Asset Kind Enum
+# =============================================================================
+
+class AssetKind(str, Enum):
+    """Asset kind classification: spatial, tabular, or joined."""
+    SPATIAL = "spatial"
+    TABULAR = "tabular"
+    JOINED = "joined"
+
+
+# =============================================================================
 # Asset Metadata Model
 # =============================================================================
 
@@ -142,19 +156,29 @@ class AssetMetadata(BaseModel):
     Metadata for an asset.
     
     Provides descriptive information about the asset, including title,
-    description, source attribution, and license information.
+    description, source attribution, license information, and queryable tags.
     
     Attributes:
         title: Asset title (required)
         description: Optional description of the asset
         source: Optional source attribution
         license: Optional license information
+        tags: Queryable tags for matching (primitive scalars only)
+        header_mapping: Optional header mapping for tabular assets (original → cleaned)
     """
     
     title: str = Field(..., description="Asset title")
     description: str | None = Field(None, description="Optional description of the asset")
     source: str | None = Field(None, description="Optional source attribution")
     license: str | None = Field(None, description="Optional license information")
+    tags: dict[str, TagValue] = Field(
+        default_factory=dict,
+        description="Queryable tags for matching (str/int/float/bool values only)"
+    )
+    header_mapping: dict[str, str] | None = Field(
+        None,
+        description="Header mapping for tabular assets (original → cleaned column names)"
+    )
     
     model_config = ConfigDict(
         json_schema_extra={
@@ -162,7 +186,9 @@ class AssetMetadata(BaseModel):
                 "title": "Urban Land Use Dataset",
                 "description": "High-resolution land use classification for metropolitan area",
                 "source": "City Planning Department",
-                "license": "CC-BY-4.0"
+                "license": "CC-BY-4.0",
+                "tags": {"project": "ALPHA", "period": "2021-01-01/2021-12-31"},
+                "header_mapping": None
             }
         }
     )
@@ -174,7 +200,7 @@ class AssetMetadata(BaseModel):
 
 class Asset(BaseModel):
     """
-    Asset registry model - represents a processed spatial dataset.
+    Asset registry model - represents a processed dataset (spatial or tabular).
     
     This is the core model for tracking processed assets in the data lake.
     Each asset represents a versioned dataset stored in MinIO with metadata
@@ -186,10 +212,11 @@ class Asset(BaseModel):
         version: Asset version number (>= 1)
         content_hash: SHA256 hash of the asset content
         dagster_run_id: Dagster run ID that created this asset
-        format: Output format (geoparquet, cog, or geojson)
-        crs: Coordinate Reference System
-        bounds: Geographic bounding box
-        metadata: Asset metadata (title, description, source, license)
+        kind: Asset kind (spatial, tabular, or joined)
+        format: Output format (geoparquet, cog, geojson, or parquet)
+        crs: Coordinate Reference System (required for spatial/joined, None for tabular)
+        bounds: Geographic bounding box (required for spatial/joined, None for tabular)
+        metadata: Asset metadata (title, description, source, license, tags, header_mapping)
         created_at: Creation timestamp
         updated_at: Last update timestamp (optional)
     """
@@ -199,12 +226,41 @@ class Asset(BaseModel):
     version: int = Field(..., ge=1, description="Asset version number (>= 1)")
     content_hash: ContentHash = Field(..., description="SHA256 content hash")
     dagster_run_id: str = Field(..., description="Dagster run ID that created this asset")
+    kind: AssetKind = Field(..., description="Asset kind (spatial, tabular, or joined)")
     format: OutputFormat = Field(..., description="Output format")
-    crs: CRS = Field(..., description="Coordinate Reference System")
-    bounds: Bounds | None = Field(None, description="Geographic bounding box (optional; None means empty/unknown)")
+    crs: CRS | None = Field(None, description="Coordinate Reference System (required for spatial/joined, None for tabular)")
+    bounds: Bounds | None = Field(None, description="Geographic bounding box (required for spatial/joined, None for tabular)")
     metadata: AssetMetadata = Field(..., description="Asset metadata")
     created_at: datetime = Field(..., description="Creation timestamp")
     updated_at: datetime | None = Field(None, description="Last update timestamp")
+    
+    @model_validator(mode='after')
+    def validate_kind_crs_bounds(self) -> 'Asset':
+        """
+        Validate kind/crs/bounds coherence.
+        
+        Rules:
+        - kind == TABULAR → crs is None and bounds is None
+        - kind in {SPATIAL, JOINED} → crs is not None
+        
+        Raises:
+            ValueError: If kind/crs/bounds are inconsistent
+        """
+        if self.kind == AssetKind.TABULAR:
+            if self.crs is not None:
+                raise ValueError(
+                    f"Asset with kind 'tabular' must have crs=None, got crs={self.crs}"
+                )
+            if self.bounds is not None:
+                raise ValueError(
+                    f"Asset with kind 'tabular' must have bounds=None, got bounds={self.bounds}"
+                )
+        else:  # SPATIAL or JOINED
+            if self.crs is None:
+                raise ValueError(
+                    f"Asset with kind '{self.kind.value}' must have crs set, got crs=None"
+                )
+        return self
     
     def get_full_s3_path(self, bucket: str) -> str:
         """
@@ -235,6 +291,7 @@ class Asset(BaseModel):
                 "version": 1,
                 "content_hash": "sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
                 "dagster_run_id": "run_12345",
+                "kind": "spatial",
                 "format": "geoparquet",
                 "crs": "EPSG:4326",
                 "bounds": {
@@ -247,7 +304,8 @@ class Asset(BaseModel):
                     "title": "Sample Dataset",
                     "description": "Test dataset",
                     "source": "Test Source",
-                    "license": "CC-BY-4.0"
+                    "license": "CC-BY-4.0",
+                    "tags": {}
                 },
                 "created_at": "2024-01-01T00:00:00Z",
                 "updated_at": None

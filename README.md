@@ -131,15 +131,19 @@ Create a `manifest.json` file describing your data. The manifest format is curre
 - `batch_id` (required): Unique identifier for this batch
 - `uploader` (required): User or system identifier
 - `intent` (required): Processing intent that determines the transformation recipe:
-  - `ingest_vector`: Default vector recipe (CRS normalization, light simplification, spatial indexing)
-  - `ingest_building_footprints`: Building footprints recipe with stronger geometry simplification (0.001° tolerance ≈ 111m at equator) for visibly simplified outlines
-  - `ingest_road_network`: Road network recipe (currently uses default recipe, can be customized)
-  - Unknown intents fall back to the default recipe
+  - **Spatial intents:**
+    - `ingest_vector`: Default vector recipe (CRS normalization, light simplification, spatial indexing)
+    - `ingest_building_footprints`: Building footprints recipe with stronger geometry simplification (0.001° tolerance ≈ 111m at equator) for visibly simplified outlines
+    - `ingest_road_network`: Road network recipe (currently uses default recipe, can be customized)
+    - Unknown spatial intents fall back to the default recipe
+  - **Tabular intent:**
+    - `ingest_tabular`: Tabular data ingestion (CSV → Parquet with header cleaning, no PostGIS required)
 - `files` (required): Array of file entries, each with:
   - `path`: S3 path to the file (must start with `s3://landing-zone/`)
-  - `type`: File type (`raster` or `vector`)
-  - `format`: Input format (e.g., `GTiff`, `GPKG`, `SHP`, `GeoJSON`)
-- CRS is inferred from the data during processing; manifests must not include a `crs` field in `files`.
+  - `type`: File type (`raster`, `vector`, or `tabular`)
+  - `format`: Input format (e.g., `GTiff`, `GPKG`, `SHP`, `GeoJSON`, `CSV`)
+- For spatial files: CRS is inferred from the data during processing; manifests must not include a `crs` field in `files`.
+- For tabular files: No CRS is required (tabular data is non-spatial).
 - `metadata` (required): User-supplied metadata with explicit shape:
   - `project`: Project identifier
   - `description`: Optional description

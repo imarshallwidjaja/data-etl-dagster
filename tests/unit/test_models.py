@@ -16,6 +16,7 @@ from libs.models import (
     ManifestStatus,
     ManifestRecord,
     Asset,
+    AssetKind,
     AssetMetadata,
     ContentHash,
     S3Path,
@@ -244,6 +245,78 @@ class TestManifestValidation:
         assert manifest.metadata.join_config is not None
         assert manifest.metadata.join_config.right_key == "id"
         assert manifest.metadata.join_config.how == "left"
+    
+    def test_file_type_tabular_accepted(self):
+        """Test that FileType.TABULAR is accepted."""
+        assert FileType.TABULAR == "tabular"
+        entry = FileEntry(
+            path="s3://landing-zone/batch_001/data.csv",
+            type=FileType.TABULAR,
+            format="CSV"
+        )
+        assert entry.type == FileType.TABULAR
+    
+    def test_intent_ingest_tabular_requires_tabular_files(self):
+        """Test that intent 'ingest_tabular' requires all files to be tabular."""
+        # Valid: all tabular files
+        manifest = Manifest(
+            batch_id="batch_001",
+            uploader="user_123",
+            intent="ingest_tabular",
+            files=[
+                {
+                    "path": "s3://landing-zone/batch_001/data.csv",
+                    "type": "tabular",
+                    "format": "CSV"
+                }
+            ],
+            metadata={
+                "project": "ALPHA",
+                "description": "Test tabular data"
+            }
+        )
+        assert manifest.intent == "ingest_tabular"
+        assert all(f.type == FileType.TABULAR for f in manifest.files)
+        
+        # Invalid: non-tabular file with ingest_tabular intent
+        with pytest.raises(ValueError, match="must have all files with type 'tabular'"):
+            Manifest(
+                batch_id="batch_002",
+                uploader="user_123",
+                intent="ingest_tabular",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_002/data.geojson",
+                        "type": "vector",
+                        "format": "GeoJSON"
+                    }
+                ],
+                metadata={
+                    "project": "ALPHA",
+                    "description": "Test"
+                }
+            )
+    
+    def test_non_tabular_intent_forbids_tabular_files(self):
+        """Test that non-tabular intents forbid tabular files."""
+        # Invalid: tabular file with spatial intent
+        with pytest.raises(ValueError, match="cannot contain tabular files"):
+            Manifest(
+                batch_id="batch_003",
+                uploader="user_123",
+                intent="ingest_vector",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_003/data.csv",
+                        "type": "tabular",
+                        "format": "CSV"
+                    }
+                ],
+                metadata={
+                    "project": "ALPHA",
+                    "description": "Test"
+                }
+            )
 
 
 # =============================================================================
@@ -347,6 +420,77 @@ class TestAssetValidation:
         """Test Asset helper methods."""
         assert valid_asset.get_full_s3_path("data-lake") == "s3://data-lake/data-lake/dataset_001/v1/data.parquet"
         assert valid_asset.get_s3_key_pattern() == "dataset_001/v1/"
+    
+    def test_asset_kind_enum(self):
+        """Test AssetKind enum values."""
+        assert AssetKind.SPATIAL == "spatial"
+        assert AssetKind.TABULAR == "tabular"
+        assert AssetKind.JOINED == "joined"
+    
+    def test_tabular_asset_without_crs(self, valid_asset_dict):
+        """Test that tabular assets can have crs=None and bounds=None."""
+        data = valid_asset_dict.copy()
+        data["kind"] = "tabular"
+        data["format"] = "parquet"
+        data["crs"] = None
+        data["bounds"] = None
+        data["metadata"]["tags"] = {"project": "ALPHA"}
+        data["metadata"]["header_mapping"] = {"Original Name": "original_name"}
+        
+        asset = Asset(**data)
+        assert asset.kind == AssetKind.TABULAR
+        assert asset.crs is None
+        assert asset.bounds is None
+        assert asset.format == OutputFormat.PARQUET
+        assert asset.metadata.header_mapping == {"Original Name": "original_name"}
+    
+    def test_tabular_asset_rejects_crs(self, valid_asset_dict):
+        """Test that tabular assets reject crs."""
+        data = valid_asset_dict.copy()
+        data["kind"] = "tabular"
+        data["format"] = "parquet"
+        data["crs"] = "EPSG:4326"  # Should be None for tabular
+        data["bounds"] = None
+        
+        with pytest.raises(ValueError, match="kind 'tabular' must have crs=None"):
+            Asset(**data)
+    
+    def test_tabular_asset_rejects_bounds(self, valid_asset_dict):
+        """Test that tabular assets reject bounds."""
+        data = valid_asset_dict.copy()
+        data["kind"] = "tabular"
+        data["format"] = "parquet"
+        data["crs"] = None
+        data["bounds"] = valid_asset_dict["bounds"]  # Should be None for tabular
+        
+        with pytest.raises(ValueError, match="kind 'tabular' must have bounds=None"):
+            Asset(**data)
+    
+    def test_spatial_asset_requires_crs(self, valid_asset_dict):
+        """Test that spatial assets require crs."""
+        data = valid_asset_dict.copy()
+        data["kind"] = "spatial"
+        data["crs"] = None  # Should be required for spatial
+        
+        with pytest.raises(ValueError, match="kind 'spatial' must have crs set"):
+            Asset(**data)
+    
+    def test_asset_metadata_tags_and_header_mapping(self):
+        """Test that AssetMetadata supports tags and header_mapping."""
+        metadata = AssetMetadata(
+            title="Test Dataset",
+            tags={"project": "ALPHA", "period": "2021-01-01/2021-12-31"},
+            header_mapping={"Original Name": "original_name", "Age (years)": "age_years"}
+        )
+        assert metadata.tags == {"project": "ALPHA", "period": "2021-01-01/2021-12-31"}
+        assert metadata.header_mapping == {"Original Name": "original_name", "Age (years)": "age_years"}
+        
+        # Test with None header_mapping (for spatial assets)
+        metadata2 = AssetMetadata(
+            title="Spatial Dataset",
+            tags={"project": "BETA"}
+        )
+        assert metadata2.header_mapping is None
 
 
 # =============================================================================
@@ -369,6 +513,7 @@ class TestContentHashValidation:
             version=1,
             content_hash=hash_str,
             dagster_run_id="run_123",
+            kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
             bounds=Bounds(minx=-180, miny=-90, maxx=180, maxy=90),
@@ -524,6 +669,7 @@ class TestS3KeyValidation:
             version=1,
             content_hash="sha256:" + "a" * 64,
             dagster_run_id="run_123",
+            kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
             bounds=Bounds(minx=-180, miny=-90, maxx=180, maxy=90),

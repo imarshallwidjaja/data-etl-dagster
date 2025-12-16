@@ -3,7 +3,7 @@
 ## What this directory is / owns
 
 This library contains **lightweight spatial-adjacent utilities** used by the pipeline.
-Currently it owns the run-id ↔ PostGIS schema mapping logic.
+It owns the run-id ↔ PostGIS schema mapping logic and tabular header normalization utilities.
 
 ## Key invariants / non-negotiables
 
@@ -14,6 +14,7 @@ Currently it owns the run-id ↔ PostGIS schema mapping logic.
 ## Entry points / key files
 
 - `schema_mapper.py`: `RunIdSchemaMapping` (safe, reversible schema naming)
+- `tabular_headers.py`: `normalize_headers` (Postgres identifier normalization for tabular data)
 - `__init__.py`: exports
 
 ## How to work here
@@ -24,6 +25,7 @@ Currently it owns the run-id ↔ PostGIS schema mapping logic.
 ## Common tasks
 
 - **Change schema naming rules**: update `RunIdSchemaMapping`, then update unit tests.
+- **Modify header cleaning rules**: update `normalize_headers` in `tabular_headers.py`, then update unit tests.
 
 ## Testing / verification
 

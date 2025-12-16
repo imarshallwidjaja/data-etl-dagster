@@ -106,21 +106,25 @@ def test_valid_manifest_yields_run_request_ingest_lane(mock_sensor_context, mock
 # =============================================================================
 
 @patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest,tabular"}, clear=False)
-def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
     """Test that intent='ingest_tabular' routes to tabular lane."""
     manifest_key = "manifests/batch_tabular.json"
-    tabular_manifest = {**valid_manifest_dict, "intent": "ingest_tabular", "batch_id": "batch_tabular"}
     mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = tabular_manifest
+    mock_minio_resource.get_manifest.return_value = valid_tabular_manifest_dict
     
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
     
     assert len(results) == 1
     run_request = results[0]
-    assert run_request.run_key == f"tabular:{tabular_manifest['batch_id']}"
+    assert run_request.run_key == f"tabular:{valid_tabular_manifest_dict['batch_id']}"
     assert run_request.job_name == "ingest_tabular_job"
     assert run_request.tags["lane"] == "tabular"
-    assert "tabular_validate_and_log" in run_request.run_config["ops"]
+    # Check that manifest is passed as op input to download_tabular_from_landing
+    assert "download_tabular_from_landing" in run_request.run_config["ops"]
+    assert "inputs" in run_request.run_config["ops"]["download_tabular_from_landing"]
+    assert "manifest" in run_request.run_config["ops"]["download_tabular_from_landing"]["inputs"]
+    assert "value" in run_request.run_config["ops"]["download_tabular_from_landing"]["inputs"]["manifest"]
+    assert run_request.run_config["ops"]["download_tabular_from_landing"]["inputs"]["manifest"]["value"]["batch_id"] == valid_tabular_manifest_dict["batch_id"]
 
 
 # =============================================================================
@@ -194,12 +198,11 @@ def test_join_lane_requires_join_config(mock_sensor_context, mock_minio_resource
 # =============================================================================
 
 @patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest"}, clear=False)
-def test_disabled_lane_not_processed(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+def test_disabled_lane_not_processed(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
     """Test that disabled lanes are skipped but still archived."""
     manifest_key = "manifests/batch_tabular.json"
-    tabular_manifest = {**valid_manifest_dict, "intent": "ingest_tabular", "batch_id": "batch_tabular"}
     mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = tabular_manifest
+    mock_minio_resource.get_manifest.return_value = valid_tabular_manifest_dict
     
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
     

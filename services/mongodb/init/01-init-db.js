@@ -17,7 +17,7 @@ db.createCollection('assets', {
   validator: {
     $jsonSchema: {
       bsonType: 'object',
-      required: ['s3_key', 'dataset_id', 'version', 'content_hash', 'dagster_run_id', 'format', 'crs', 'created_at'],
+      required: ['s3_key', 'dataset_id', 'version', 'content_hash', 'dagster_run_id', 'kind', 'format', 'created_at'],
       properties: {
         s3_key: {
           bsonType: 'string',
@@ -41,16 +41,20 @@ db.createCollection('assets', {
           bsonType: 'string',
           description: 'Dagster run ID that created this asset - required'
         },
+        kind: {
+          enum: ['spatial', 'tabular', 'joined'],
+          description: 'Asset kind - required'
+        },
         format: {
-          enum: ['geoparquet', 'cog', 'geojson'],
+          enum: ['geoparquet', 'cog', 'geojson', 'parquet'],
           description: 'Output format - required'
         },
         crs: {
-          bsonType: 'string',
-          description: 'Coordinate Reference System - required'
+          bsonType: ['string', 'null'],
+          description: 'Coordinate Reference System (required for spatial/joined, null for tabular)'
         },
         bounds: {
-          bsonType: 'object',
+          bsonType: ['object', 'null'],
           required: ['minx', 'miny', 'maxx', 'maxy'],
           properties: {
             minx: { bsonType: 'double' },
@@ -61,11 +65,22 @@ db.createCollection('assets', {
         },
         metadata: {
           bsonType: 'object',
+          required: ['title'],
           properties: {
             title: { bsonType: 'string' },
             description: { bsonType: 'string' },
             source: { bsonType: 'string' },
-            license: { bsonType: 'string' }
+            license: { bsonType: 'string' },
+            tags: {
+              bsonType: 'object',
+              additionalProperties: {
+                bsonType: ['string', 'int', 'long', 'double', 'bool']
+              }
+            },
+            header_mapping: {
+              bsonType: ['object', 'null'],
+              additionalProperties: { bsonType: 'string' }
+            }
           }
         },
         created_at: {
@@ -109,7 +124,7 @@ db.createCollection('manifests', {
             required: ['path', 'type', 'format'],
             properties: {
               path: { bsonType: 'string' },
-              type: { enum: ['raster', 'vector'] },
+              type: { enum: ['raster', 'vector', 'tabular'] },
               format: { bsonType: 'string' }
             },
             additionalProperties: false
@@ -248,6 +263,7 @@ db.assets.createIndex({ 's3_key': 1 }, { unique: true });
 db.assets.createIndex({ 'dataset_id': 1, 'version': -1 });
 db.assets.createIndex({ 'content_hash': 1 });
 db.assets.createIndex({ 'dagster_run_id': 1 });
+db.assets.createIndex({ 'kind': 1 });
 db.assets.createIndex({ 'created_at': -1 });
 
 // Manifests indexes

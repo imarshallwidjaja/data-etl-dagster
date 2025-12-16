@@ -134,18 +134,18 @@ class FileEntry(BaseModel):
     """
     Metadata for a single file in a manifest.
     
-    Represents a spatial data file (raster or vector) with its location,
+    Represents a data file (raster, vector, or tabular) with its location,
     format, and type.
     
     Attributes:
         path: S3 path to the file (validated format)
-        type: File type classification (raster or vector)
-        format: Input format string (e.g., "GTiff", "GPKG", "SHP")
+        type: File type classification (raster, vector, or tabular)
+        format: Input format string (e.g., "GTiff", "GPKG", "SHP", "CSV", "GeoJSON")
     """
     
     path: S3Path = Field(..., description="S3 path to the file")
-    type: FileType = Field(..., description="File type: raster or vector")
-    format: str = Field(..., description="Input format (e.g., GTiff, GPKG, SHP, GeoJSON)")
+    type: FileType = Field(..., description="File type: raster, vector, or tabular")
+    format: str = Field(..., description="Input format (e.g., GTiff, GPKG, SHP, GeoJSON, CSV)")
     
     model_config = ConfigDict(
         extra="forbid",
@@ -269,14 +269,14 @@ class Manifest(BaseModel):
     Attributes:
         batch_id: Unique batch identifier
         uploader: User or system identifier that uploaded the manifest
-        intent: Processing intent (e.g., "ingest_raster", "ingest_vector")
+        intent: Processing intent (e.g., "ingest_raster", "ingest_vector", "ingest_tabular")
         files: List of files to process
         metadata: User-supplied metadata
     """
     
     batch_id: str = Field(..., description="Unique batch identifier")
     uploader: str = Field(..., description="User or system identifier")
-    intent: str = Field(..., description="Processing intent (e.g., 'ingest_raster')")
+    intent: str = Field(..., description="Processing intent (e.g., 'ingest_raster', 'ingest_tabular')")
     files: list[FileEntry] = Field(..., min_length=1, description="List of files to process")
     metadata: ManifestMetadata = Field(..., description="User-supplied metadata")
     
@@ -294,6 +294,39 @@ class Manifest(BaseModel):
             raise ValueError(
                 f"Duplicate file paths found in manifest '{self.batch_id}': {set(duplicates)}"
             )
+        return self
+    
+    @model_validator(mode='after')
+    def validate_intent_type_coherence(self) -> 'Manifest':
+        """
+        Enforce intent/type coherence to prevent routing errors.
+        
+        Rules:
+        - If intent == "ingest_tabular" → all files[].type must be "tabular"
+        - Otherwise → forbid "tabular" (prevents accidental routing to spatial pipeline)
+        
+        Raises:
+            ValueError: If intent and file types are inconsistent
+        """
+        from .spatial import FileType
+        
+        if self.intent == "ingest_tabular":
+            # All files must be tabular
+            non_tabular = [f for f in self.files if f.type != FileType.TABULAR]
+            if non_tabular:
+                raise ValueError(
+                    f"Manifest with intent 'ingest_tabular' must have all files with type 'tabular'. "
+                    f"Found non-tabular files: {[f.path for f in non_tabular]}"
+                )
+        else:
+            # Forbid tabular files in non-tabular intents
+            tabular_files = [f for f in self.files if f.type == FileType.TABULAR]
+            if tabular_files:
+                raise ValueError(
+                    f"Manifest with intent '{self.intent}' cannot contain tabular files. "
+                    f"Use intent 'ingest_tabular' for tabular data. "
+                    f"Found tabular files: {[f.path for f in tabular_files]}"
+                )
         return self
     
     model_config = ConfigDict(

@@ -259,8 +259,21 @@ def build_run_request(
                 }
             }
         }
+    elif lane == Lane.TABULAR:
+        # ingest_tabular_job expects manifest as op input to download_tabular_from_landing
+        run_config = {
+            "ops": {
+                "download_tabular_from_landing": {
+                    "inputs": {
+                        "manifest": {
+                            "value": manifest.model_dump(mode="json"),
+                        }
+                    }
+                }
+            }
+        }
     else:
-        # Placeholder jobs expect manifest as op input to their placeholder op
+        # Placeholder jobs (e.g., join) expect manifest as op input to their placeholder op
         op_name = LANE_TO_OP[lane]
         run_config = {
             "ops": {

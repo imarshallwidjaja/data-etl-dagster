@@ -11,6 +11,7 @@ import pytest
 
 from libs.models import (
     Asset,
+    AssetKind,
     AssetMetadata,
     Bounds,
     FileEntry,
@@ -73,6 +74,7 @@ def asset():
         version=1,
         content_hash=f"sha256:{'a' * 64}",
         dagster_run_id="run_123",
+        kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=Bounds(minx=0.0, miny=0.0, maxx=1.0, maxy=1.0),
@@ -150,6 +152,7 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
         version=1,
         content_hash="sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
         dagster_run_id="test_run_id",
+        kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=None,  # None bounds should be excluded

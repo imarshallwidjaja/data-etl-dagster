@@ -42,6 +42,7 @@ from .manifest import (
 from .asset import (
     S3Key,
     ContentHash,
+    AssetKind,
     AssetMetadata,
     Asset,
 )
@@ -74,6 +75,7 @@ __all__ = [
     # Asset models
     "S3Key",
     "ContentHash",
+    "AssetKind",
     "AssetMetadata",
     "Asset",
     # Configuration models

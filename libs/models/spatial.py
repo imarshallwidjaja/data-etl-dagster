@@ -21,16 +21,18 @@ __all__ = ["CRS", "Bounds", "FileType", "OutputFormat", "validate_crs"]
 # =============================================================================
 
 class FileType(str, Enum):
-    """File type classification: raster (imagery) or vector (features)."""
+    """File type classification: raster (imagery), vector (features), or tabular (non-spatial data)."""
     RASTER = "raster"
     VECTOR = "vector"
+    TABULAR = "tabular"
 
 
 class OutputFormat(str, Enum):
-    """Supported output formats for processed spatial data."""
+    """Supported output formats for processed data."""
     GEOPARQUET = "geoparquet"
     COG = "cog"
     GEOJSON = "geojson"
+    PARQUET = "parquet"
 
 
 # =============================================================================
