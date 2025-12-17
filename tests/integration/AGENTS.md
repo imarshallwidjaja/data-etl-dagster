@@ -9,6 +9,7 @@ This directory includes:
 - **Connectivity/health** tests for each service
 - **GraphQL-launched E2E** tests that validate offline-first loops:
   - `ingest_job` (spatial, legacy op-based): landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup
+  - `spatial_asset_job` (spatial, asset-based): landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup
   - `tabular_asset_job` (tabular, asset-based): landing-zone → data-lake + MongoDB ledger (no PostGIS)
   - `join_asset_job` (join, asset-based): landing-zone tabular + data-lake spatial → PostGIS join → data-lake joined + MongoDB ledger + lineage
 
@@ -27,7 +28,8 @@ This directory includes:
 - `test_mongodb_init.py`: verifies MongoDB initialization (collections, indexes)
 - `test_postgis_init.py`: verifies PostGIS initialization (extensions, utility functions)
 - `test_ingest_job_e2e.py`: launches `ingest_job` via GraphQL and asserts lake + ledger + cleanup
-- `test_ingest_tabular_e2e.py`: launches `tabular_asset_job` via GraphQL and asserts lake + ledger + header mapping + join key normalization
+- `test_spatial_asset_e2e.py`: launches `spatial_asset_job` via GraphQL with partition key and asserts lake + ledger + cleanup
+- `test_tabular_asset_e2e.py`: launches `tabular_asset_job` via GraphQL with partition key and asserts lake + ledger + header mapping + join key normalization
 - `test_join_asset_e2e.py`: launches `join_asset_job` via GraphQL and asserts joined output + lineage record
 - `fixtures/`: versioned E2E sample inputs used by `test_ingest_job_e2e.py`
 

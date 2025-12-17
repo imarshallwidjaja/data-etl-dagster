@@ -563,8 +563,9 @@ Integration tests include:
 - `test_mongodb_init.py` (5 tests) - MongoDB initialization verification (collections, indexes)
 - `test_postgis_init.py` (6 tests) - PostGIS initialization verification (extensions, utility functions)
 - `test_ingest_job_e2e.py` (E2E) - `ingest_job` end-to-end run launched via GraphQL (uses `tests/integration/fixtures/`)
-- `test_ingest_tabular_e2e.py` (E2E) - `tabular_asset_job` end-to-end run launched via GraphQL (CSV → Parquet → Mongo)
-- `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run (spatial parent via ingest_job + tabular CSV → joined GeoParquet + lineage)
+- `test_spatial_asset_e2e.py` (E2E) - `spatial_asset_job` end-to-end run launched via GraphQL (partitioned; GeoJSON → GeoParquet → Mongo)
+- `test_tabular_asset_e2e.py` (E2E) - `tabular_asset_job` end-to-end run launched via GraphQL (partitioned; CSV → Parquet → Mongo)
+- `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run (spatial parent via spatial_asset_job + tabular CSV → joined GeoParquet + lineage)
 
 **Total Coverage:** 205 unit tests + 27 integration tests = 232 tests
 

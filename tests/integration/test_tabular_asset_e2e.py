@@ -2,30 +2,35 @@
 
 This test validates the tabular offline-first ETL loop:
 1. Upload a sample CSV to landing-zone
-2. Launch tabular_asset_job via GraphQL with manifest input
+2. Launch tabular_asset_job via GraphQL with manifest input + partition key tag
 3. Verify data-lake Parquet object exists
 4. Verify MongoDB asset record exists and has tabular-specific fields
 5. Cleanup MinIO + Mongo artifacts
 
-Run with: pytest tests/integration/test_ingest_tabular_e2e.py -v -m "integration and e2e"
+Run with: pytest tests/integration/test_tabular_asset_e2e.py -v -m "integration and e2e"
 """
 
 import os
+from pathlib import Path
 import time
-import pytest
-import requests
 from io import BytesIO
 from typing import Optional
 from uuid import uuid4
-from requests.exceptions import RequestException, Timeout
+
+import pytest
+import requests
 from minio import Minio
 from minio.error import S3Error
 from pymongo import MongoClient
+from requests.exceptions import RequestException, Timeout
 
 from libs.models import MinIOSettings, MongoSettings
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.e2e]
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures" / "asset_plans"
+TABULAR_DATASET_PATH = FIXTURES_DIR / "e2e_sample_table_data.csv"
 
 
 @pytest.fixture
@@ -90,7 +95,6 @@ def minio_client(minio_settings):
     for bucket in [minio_settings.landing_bucket, minio_settings.lake_bucket]:
         if not client.bucket_exists(bucket):
             client.make_bucket(bucket)
-
     return client
 
 
@@ -108,7 +112,7 @@ def mongo_client(mongo_settings):
 
 
 def _create_dummy_csv() -> bytes:
-    return b"Col A,Col B\n1,hello\n2,world\n"
+    return TABULAR_DATASET_PATH.read_bytes()
 
 
 def _upload_csv_to_landing_zone(
@@ -148,22 +152,11 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
             }
         ) {
             ... on LaunchRunSuccess {
-                run {
-                    runId
-                    status
-                }
+                run { runId status }
             }
-            ... on PipelineNotFoundError {
-                message
-            }
-            ... on RunConfigValidationInvalid {
-                errors {
-                    message
-                }
-            }
-            ... on PythonError {
-                message
-            }
+            ... on PipelineNotFoundError { message }
+            ... on RunConfigValidationInvalid { errors { message } }
+            ... on PythonError { message }
         }
     }
     """
@@ -173,15 +166,14 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
         "repositoryName": "__repository__",
         "jobName": "tabular_asset_job",
         "runConfigData": {
-            "ops": {
-                "raw_manifest_json": {
-                    "config": {"manifest": manifest},
-                },
-            }
+            "ops": {"raw_manifest_json": {"config": {"manifest": manifest}}}
         },
         "executionMetadata": {
             "tags": [
-                {"key": "dagster/partition", "value": manifest["metadata"]["tags"]["dataset_id"]},
+                {
+                    "key": "dagster/partition",
+                    "value": manifest["metadata"]["tags"]["dataset_id"],
+                },
             ]
         },
     }
@@ -213,13 +205,8 @@ def _poll_run_to_completion(
         run_query = """
         query GetRun($runId: ID!) {
             runOrError(runId: $runId) {
-                ... on Run {
-                    id
-                    status
-                }
-                ... on RunNotFoundError {
-                    message
-                }
+                ... on Run { id status }
+                ... on RunNotFoundError { message }
             }
         }
         """
@@ -252,16 +239,8 @@ def _poll_run_to_completion(
                 ... on EventConnection {
                     events {
                         __typename
-                        ... on MessageEvent {
-                            message
-                            level
-                        }
-                        ... on ExecutionStepFailureEvent {
-                            error {
-                                message
-                                stack
-                            }
-                        }
+                        ... on MessageEvent { message level }
+                        ... on ExecutionStepFailureEvent { error { message stack } }
                     }
                 }
             }
@@ -281,9 +260,7 @@ def _poll_run_to_completion(
                     if e.get("level") == "ERROR"
                     or "Failure" in e.get("__typename", "")
                 ]
-                error_details = error_events or (
-                    events_list[-10:] if events_list else None
-                )
+                error_details = error_events or (events_list[-10:] if events_list else None)
 
     return status, error_details
 
@@ -350,7 +327,7 @@ def _cleanup_asset_artifacts(
         pass
 
 
-class TestIngestTabularJobE2E:
+class TestTabularAssetJobE2E:
     def test_tabular_asset_job_full_pipeline(
         self,
         dagster_client,
@@ -401,7 +378,11 @@ class TestIngestTabularJobE2E:
                     error_msg += f". Error details: {error_details}"
                 pytest.fail(error_msg)
 
-            asset_doc = _assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
+            asset_doc = _assert_mongodb_asset_exists(
+                mongo_client,
+                mongo_settings,
+                run_id,
+            )
 
             assert asset_doc.get("kind") == "tabular"
             assert asset_doc.get("format") == "parquet"
@@ -420,12 +401,16 @@ class TestIngestTabularJobE2E:
             s3_key = asset_doc.get("s3_key")
             assert s3_key, "Asset document missing s3_key"
             _assert_datalake_object_exists(
-                minio_client, minio_settings.lake_bucket, s3_key
+                minio_client,
+                minio_settings.lake_bucket,
+                s3_key,
             )
 
         finally:
             _cleanup_landing_zone_object(
-                minio_client, minio_settings.landing_bucket, object_key
+                minio_client,
+                minio_settings.landing_bucket,
+                object_key,
             )
             if run_id is not None:
                 _cleanup_asset_artifacts(
@@ -493,7 +478,11 @@ class TestIngestTabularJobE2E:
                     error_msg += f". Error details: {error_details}"
                 pytest.fail(error_msg)
 
-            asset_doc = _assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
+            asset_doc = _assert_mongodb_asset_exists(
+                mongo_client,
+                mongo_settings,
+                run_id,
+            )
             metadata = asset_doc.get("metadata") or {}
             tags = metadata.get("tags") or {}
             assert tags.get("join_key_clean") == "col_a"

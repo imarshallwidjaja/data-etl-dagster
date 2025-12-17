@@ -1,0 +1,23 @@
+{
+    "batch_id": "e2e_spatial_${UUID}",
+    "uploader": "e2e_test",
+    "intent": "ingest_vector",
+    "files": [
+        {
+            "path": "s3://landing-zone/e2e/${BATCH_ID}/e2e_sample_sa1_data.json",
+            "type": "spatial",
+            "format": "GeoJSON"
+        }
+    ],
+    "metadata": {
+        "project": "E2E_SPATIAL_ASSET_TEST",
+        "description": "End-to-end test for spatial asset ingestion - NSW SA1 boundaries sample with 42 features",
+        "tags": {
+            "dataset_id": "sa1_spatial_${UUID}",
+            "source": "ausurbhi_hhvi_nsw_sample",
+            "geometry_type": "MultiPolygon",
+            "feature_count": "42",
+            "crs": "EPSG:4283"
+        }
+    }
+}

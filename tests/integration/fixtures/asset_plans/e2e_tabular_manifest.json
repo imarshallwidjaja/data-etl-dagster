@@ -1,0 +1,22 @@
+{
+    "batch_id": "e2e_tabular_${UUID}",
+    "uploader": "e2e_test",
+    "intent": "ingest_tabular",
+    "files": [
+        {
+            "path": "s3://landing-zone/e2e/${BATCH_ID}/e2e_sample_table_data.csv",
+            "type": "tabular",
+            "format": "CSV"
+        }
+    ],
+    "metadata": {
+        "project": "E2E_TABULAR_ASSET_TEST",
+        "description": "End-to-end test for tabular asset ingestion - Heat vulnerability indices for SA1 regions",
+        "tags": {
+            "dataset_id": "sa1_tabular_${UUID}",
+            "source": "ausurbhi_hhvi_nsw_sample",
+            "row_count": "42",
+            "join_key": "sa1_code21"
+        }
+    }
+}
