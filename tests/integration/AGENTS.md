@@ -10,6 +10,7 @@ This directory includes:
 - **GraphQL-launched E2E** tests that validate offline-first loops:
   - `ingest_job` (spatial): landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup
   - `ingest_tabular_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
+  - `join_asset_job` (join): landing-zone tabular + data-lake spatial → PostGIS join → data-lake joined + MongoDB ledger + lineage
 
 ## Key invariants / non-negotiables
 
@@ -27,6 +28,7 @@ This directory includes:
 - `test_postgis_init.py`: verifies PostGIS initialization (extensions, utility functions)
 - `test_ingest_job_e2e.py`: launches `ingest_job` via GraphQL and asserts lake + ledger + cleanup
 - `test_ingest_tabular_e2e.py`: launches `ingest_tabular_job` via GraphQL and asserts lake + ledger + header mapping + join key normalization
+- `test_join_asset_e2e.py`: launches `join_asset_job` via GraphQL and asserts joined output + lineage record
 - `fixtures/`: versioned E2E sample inputs used by `test_ingest_job_e2e.py`
 
 ## Running

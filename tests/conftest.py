@@ -86,6 +86,56 @@ def valid_tabular_manifest(valid_tabular_manifest_dict):
 
 
 # =============================================================================
+# Join Manifest Fixtures
+# =============================================================================
+
+@pytest.fixture
+def valid_join_manifest_dict(valid_tabular_file_entry_dict):
+    """Complete valid join manifest dictionary."""
+    return {
+        "batch_id": "batch_join_001",
+        "uploader": "test_user",
+        "intent": "join_datasets",
+        "files": [valid_tabular_file_entry_dict],
+        "metadata": {
+            "project": "JOIN_TEST",
+            "description": "Test join manifest",
+            "tags": {"dataset_id": "joined_dataset_001"},
+            "join_config": {
+                "target_asset_id": "507f1f77bcf86cd799439011",
+                "left_key": "parcel_id",
+                "right_key": "parcel_id",
+                "how": "left",
+            },
+        },
+    }
+
+
+@pytest.fixture
+def valid_join_manifest(valid_join_manifest_dict):
+    """Complete valid join Manifest model instance."""
+    return Manifest(**valid_join_manifest_dict)
+
+
+@pytest.fixture
+def valid_spatial_asset(valid_bounds_dict):
+    """Spatial asset suitable for join testing."""
+    return Asset(
+        s3_key="data-lake/spatial_001/v1/data.parquet",
+        dataset_id="spatial_001",
+        version=1,
+        content_hash="sha256:" + "a" * 64,
+        dagster_run_id="run_spatial_123",
+        kind=AssetKind.SPATIAL,
+        format=OutputFormat.GEOPARQUET,
+        crs="EPSG:4326",
+        bounds=Bounds(**valid_bounds_dict),
+        metadata=AssetMetadata(title="Test Spatial Dataset"),
+        created_at=datetime(2024, 1, 1, 12, 0, 0),
+    )
+
+
+# =============================================================================
 # Manifest Fixtures
 # =============================================================================
 

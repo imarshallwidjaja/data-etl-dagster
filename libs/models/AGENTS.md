@@ -11,7 +11,7 @@ It is the application-level validation layer and the contract between ingestion,
 - **Strict, explicit typing**: prefer clear types over implicit coercions.
 - **Ledger alignment**: models that represent MongoDB documents must match Mongo init/schema expectations.
 - **Manifest contract is disciplined**: `FileEntry` forbids extras (no uploader CRS); `ManifestMetadata` only allows `project`, `description`, `tags` (primitive scalars), and structured `join_config`.
-- **Intent/type coherence**: `Manifest` enforces that `intent="ingest_tabular"` requires all files to be `type="tabular"`, and other intents forbid tabular files.
+- **Intent/type coherence**: `Manifest` enforces that `intent="ingest_tabular"` or `intent="join_datasets"` requires all files to be `type="tabular"`, and spatial intents forbid tabular files.
 - **Asset kind discrimination**: `Asset` uses `kind` field (spatial/tabular/joined) to determine CRS/bounds requirements. Tabular assets have `crs=None` and `bounds=None`.
 - **Stable env var aliases**: settings fields must map to the env vars used in `docker-compose.yaml`.
 
