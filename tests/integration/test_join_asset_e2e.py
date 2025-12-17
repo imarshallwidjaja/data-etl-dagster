@@ -154,7 +154,9 @@ def _upload_bytes(
     )
 
 
-def _launch_job_with_run_config(dagster_client, *, job_name: str, run_config: dict) -> str:
+def _launch_job_with_run_config(
+    dagster_client, *, job_name: str, run_config: dict, partition_key: str | None = None
+) -> str:
     launch_query = """
     mutation LaunchRun(
         $repositoryLocationName: String!
@@ -182,14 +184,18 @@ def _launch_job_with_run_config(dagster_client, *, job_name: str, run_config: di
     }
     """
 
+    execution_metadata: dict = {"tags": []}
+    if partition_key:
+        execution_metadata["tags"].append(
+            {"key": "dagster/partition", "value": partition_key}
+        )
+
     variables = {
         "repositoryLocationName": "etl_pipelines",
         "repositoryName": "__repository__",
         "jobName": job_name,
         "runConfigData": run_config,
-        "executionMetadata": {
-            "tags": [{"key": "dagster/partition", "value": run_config["ops"]["raw_manifest_json"]["config"]["manifest"]["metadata"]["tags"]["dataset_id"]}],
-        },
+        "executionMetadata": execution_metadata,
     }
     result = dagster_client.query(launch_query, variables=variables, timeout=10)
     assert "errors" not in result, f"Failed to launch job: {result.get('errors')}"
@@ -428,6 +434,7 @@ class TestJoinAssetE2E:
                 run_config={
                     "ops": {"raw_manifest_json": {"config": {"manifest": join_manifest}}}
                 },
+                partition_key=join_manifest["metadata"]["tags"]["dataset_id"],
             )
             status, error_details = _poll_run_to_completion(dagster_client, join_run_id)
             if status != "SUCCESS":
