@@ -1,18 +1,26 @@
-"""Dagster Definitions - Repository Configuration."""
+"""Dagster Definitions - Repository Configuration.
+
+Defines assets, jobs, resources, and sensors for the Spatial ETL Pipeline.
+"""
 
 from dagster import Definitions, EnvVar, define_asset_job
 
-from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
-from .partitions import dataset_partitions  # noqa: F401
 from .assets import (
     gdal_health_check,
+    joined_spatial_asset,
     raw_manifest_json,
     raw_spatial_asset,
     raw_tabular_asset,
-    joined_spatial_asset,
 )
-from .jobs import ingest_job, ingest_tabular_job
-from .sensors import manifest_sensor, spatial_sensor, tabular_sensor, join_sensor
+from .jobs import ingest_job  # Only legacy op-based job
+from .partitions import dataset_partitions
+from .resources import GDALResource, MinIOResource, MongoDBResource, PostGISResource
+from .sensors import join_sensor, manifest_sensor, spatial_sensor, tabular_sensor
+
+
+# =============================================================================
+# Asset Jobs
+# =============================================================================
 
 gdal_health_check_job = define_asset_job(
     "gdal_health_check_job",
@@ -20,23 +28,31 @@ gdal_health_check_job = define_asset_job(
     description="Health check for GDAL installation and dependencies",
 )
 
-join_asset_job = define_asset_job(
-    "join_asset_job",
-    selection=[raw_manifest_json, joined_spatial_asset],
-    description="Job to materialize joined_spatial_asset (join_datasets intent)",
-)
-
 spatial_asset_job = define_asset_job(
     "spatial_asset_job",
     selection=[raw_manifest_json, raw_spatial_asset],
-    description="Job to materialize raw_spatial_asset (asset-based spatial ingestion)",
+    partitions_def=dataset_partitions,
+    description="Materialize raw_spatial_asset with partition support",
 )
 
 tabular_asset_job = define_asset_job(
     "tabular_asset_job",
     selection=[raw_manifest_json, raw_tabular_asset],
-    description="Job to materialize raw_tabular_asset (asset-based tabular ingestion)",
+    partitions_def=dataset_partitions,
+    description="Materialize raw_tabular_asset with partition support",
 )
+
+join_asset_job = define_asset_job(
+    "join_asset_job",
+    selection=[raw_manifest_json, joined_spatial_asset],
+    partitions_def=dataset_partitions,
+    description="Materialize joined_spatial_asset (join_datasets intent)",
+)
+
+
+# =============================================================================
+# Definitions
+# =============================================================================
 
 defs = Definitions(
     assets=[
@@ -48,11 +64,10 @@ defs = Definitions(
     ],
     jobs=[
         gdal_health_check_job,
-        ingest_job,
-        ingest_tabular_job,
-        join_asset_job,
-        spatial_asset_job,
-        tabular_asset_job,
+        ingest_job,  # Legacy op-based job
+        spatial_asset_job,  # Asset-based spatial
+        tabular_asset_job,  # Asset-based tabular
+        join_asset_job,  # Asset-based join
     ],
     resources={
         "minio": MinIOResource(
@@ -81,6 +96,10 @@ defs = Definitions(
         ),
     },
     schedules=[],
-    sensors=[manifest_sensor, spatial_sensor, tabular_sensor, join_sensor],
+    sensors=[
+        manifest_sensor,  # Legacy: routes to ingest_job only
+        spatial_sensor,  # Asset-based: routes to spatial_asset_job
+        tabular_sensor,  # Asset-based: routes to tabular_asset_job
+        join_sensor,  # Asset-based: routes to join_asset_job
+    ],
 )
-

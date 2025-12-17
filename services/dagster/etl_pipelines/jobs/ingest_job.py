@@ -1,4 +1,9 @@
-"""Main ingestion job: Load → Transform → Export pipeline."""
+"""Legacy spatial ingestion job (op-based).
+
+This job uses ops directly without asset tracking. It is kept for
+backwards compatibility. New spatial ingestion should use spatial_asset_job
+which properly materializes raw_spatial_asset with partition support.
+"""
 
 from dagster import job
 

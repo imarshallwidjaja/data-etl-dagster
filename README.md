@@ -460,7 +460,7 @@ pytest -m "integration and not e2e" tests/integration -v
 
 E2E tests launch jobs via Dagster GraphQL and validate offline-first loops:
 - `ingest_job` (spatial): landing-zone → PostGIS ephemeral → data-lake + MongoDB ledger + schema cleanup (uses fixtures under `tests/integration/fixtures/`)
-- `ingest_tabular_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
+- `tabular_asset_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
 
 ```bash
 pytest -m "integration and e2e" tests/integration -v
@@ -551,7 +551,7 @@ Integration tests include:
 - **Initialization verification** tests (MongoDB collections/indexes, PostGIS extensions/functions)
 - **E2E tests** launched via Dagster GraphQL that validate offline-first loops:
   - `ingest_job` (spatial): asset record exists in MongoDB, object exists in MinIO `data-lake`, PostGIS `proc_<run_id>` schema cleaned up
-  - `ingest_tabular_job` (tabular): asset record exists in MongoDB, Parquet object exists in MinIO `data-lake`, header mapping persisted, join key normalization persisted (no PostGIS)
+  - `tabular_asset_job` (tabular): asset record exists in MongoDB, Parquet object exists in MinIO `data-lake`, header mapping persisted, join key normalization persisted (no PostGIS)
   - `join_asset_job` (join): joined GeoParquet exists in MinIO `data-lake`, joined asset record exists in MongoDB, lineage edge recorded (PostGIS transient)
 
 - `test_minio.py` (3 tests) - MinIO connectivity and read/write operations
@@ -563,7 +563,7 @@ Integration tests include:
 - `test_mongodb_init.py` (5 tests) - MongoDB initialization verification (collections, indexes)
 - `test_postgis_init.py` (6 tests) - PostGIS initialization verification (extensions, utility functions)
 - `test_ingest_job_e2e.py` (E2E) - `ingest_job` end-to-end run launched via GraphQL (uses `tests/integration/fixtures/`)
-- `test_ingest_tabular_e2e.py` (E2E) - `ingest_tabular_job` end-to-end run launched via GraphQL (CSV → Parquet → Mongo)
+- `test_ingest_tabular_e2e.py` (E2E) - `tabular_asset_job` end-to-end run launched via GraphQL (CSV → Parquet → Mongo)
 - `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run (spatial parent via ingest_job + tabular CSV → joined GeoParquet + lineage)
 
 **Total Coverage:** 205 unit tests + 27 integration tests = 232 tests

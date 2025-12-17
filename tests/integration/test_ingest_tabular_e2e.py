@@ -1,8 +1,8 @@
-"""Integration test: End-to-end ingest_tabular_job pipeline via Dagster GraphQL.
+"""Integration test: End-to-end tabular_asset_job pipeline via Dagster GraphQL.
 
 This test validates the tabular offline-first ETL loop:
 1. Upload a sample CSV to landing-zone
-2. Launch ingest_tabular_job via GraphQL with manifest input
+2. Launch tabular_asset_job via GraphQL with manifest input
 3. Verify data-lake Parquet object exists
 4. Verify MongoDB asset record exists and has tabular-specific fields
 5. Cleanup MinIO + Mongo artifacts
@@ -127,7 +127,7 @@ def _upload_csv_to_landing_zone(
     )
 
 
-def _launch_ingest_tabular_job(dagster_client, manifest: dict) -> str:
+def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
     launch_query = """
     mutation LaunchRun(
         $repositoryLocationName: String!
@@ -166,14 +166,16 @@ def _launch_ingest_tabular_job(dagster_client, manifest: dict) -> str:
     }
     """
 
-    # IMPORTANT: For this job/op wiring, Dagster expects the manifest dict directly.
-    # If we wrap it as {"value": manifest}, the op receives {"value": {...}} and Pydantic rejects it.
     variables = {
         "repositoryLocationName": "etl_pipelines",
         "repositoryName": "__repository__",
-        "jobName": "ingest_tabular_job",
+        "jobName": "tabular_asset_job",
         "runConfigData": {
-            "ops": {"download_tabular_from_landing": {"inputs": {"manifest": manifest}}}
+            "ops": {
+                "raw_manifest_json": {
+                    "config": {"manifest": manifest},
+                },
+            }
         },
     }
 
@@ -342,7 +344,7 @@ def _cleanup_asset_artifacts(
 
 
 class TestIngestTabularJobE2E:
-    def test_ingest_tabular_job_full_pipeline(
+    def test_tabular_asset_job_full_pipeline(
         self,
         dagster_client,
         minio_client,
@@ -383,7 +385,7 @@ class TestIngestTabularJobE2E:
                 csv_bytes,
             )
 
-            run_id = _launch_ingest_tabular_job(dagster_client, manifest)
+            run_id = _launch_tabular_asset_job(dagster_client, manifest)
 
             status, error_details = _poll_run_to_completion(dagster_client, run_id)
             if status != "SUCCESS":
@@ -428,7 +430,7 @@ class TestIngestTabularJobE2E:
                     asset_doc,
                 )
 
-    def test_ingest_tabular_job_with_join_key_normalization(
+    def test_tabular_asset_job_with_join_key_normalization(
         self,
         dagster_client,
         minio_client,
@@ -475,7 +477,7 @@ class TestIngestTabularJobE2E:
                 csv_bytes,
             )
 
-            run_id = _launch_ingest_tabular_job(dagster_client, manifest)
+            run_id = _launch_tabular_asset_job(dagster_client, manifest)
 
             status, error_details = _poll_run_to_completion(dagster_client, run_id)
             if status != "SUCCESS":
