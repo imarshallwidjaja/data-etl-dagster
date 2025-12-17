@@ -12,6 +12,15 @@ This platform processes spatial data through a strict manifest-based ingestion p
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
 
+### Sensors (legacy + asset-based)
+
+To fix the “assets defined but never materialized” mismatch, manifests are routed by dedicated sensors:
+
+- `manifest_sensor` (**legacy**) → `ingest_job` (op-based; backwards compatibility; skips tabular/join)
+- `spatial_sensor` → `spatial_asset_job` (materializes `raw_spatial_asset` for `ingest_vector` / `ingest_raster`)
+- `tabular_sensor` → `tabular_asset_job` (materializes `raw_tabular_asset` for `ingest_tabular`)
+- `join_sensor` → `join_asset_job` (materializes `joined_spatial_asset` for `join_datasets`)
+
 ### Asset partitioning (dataset_id)
 
 Dagster assets are **partitioned by `dataset_id`** (dynamic partitions) so each dataset can be materialized, reprocessed, and joined independently.

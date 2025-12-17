@@ -1,8 +1,8 @@
 """
-Unit tests for manifest_sensor.
+Unit tests for manifest_sensor (legacy).
 
-Tests sensor behavior with mocked MinIOResource and SensorEvaluationContext.
-Includes tests for multi-lane routing, Traffic Controller gating, archiving, and cursor migration.
+This sensor is intentionally limited to launching `ingest_job` only and
+skips intents handled by asset sensors (tabular/join).
 """
 
 import json
@@ -101,50 +101,32 @@ def test_valid_manifest_yields_run_request_ingest_lane(mock_sensor_context, mock
     assert mock_sensor_context.update_cursor.called
 
 
-# =============================================================================
-# Test: Tabular lane routing
-# =============================================================================
-
-@patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest,tabular"}, clear=False)
-def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
-    """Test that intent='ingest_tabular' routes to tabular lane."""
+def test_tabular_intent_is_skipped_and_not_archived(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
+    """Tabular intents are handled by tabular_sensor; legacy manifest_sensor should skip and not archive."""
     manifest_key = "manifests/batch_tabular.json"
     mock_minio_resource.list_manifests.return_value = [manifest_key]
     mock_minio_resource.get_manifest.return_value = valid_tabular_manifest_dict
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    assert len(results) == 1
-    run_request = results[0]
-    assert run_request.run_key == f"tabular:{valid_tabular_manifest_dict['batch_id']}"
-    assert run_request.job_name == "ingest_tabular_job"
-    assert run_request.tags["lane"] == "tabular"
-    # Check that manifest is passed as op input to download_tabular_from_landing
-    assert "download_tabular_from_landing" in run_request.run_config["ops"]
-    assert "inputs" in run_request.run_config["ops"]["download_tabular_from_landing"]
-    assert "manifest" in run_request.run_config["ops"]["download_tabular_from_landing"]["inputs"]
-    assert "value" in run_request.run_config["ops"]["download_tabular_from_landing"]["inputs"]["manifest"]
-    assert run_request.run_config["ops"]["download_tabular_from_landing"]["inputs"]["manifest"]["value"]["batch_id"] == valid_tabular_manifest_dict["batch_id"]
+
+    assert results == []
+    # Must not archive: tabular_sensor should still be able to see the manifest
+    mock_minio_resource.move_to_archive.assert_not_called()
+    assert mock_sensor_context.update_cursor.called
 
 
-# =============================================================================
-# Test: Join lane routing
-# =============================================================================
-
-@patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest,join"}, clear=False)
-def test_join_intent_routes_to_join_lane(
+def test_join_intent_is_skipped_and_not_archived(
     mock_sensor_context,
     mock_minio_resource,
     valid_manifest_dict,
     valid_tabular_file_entry_dict,
 ):
-    """Test that intent='join_datasets' routes to join lane."""
+    """Join intents are handled by join_sensor; legacy manifest_sensor should skip and not archive."""
     manifest_key = "manifests/batch_join.json"
     join_manifest = {
         **valid_manifest_dict,
         "intent": "join_datasets",
         "batch_id": "batch_join",
-        # join_datasets requires tabular input files
         "files": [valid_tabular_file_entry_dict],
         "metadata": {
             **valid_manifest_dict["metadata"],
@@ -153,83 +135,16 @@ def test_join_intent_routes_to_join_lane(
                 "left_key": "parcel_id",
                 "right_key": "parcel_id",
                 "how": "left",
-            }
-        }
+            },
+        },
     }
     mock_minio_resource.list_manifests.return_value = [manifest_key]
     mock_minio_resource.get_manifest.return_value = join_manifest
-    
+
     results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    assert len(results) == 1
-    run_request = results[0]
-    assert run_request.run_key == f"join:{join_manifest['batch_id']}"
-    assert run_request.job_name == "join_asset_job"
-    assert run_request.tags["lane"] == "join"
 
-    # The run config should now be structured for raw_manifest_json asset config
-    expected_config = {
-        "ops": {
-            "raw_manifest_json": {
-                "config": {
-                    "manifest": join_manifest,
-                }
-            }
-        }
-    }
-    assert run_request.run_config == expected_config
-
-
-# =============================================================================
-# Test: Join lane requires join_config
-# =============================================================================
-
-@patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest,join"}, clear=False)
-def test_join_lane_requires_join_config(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
-    """Test that join lane raises error if join_config is missing."""
-    manifest_key = "manifests/batch_join_no_config.json"
-    join_manifest_no_config = {
-        **valid_manifest_dict,
-        "intent": "join_datasets",
-        "batch_id": "batch_join_no_config",
-        "metadata": {
-            **valid_manifest_dict["metadata"],
-            "join_config": None,  # Missing join_config
-        }
-    }
-    mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = join_manifest_no_config
-    
-    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    # Should not yield RunRequest
-    assert len(results) == 0
-    # Should log error
-    mock_sensor_context.log.error.assert_called()
-    # Should still archive and mark as processed
-    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
-    assert mock_sensor_context.update_cursor.called
-
-
-# =============================================================================
-# Test: Traffic Controller gating - disabled lane
-# =============================================================================
-
-@patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest"}, clear=False)
-def test_disabled_lane_not_processed(mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict):
-    """Test that disabled lanes are skipped but still archived."""
-    manifest_key = "manifests/batch_tabular.json"
-    mock_minio_resource.list_manifests.return_value = [manifest_key]
-    mock_minio_resource.get_manifest.return_value = valid_tabular_manifest_dict
-    
-    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
-    
-    # Should not yield RunRequest (lane disabled)
-    assert len(results) == 0
-    # Should log info about disabled lane
-    mock_sensor_context.log.info.assert_called()
-    # Should still archive and mark as processed (one-shot)
-    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
+    assert results == []
+    mock_minio_resource.move_to_archive.assert_not_called()
     assert mock_sensor_context.update_cursor.called
 
 

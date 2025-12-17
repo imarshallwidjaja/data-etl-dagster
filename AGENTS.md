@@ -107,6 +107,13 @@ The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partiti
   - **Spatial intents** (e.g., `ingest_vector`, `ingest_building_footprints`): Route to spatial pipeline using PostGIS
   - **Tabular intent** (`ingest_tabular`): Routes to tabular pipeline (CSV → Parquet, no PostGIS)
   - Unknown spatial intents fall back to the default recipe
+  
+### Sensor responsibilities (legacy + asset-based)
+
+- **`manifest_sensor` (legacy)**: triggers op-based `ingest_job` for non-tabular, non-join intents (backwards compatibility).
+- **`spatial_sensor`**: triggers asset-based `spatial_asset_job` for `intent in {"ingest_vector","ingest_raster"}` to materialize `raw_spatial_asset`.
+- **`tabular_sensor`**: triggers asset-based `tabular_asset_job` for `intent == "ingest_tabular"` to materialize `raw_tabular_asset`.
+- **`join_sensor`**: triggers `join_asset_job` for `intent == "join_datasets"` to materialize `joined_spatial_asset` (requires `metadata.join_config.target_asset_id`).
 - Vector geometry column is standardized to `geom` in PostGIS compute schemas.
 - Tabular ingestion requires exactly one file per manifest. Headers are automatically cleaned to valid Postgres identifiers.
 - `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.

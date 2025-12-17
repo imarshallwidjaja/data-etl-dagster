@@ -1,11 +1,14 @@
-"""Dagster Sensors - Event-Driven Triggers.
-
-This module contains sensors that monitor external systems and trigger Dagster jobs.
-Currently implements:
-- manifest_sensor: Polls MinIO landing zone for new manifest files and triggers ingestion jobs.
-"""
+"""Dagster Sensors - Event-Driven Job Triggers."""
 
 from .manifest_sensor import manifest_sensor
+from .spatial_sensor import spatial_sensor
+from .tabular_sensor import tabular_sensor
+from .join_sensor import join_sensor
 
-__all__ = ["manifest_sensor"]
+__all__ = [
+    "manifest_sensor",
+    "spatial_sensor",
+    "tabular_sensor",
+    "join_sensor",
+]
 

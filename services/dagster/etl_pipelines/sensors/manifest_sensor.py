@@ -1,7 +1,13 @@
-"""Manifest sensor for detecting new manifest files in MinIO landing zone.
+"""Legacy manifest sensor for detecting new manifest files in MinIO landing zone.
 
-Multi-lane router that routes manifests to different jobs based on intent.
-Controlled by MANIFEST_ROUTER_ENABLED_LANES environment variable.
+This sensor is intentionally **legacy** and only triggers the op-based `ingest_job`
+for non-tabular, non-join intents.
+
+Tabular and join manifests are handled by dedicated asset sensors:
+- `tabular_sensor` -> `tabular_asset_job` (materializes `raw_tabular_asset`)
+- `join_sensor` -> `join_asset_job` (materializes `joined_spatial_asset`)
+
+The sensor remains one-shot (cursor-based) for safety and traceability.
 """
 
 import json
@@ -26,22 +32,13 @@ from libs.models import Manifest
 # =============================================================================
 
 class Lane(str, Enum):
-    """Processing lanes for manifest routing."""
+    """Processing lanes for legacy manifest routing."""
     INGEST = "ingest"
-    TABULAR = "tabular"
-    JOIN = "join"
 
 
 # Lane to job name mapping
 LANE_TO_JOB: dict[Lane, str] = {
     Lane.INGEST: "ingest_job",
-    Lane.TABULAR: "ingest_tabular_job",
-    Lane.JOIN: "join_asset_job",
-}
-
-# Lane to op name mapping for placeholder jobs
-LANE_TO_OP: dict[Lane, str] = {
-    Lane.TABULAR: "tabular_validate_and_log",
 }
 
 
@@ -160,31 +157,24 @@ def build_cursor(processed_keys: list[str]) -> str:
 
 def determine_lane(manifest: Manifest) -> Lane:
     """
-    Determine processing lane based on manifest intent.
+    Determine processing lane for the **legacy** ingest_job only.
+
+    Returns None for intents handled by asset sensors.
     
     Args:
         manifest: Validated manifest
         
     Returns:
-        Lane enum value
-        
-    Raises:
-        ValueError: If join lane is selected but join_config is missing
+        Lane enum value, or None if the manifest is handled by asset sensors.
     """
     intent = manifest.intent
     
-    if intent == "ingest_tabular":
-        return Lane.TABULAR
-    elif intent == "join_datasets":
-        if manifest.metadata.join_config is None:
-            raise ValueError(
-                f"Manifest with intent 'join_datasets' requires metadata.join_config. "
-                f"batch_id: {manifest.batch_id}"
-            )
-        return Lane.JOIN
-    else:
-        # Default to ingest lane for all other intents
-        return Lane.INGEST
+    # Skip intents handled by dedicated asset sensors
+    if intent in ("ingest_tabular", "join_datasets"):
+        return None
+
+    # Default to ingest lane for all other intents
+    return Lane.INGEST
 
 
 def enabled_lanes() -> set[Lane]:
@@ -206,12 +196,9 @@ def enabled_lanes() -> set[Lane]:
     enabled = set()
     
     for lane_str in enabled_strs:
-        try:
-            lane = Lane(lane_str)
-            enabled.add(lane)
-        except ValueError:
-            # Skip invalid lane names
-            continue
+        # Only INGEST is supported by this legacy sensor.
+        if lane_str == Lane.INGEST.value:
+            enabled.add(Lane.INGEST)
     
     # Always include ingest if nothing else is enabled
     if not enabled:
@@ -245,43 +232,18 @@ def build_run_request(
     archive_key = f"archive/{manifest_key}"
     
     # Build run config based on lane
-    if lane == Lane.INGEST:
-        # ingest_job expects manifest as op input to load_to_postgis
-        run_config = {
-            "ops": {
-                "load_to_postgis": {
-                    "inputs": {
-                        "manifest": {
-                            "value": manifest.model_dump(mode="json"),
-                        }
+    # ingest_job expects manifest as op input to load_to_postgis
+    run_config = {
+        "ops": {
+            "load_to_postgis": {
+                "inputs": {
+                    "manifest": {
+                        "value": manifest.model_dump(mode="json"),
                     }
                 }
             }
         }
-    elif lane == Lane.TABULAR:
-        # ingest_tabular_job expects manifest as op input to download_tabular_from_landing
-        run_config = {
-            "ops": {
-                "download_tabular_from_landing": {
-                    "inputs": {
-                        "manifest": {
-                            "value": manifest.model_dump(mode="json"),
-                        }
-                    }
-                }
-            }
-        }
-    else:
-        # Asset job (join_asset_job) expects raw_manifest_json asset config
-        run_config = {
-            "ops": {
-                "raw_manifest_json": {
-                    "config": {
-                        "manifest": manifest.model_dump(mode="json"),
-                    }
-                }
-            }
-        }
+    }
     
     tags = {
         "batch_id": manifest.batch_id,
@@ -308,7 +270,7 @@ def build_run_request(
     minimum_interval_seconds=30,
     default_status=DefaultSensorStatus.RUNNING,
     name="manifest_sensor",
-    description="Multi-lane router: Polls MinIO landing zone for new manifest files and routes to appropriate jobs",
+    description="Legacy sensor: routes non-tabular, non-join manifests to ingest_job (op-based). Tabular/join handled by asset sensors.",
 )
 def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
     """
@@ -319,12 +281,13 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
     2. Filter out already-processed (check cursor)
     3. For each new manifest:
        a. Download and validate against Manifest model
-       b. Determine processing lane based on intent
-       c. Check if lane is enabled (Traffic Controller)
-       d. If enabled: yield RunRequest with lane-prefixed run_key
-       e. If disabled: log and mark as processed (one-shot)
-       f. Archive manifest after processing
-       g. Update cursor to track processed manifests
+       b. Determine lane for legacy ingest_job (or None for asset-handled intents)
+       c. If lane is None: mark as processed but do NOT archive (asset sensors will process + archive)
+       d. Check if lane is enabled (Traffic Controller)
+       e. If enabled: yield RunRequest with lane-prefixed run_key
+       f. If disabled: log and mark as processed (one-shot)
+       g. Archive manifest after processing (legacy ingest lane only)
+       h. Update cursor to track processed manifests
     
     Args:
         context: Dagster sensor evaluation context
@@ -381,20 +344,17 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     context.log.warning(f"Failed to archive invalid manifest '{manifest_key}': {archive_error}")
                 continue
             
-            # Determine lane
-            try:
-                lane = determine_lane(manifest)
-            except ValueError as e:
-                context.log.error(
-                    f"Lane determination failed for manifest '{manifest_key}': {e}. "
-                    f"Marking as processed to prevent retry."
+            # Determine lane for legacy ingest_job
+            lane = determine_lane(manifest)
+
+            # Skip manifests handled by asset sensors (tabular/join). We still mark as
+            # processed for this sensor to avoid re-scanning forever, but we do NOT
+            # archive here (dedicated sensors will archive after processing).
+            if lane is None:
+                context.log.info(
+                    f"Manifest '{manifest_key}' (intent={manifest.intent}) handled by asset sensor, skipping legacy ingest routing"
                 )
                 processed_this_run.append(manifest_key)
-                # Archive manifest with invalid lane config
-                try:
-                    minio.move_to_archive(manifest_key)
-                except Exception as archive_error:
-                    context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
                 continue
             
             # Check if lane is enabled (Traffic Controller)

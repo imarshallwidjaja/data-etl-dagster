@@ -46,7 +46,7 @@ Common env vars:
 - **MinIO**: `MINIO_ENDPOINT` (must be `host:port` without scheme, e.g., `minio:9000`), `MINIO_ROOT_USER`, `MINIO_ROOT_PASSWORD`
 - **MongoDB**: `MONGO_CONNECTION_STRING`
 - **PostGIS**: `POSTGRES_HOST`, `POSTGRES_USER`, `POSTGRES_PASSWORD`
-- **Manifest Router (Traffic Controller)**: `MANIFEST_ROUTER_ENABLED_LANES` (comma-separated: `ingest,tabular,join`; defaults to `ingest` when unset)
+- **Manifest Router (Traffic Controller)**: `MANIFEST_ROUTER_ENABLED_LANES` (comma-separated; legacy `manifest_sensor` only uses `ingest`; defaults to `ingest` when unset)
 
 Notes:
 - Bucket names (`landing-zone`, `data-lake`) and DB names (`spatial_etl`, `spatial_compute`) are currently hardcoded in `etl_pipelines/definitions.py` to match architectural defaults.
@@ -60,22 +60,21 @@ The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partiti
 - Partition keys are **registered at runtime** by partitioned assets when they materialize.
 - Partition key source (from the manifest): `metadata.tags.dataset_id` if present, else generated `dataset_{uuid12}`.
 
-### Manifest Sensor (Multi-Lane Router)
+### Sensors (Legacy + Asset-based)
 
-The `manifest_sensor` is a multi-lane router that routes manifests to different jobs based on the `intent` field.
+The platform uses **dedicated sensors** to ensure manifests trigger the correct lane (legacy op jobs vs asset jobs).
 
-**Lane Mapping:**
-- `intent == "ingest_tabular"` → `tabular` lane → `ingest_tabular_job`
-- `intent == "join_datasets"` → `join` lane → `join_asset_job` (materializes `joined_spatial_asset`; requires `metadata.join_config`)
-- All other intents → `ingest` lane → `ingest_job` (default)
+**Sensor responsibilities (target):**
+- `manifest_sensor` (**LEGACY**) → triggers `ingest_job` for non-tabular, non-join intents
+- `spatial_sensor` → triggers `spatial_asset_job` for `intent in {"ingest_vector", "ingest_raster"}` (materializes `raw_spatial_asset`)
+- `tabular_sensor` → triggers `tabular_asset_job` for `intent == "ingest_tabular"` (materializes `raw_tabular_asset`)
+- `join_sensor` → triggers `join_asset_job` for `intent == "join_datasets"` (materializes `joined_spatial_asset`; requires `metadata.join_config.target_asset_id`)
 
 **Note (asset architecture fix)**:
-- The target architecture introduces dedicated sensors that launch **asset-based jobs** for spatial/tabular ingestion so `raw_spatial_asset` / `raw_tabular_asset` are materialized (not just op-based jobs).
-- Component 1 (dynamic partitions) is implemented; sensor/job separation is handled in later components.
+- The legacy `manifest_sensor` intentionally **skips** tabular/join intents (it marks them processed for itself, but does not archive them) so the dedicated asset sensors can process + archive them.
 
-**Traffic Controller (`MANIFEST_ROUTER_ENABLED_LANES`):**
-- Controls which lanes may launch runs
-- Comma-separated values: `ingest`, `tabular`, `join`
+**Traffic Controller (`MANIFEST_ROUTER_ENABLED_LANES`)**:
+- Controls whether the legacy `manifest_sensor` may launch `ingest_job`
 - Default when unset: `ingest` only
 - If a manifest maps to a disabled lane, the sensor:
   - Logs that the lane is disabled

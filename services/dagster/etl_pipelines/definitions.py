@@ -12,7 +12,7 @@ from .assets import (
     joined_spatial_asset,
 )
 from .jobs import ingest_job, ingest_tabular_job
-from .sensors import manifest_sensor
+from .sensors import manifest_sensor, spatial_sensor, tabular_sensor, join_sensor
 
 gdal_health_check_job = define_asset_job(
     "gdal_health_check_job",
@@ -26,6 +26,18 @@ join_asset_job = define_asset_job(
     description="Job to materialize joined_spatial_asset (join_datasets intent)",
 )
 
+spatial_asset_job = define_asset_job(
+    "spatial_asset_job",
+    selection=[raw_manifest_json, raw_spatial_asset],
+    description="Job to materialize raw_spatial_asset (asset-based spatial ingestion)",
+)
+
+tabular_asset_job = define_asset_job(
+    "tabular_asset_job",
+    selection=[raw_manifest_json, raw_tabular_asset],
+    description="Job to materialize raw_tabular_asset (asset-based tabular ingestion)",
+)
+
 defs = Definitions(
     assets=[
         gdal_health_check,
@@ -34,7 +46,14 @@ defs = Definitions(
         raw_tabular_asset,
         joined_spatial_asset,
     ],
-    jobs=[gdal_health_check_job, ingest_job, ingest_tabular_job, join_asset_job],
+    jobs=[
+        gdal_health_check_job,
+        ingest_job,
+        ingest_tabular_job,
+        join_asset_job,
+        spatial_asset_job,
+        tabular_asset_job,
+    ],
     resources={
         "minio": MinIOResource(
             endpoint=EnvVar("MINIO_ENDPOINT"),
@@ -62,6 +81,6 @@ defs = Definitions(
         ),
     },
     schedules=[],
-    sensors=[manifest_sensor],
+    sensors=[manifest_sensor, spatial_sensor, tabular_sensor, join_sensor],
 )
 
