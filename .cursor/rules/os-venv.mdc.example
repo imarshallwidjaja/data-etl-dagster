@@ -10,11 +10,32 @@ alwaysApply: true
 ## Dependency/environment management
 
 - **Conda-only**: Use conda for environment and dependency management.
-- **Required env**: Always activate the conda environment **`data-etl-dagster`** before running commands.
+- **Required env**: Always you are in the proper conda environment **`data-etl-dagster`** before you start running commands. If not activate it with:
 
 ```powershell
 conda activate data-etl-dagster
+
 ```
+
+  - DO NOT TRY TO ACTIVATE CONDA TWICE IF IT IS ALREADY ACTIVATED TO THE CORRECT ENVIRONMENT.
+
+- **Installing dependencies**: Use the following command to install dependencies for testing:
+```powershell
+pip install -r requirements-test.txt
+```
+  - You will need to install the dependencies for the project in the conda environment before running the tests.
+
+- **Docker stack**:
+  - Use the following command to start the docker stack:
+```powershell
+docker compose -f docker-compose.yaml up -d --build \
+    dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+```
+  - Use the following command to stop the docker stack:
+```powershell
+docker compose -f docker-compose.yaml down -v
+```
+  - You may need to stop and start the docker stack to apply changes to the code.
 
 ## Failure handling
 
