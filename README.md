@@ -104,6 +104,37 @@ Create a `manifest.json` file describing your data. The manifest format is curre
 }
 ```
 
+**Example: Join Datasets (Tabular + Spatial)**
+
+```json
+{
+  "batch_id": "batch_join_001",
+  "uploader": "user_123",
+  "intent": "join_datasets",
+  "files": [
+    {
+      "path": "s3://landing-zone/batch_join_001/attributes.csv",
+      "type": "tabular",
+      "format": "CSV"
+    }
+  ],
+  "metadata": {
+    "project": "JOIN_DEMO",
+    "description": "Join tabular attributes with spatial parcels",
+    "tags": {
+      "source": "analysis",
+      "priority": 2
+    },
+    "join_config": {
+      "target_asset_id": "dataset_abc123def456",
+      "left_key": "parcel_id",
+      "right_key": "parcel_id",
+      "how": "left"
+    }
+  }
+}
+```
+
 **Example: Vector Data (Default Recipe)**
 ```json
 {
@@ -138,6 +169,8 @@ Create a `manifest.json` file describing your data. The manifest format is curre
     - Unknown spatial intents fall back to the default recipe
   - **Tabular intent:**
     - `ingest_tabular`: Tabular data ingestion (CSV → Parquet with header cleaning, no PostGIS required)
+  - **Join intent:**
+    - `join_datasets`: Join tabular data with spatial dataset to create spatialized tabular output
 - `files` (required): Array of file entries, each with:
   - `path`: S3 path to the file (must start with `s3://landing-zone/`)
   - `type`: File type (`raster`, `vector`, or `tabular`)
@@ -184,10 +217,12 @@ The manifest sensor polls the `manifests/` prefix every 30 seconds. Once your ma
    - If valid, triggers the ingestion job
 
 2. **Job Execution** (Load → Transform → Export):
-   - **Load**: Files are loaded from MinIO landing zone to PostGIS ephemeral schema using GDAL ogr2ogr
+   - **Spatial Ingestion**: Files are loaded from MinIO landing zone to PostGIS ephemeral schema using GDAL ogr2ogr
+   - **Tabular Ingestion**: CSV files are processed directly to Parquet format with header cleaning and column normalization
+   - **Join Processing**: Tabular data is joined with spatial datasets using PostGIS SQL joins, producing spatialized tabular outputs
    - **Transform**: Spatial transformations are applied using recipe-based architecture (CRS normalization, geometry simplification, spatial indexing)
-   - **Export**: Processed data is exported to GeoParquet format and uploaded to MinIO data lake
-   - **Register**: Asset metadata and lineage are recorded in MongoDB ledger
+   - **Export**: Processed data is exported to GeoParquet or Parquet format and uploaded to MinIO data lake
+   - **Register**: Asset metadata and lineage relationships are recorded in MongoDB ledger
    - **Cleanup**: PostGIS ephemeral schema is automatically dropped after export
 
 3. **Monitor Progress**:
@@ -328,8 +363,10 @@ graph TD
         Sensor -->|3. Signal run| Daemon
         Daemon -->|4. Launch Run| CodeLoc
         CodeLoc -->|5. Read Raw Data| Landing
-        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
-        CodeLoc -->|7. Write GeoParquet| Lake
+        CodeLoc -->|6a. Spatial Ops - SQL| PostGIS
+        CodeLoc -->|6b. Tabular Ops - Direct| CodeLoc
+        CodeLoc -->|6c. Join Ops - Tabular + Spatial| PostGIS
+        CodeLoc -->|7. Write GeoParquet/Parquet| Lake
         CodeLoc -->|8. Log Lineage| Mongo
     end
 ```
@@ -444,6 +481,7 @@ pytest -m "integration and not e2e" tests/integration -v
 E2E tests launch jobs via Dagster GraphQL and validate offline-first loops:
 - `ingest_job` (spatial): landing-zone → PostGIS ephemeral → data-lake + MongoDB ledger + schema cleanup (uses fixtures under `tests/integration/fixtures/`)
 - `ingest_tabular_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
+- `join_asset_job` (joined): tabular landing-zone → spatial lookup → PostGIS join → data-lake + MongoDB ledger + lineage tracking
 
 ```bash
 pytest -m "integration and e2e" tests/integration -v
@@ -545,8 +583,9 @@ Integration tests include:
 - `test_postgis_init.py` (6 tests) - PostGIS initialization verification (extensions, utility functions)
 - `test_ingest_job_e2e.py` (E2E) - `ingest_job` end-to-end run launched via GraphQL (uses `tests/integration/fixtures/`)
 - `test_ingest_tabular_e2e.py` (E2E) - `ingest_tabular_job` end-to-end run launched via GraphQL (CSV → Parquet → Mongo)
+- `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run launched via GraphQL (tabular + spatial join → GeoParquet + lineage)
 
-**Total Coverage:** 189 unit tests + 26 integration tests = 215 tests
+**Total Coverage:** 196 unit tests + 27 integration tests = 223 tests
 
 #### Continuous Integration
 

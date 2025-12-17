@@ -13,6 +13,7 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
 - **Tabular processing**: Tabular data (CSV) is processed directly to Parquet without PostGIS. Headers are cleaned to valid Postgres identifiers for reliable joins.
+- **Derived assets**: Join operations create new spatialized tabular datasets by combining tabular data with spatial parents.
 
 ## Entry points / key files
 
@@ -45,6 +46,12 @@ graph TD
         CodeLoc -->|6b. Tabular Ops - Direct| CodeLoc
         CodeLoc -->|7. Write GeoParquet/Parquet| Lake
         CodeLoc -->|8. Log Lineage| Mongo
+
+        %% Join processing lane
+        Sensor -->|intent=join_datasets| JoinAsset[joined_spatial_asset]
+        JoinAsset -->|Load & Join Data| PostGIS
+        JoinAsset -->|Write Joined Data| Lake
+        JoinAsset -->|Record Lineage| Mongo
     end
 ```
 
@@ -98,11 +105,13 @@ graph TD
 - The `intent` selects a transformation recipe or processing lane:
   - **Spatial intents** (e.g., `ingest_vector`, `ingest_building_footprints`): Route to spatial pipeline using PostGIS
   - **Tabular intent** (`ingest_tabular`): Routes to tabular pipeline (CSV → Parquet, no PostGIS)
+  - **Join intent** (`join_datasets`): Routes to join pipeline (combines tabular data with spatial parent using PostGIS)
   - Unknown spatial intents fall back to the default recipe
 - Vector geometry column is standardized to `geom` in PostGIS compute schemas.
 - Tabular ingestion requires exactly one file per manifest. Headers are automatically cleaned to valid Postgres identifiers.
 - `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.
-- Intent/type coherence: `intent="ingest_tabular"` requires all files to have `type="tabular"`; other intents forbid tabular files.
+- Intent/type coherence: `intent="ingest_tabular"` requires all files to have `type="tabular"`; `intent="join_datasets"` requires tabular files; other intents forbid tabular files.
+- Join configuration: `metadata.join_config` specifies join parameters (target_asset_id, left_key, right_key, how) for dataset joins.
 
 ## How to work here
 
