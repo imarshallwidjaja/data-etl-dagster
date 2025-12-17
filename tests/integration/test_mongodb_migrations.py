@@ -99,21 +99,45 @@ class TestMigrationRunner:
     def test_migrations_applied_to_schema_migrations(self, mongo_database):
         """
         Test that migrations are recorded in schema_migrations collection.
-        
-        This test assumes migrations have been run (either manually or via docker-compose).
+
+        This test runs migrations explicitly to avoid depending on external startup order.
         """
-        # Check that schema_migrations collection exists
-        collections = mongo_database.list_collection_names()
-        assert "schema_migrations" in collections, "schema_migrations collection not found"
-        
-        # Check for applied migrations
+        import sys
+
+        scripts_dir = Path(__file__).parent.parent.parent / "scripts"
+        sys.path.insert(0, str(scripts_dir.parent))
+
+        try:
+            from scripts.migrate_db import (
+                apply_migration,
+                discover_migrations,
+                ensure_schema_migrations_collection,
+                get_applied_versions,
+                load_migration_module,
+            )
+
+            ensure_schema_migrations_collection(mongo_database)
+
+            migrations_dir = (
+                Path(__file__).parent.parent.parent / "services" / "mongodb" / "migrations"
+            )
+            migrations = discover_migrations(migrations_dir)
+            applied_versions = get_applied_versions(mongo_database)
+
+            for version, file_path in migrations:
+                if version in applied_versions:
+                    continue
+                migration_version, up_func = load_migration_module(file_path)
+                assert migration_version == version
+                apply_migration(mongo_database, version, up_func)
+
+        finally:
+            sys.path.remove(str(scripts_dir.parent))
+
         applied = list(mongo_database["schema_migrations"].find({}))
-        
-        # At least migration 001 should be applied
         versions = [doc["version"] for doc in applied]
         assert "001" in versions, "Migration 001 not found in schema_migrations"
-        
-        # Verify migration record structure
+
         migration_001 = next(doc for doc in applied if doc["version"] == "001")
         assert "applied_at" in migration_001
         assert "duration_ms" in migration_001

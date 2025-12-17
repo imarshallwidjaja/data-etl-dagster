@@ -21,7 +21,7 @@ gdal_health_check_job = define_asset_job(
 
 join_asset_job = define_asset_job(
     "join_asset_job",
-    selection=[joined_spatial_asset],
+    selection=[raw_manifest_json, joined_spatial_asset],
     description="Job to materialize joined_spatial_asset (join_datasets intent)",
 )
 

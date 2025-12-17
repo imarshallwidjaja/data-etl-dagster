@@ -132,13 +132,20 @@ def test_tabular_intent_routes_to_tabular_lane(mock_sensor_context, mock_minio_r
 # =============================================================================
 
 @patch.dict(os.environ, {"MANIFEST_ROUTER_ENABLED_LANES": "ingest,join"}, clear=False)
-def test_join_intent_routes_to_join_lane(mock_sensor_context, mock_minio_resource, valid_manifest_dict):
+def test_join_intent_routes_to_join_lane(
+    mock_sensor_context,
+    mock_minio_resource,
+    valid_manifest_dict,
+    valid_tabular_file_entry_dict,
+):
     """Test that intent='join_datasets' routes to join lane."""
     manifest_key = "manifests/batch_join.json"
     join_manifest = {
         **valid_manifest_dict,
         "intent": "join_datasets",
         "batch_id": "batch_join",
+        # join_datasets requires tabular input files
+        "files": [valid_tabular_file_entry_dict],
         "metadata": {
             **valid_manifest_dict["metadata"],
             "join_config": {
@@ -159,7 +166,18 @@ def test_join_intent_routes_to_join_lane(mock_sensor_context, mock_minio_resourc
     assert run_request.run_key == f"join:{join_manifest['batch_id']}"
     assert run_request.job_name == "join_asset_job"
     assert run_request.tags["lane"] == "join"
-    assert "raw_manifest_json" in run_request.run_config["ops"]
+
+    # The run config should now be structured for raw_manifest_json asset config
+    expected_config = {
+        "ops": {
+            "raw_manifest_json": {
+                "config": {
+                    "manifest": join_manifest,
+                }
+            }
+        }
+    }
+    assert run_request.run_config == expected_config
 
 
 # =============================================================================

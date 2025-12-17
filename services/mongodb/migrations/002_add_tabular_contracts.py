@@ -48,7 +48,8 @@ def up(db: Database) -> None:
     
     # Get current validators to check if they already support tabular
     assets_info = db.command("listCollections", filter={"name": "assets"})
-    assets_coll_info = next(assets_info["cursor"]["firstBatch"], None)
+    first_batch = assets_info.get("cursor", {}).get("firstBatch", [])
+    assets_coll_info = first_batch[0] if first_batch else None
     
     if assets_coll_info and "options" in assets_coll_info and "validator" in assets_coll_info["options"]:
         validator = assets_coll_info["options"]["validator"]["$jsonSchema"]

@@ -202,7 +202,7 @@ class TestExecuteSpatialJoin:
         mock_postgis.execute_sql.assert_called_once()
         sql_call = mock_postgis.execute_sql.call_args[0][0]
         assert "LEFT JOIN" in sql_call
-        assert 't."parcel_id" = s."parcel_id"' in sql_call
+        assert 't."parcel_id"::TEXT = s."parcel_id"::TEXT' in sql_call
 
     def test_inner_join_sql(self):
         mock_postgis = Mock()

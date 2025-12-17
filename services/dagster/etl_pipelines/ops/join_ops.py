@@ -190,7 +190,7 @@ def _execute_spatial_join(
         s."geom" AS geom
     FROM "{schema}"."{tabular_table}" t
     {join_clause} "{schema}"."{spatial_table}" s
-    ON t."{left_key}" = s."{right_key}";
+    ON t."{left_key}"::TEXT = s."{right_key}"::TEXT;
     """
     postgis.execute_sql(sql, schema)
     log.info(f"Created joined table: {schema}.{output_table}")
