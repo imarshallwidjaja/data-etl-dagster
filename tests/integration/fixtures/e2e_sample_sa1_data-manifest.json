@@ -16,12 +16,5 @@
       "priority": 1,
       "source": "integration-fixture",
       "sample": true
-    },
-    "join_config": {
-      "target_asset_id": "dataset_sample_target",
-      "left_key": "sa1_code",
-      "right_key": "sa1_code",
-      "how": "left"
-    }
-  }
+    }}
 }
