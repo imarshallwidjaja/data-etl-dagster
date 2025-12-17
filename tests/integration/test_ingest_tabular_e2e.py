@@ -134,6 +134,7 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
         $repositoryName: String!
         $jobName: String!
         $runConfigData: RunConfigData
+        $executionMetadata: ExecutionMetadata
     ) {
         launchRun(
             executionParams: {
@@ -143,6 +144,7 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
                     pipelineName: $jobName
                 }
                 runConfigData: $runConfigData
+                executionMetadata: $executionMetadata
             }
         ) {
             ... on LaunchRunSuccess {
@@ -176,6 +178,11 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
                     "config": {"manifest": manifest},
                 },
             }
+        },
+        "executionMetadata": {
+            "tags": [
+                {"key": "dagster/partition", "value": manifest["metadata"]["tags"]["dataset_id"]},
+            ]
         },
     }
 
@@ -370,7 +377,7 @@ class TestIngestTabularJobE2E:
             "metadata": {
                 "project": "test_tabular",
                 "description": "E2E tabular ingestion test",
-                "tags": {"priority": 1},
+                "tags": {"priority": 1, "dataset_id": f"dataset_{batch_id}"},
             },
         }
 
@@ -456,7 +463,7 @@ class TestIngestTabularJobE2E:
             "metadata": {
                 "project": "test_tabular",
                 "description": "E2E tabular join-key normalization test",
-                "tags": {"priority": 1},
+                "tags": {"priority": 1, "dataset_id": f"dataset_{batch_id}"},
                 "join_config": {
                     "left_key": "Col A",
                     "right_key": "Col A",

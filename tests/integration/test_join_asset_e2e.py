@@ -161,6 +161,7 @@ def _launch_job_with_run_config(dagster_client, *, job_name: str, run_config: di
         $repositoryName: String!
         $jobName: String!
         $runConfigData: RunConfigData
+        $executionMetadata: ExecutionMetadata
     ) {
         launchRun(
             executionParams: {
@@ -170,6 +171,7 @@ def _launch_job_with_run_config(dagster_client, *, job_name: str, run_config: di
                     pipelineName: $jobName
                 }
                 runConfigData: $runConfigData
+                executionMetadata: $executionMetadata
             }
         ) {
             ... on LaunchRunSuccess { run { runId status } }
@@ -185,6 +187,9 @@ def _launch_job_with_run_config(dagster_client, *, job_name: str, run_config: di
         "repositoryName": "__repository__",
         "jobName": job_name,
         "runConfigData": run_config,
+        "executionMetadata": {
+            "tags": [{"key": "dagster/partition", "value": run_config["ops"]["raw_manifest_json"]["config"]["manifest"]["metadata"]["tags"]["dataset_id"]}],
+        },
     }
     result = dagster_client.query(launch_query, variables=variables, timeout=10)
     assert "errors" not in result, f"Failed to launch job: {result.get('errors')}"
