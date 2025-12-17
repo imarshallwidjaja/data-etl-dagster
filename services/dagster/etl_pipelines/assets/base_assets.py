@@ -71,19 +71,22 @@ def raw_manifest_json(context: AssetExecutionContext, config: ManifestConfig) ->
 def raw_spatial_asset(context: AssetExecutionContext, raw_manifest_json: Dict[str, Any]) -> Dict[str, Any]:
     """
     Graph-backed asset for spatial data ingestion.
-    
+
     Wraps the spatial ingestion pipeline:
     1. load_to_postgis: Loads spatial data from landing zone to PostGIS
     2. spatial_transform: Executes spatial transformations
     3. export_to_datalake: Exports to data lake and registers in MongoDB
-    
+
+    Important: PostGIS is transient compute only, so we must always drop the
+    per-run ephemeral schema (proc_<run_id>) after processing.
+
     Args:
         context: Dagster asset execution context
         raw_manifest_json: Validated manifest dict from raw_manifest_json asset
-    
+
     Returns:
         Asset info dict with dataset_id, version, s3_key, asset_id, content_hash
-    
+
     Raises:
         RuntimeError: If any step in the pipeline fails
     """
@@ -95,48 +98,58 @@ def raw_spatial_asset(context: AssetExecutionContext, raw_manifest_json: Dict[st
             partition_keys=[partition_key],
         )
 
-    # Step 1: Load to PostGIS
-    context.log.info("Loading spatial data to PostGIS")
-    schema_info = _load_files_to_postgis(
-        gdal=context.resources.gdal,
-        postgis=context.resources.postgis,
-        manifest=raw_manifest_json,
-        run_id=context.run_id,
-        log=context.log,
-        geom_column_name="geom",
-    )
-    
-    # Step 2: Transform
-    context.log.info("Transforming spatial data")
-    transform_result = _spatial_transform(
-        postgis=context.resources.postgis,
-        schema_info=schema_info,
-        log=context.log,
-    )
-    
-    # Step 3: Export to data lake
-    context.log.info("Exporting to data lake")
-    asset_info = _export_to_datalake(
-        gdal=context.resources.gdal,
-        postgis=context.resources.postgis,
-        minio=context.resources.minio,
-        mongodb=context.resources.mongodb,
-        transform_result=transform_result,
-        run_id=context.run_id,
-        log=context.log,
-    )
-    
-    # Attach metadata to asset
-    context.add_output_metadata({
-        "dataset_id": MetadataValue.text(asset_info["dataset_id"]),
-        "version": MetadataValue.int(asset_info["version"]),
-        "s3_key": MetadataValue.text(asset_info["s3_key"]),
-        "asset_id": MetadataValue.text(str(asset_info["asset_id"])),
-        "content_hash": MetadataValue.text(asset_info["content_hash"][:20] + "..."),
-        "run_id": MetadataValue.text(asset_info["run_id"]),
-    })
-    
-    return asset_info
+    schema_info: Dict[str, Any] | None = None
+
+    try:
+        # Step 1: Load to PostGIS
+        context.log.info("Loading spatial data to PostGIS")
+        schema_info = _load_files_to_postgis(
+            gdal=context.resources.gdal,
+            postgis=context.resources.postgis,
+            manifest=raw_manifest_json,
+            run_id=context.run_id,
+            log=context.log,
+            geom_column_name="geom",
+        )
+
+        # Step 2: Transform
+        context.log.info("Transforming spatial data")
+        transform_result = _spatial_transform(
+            postgis=context.resources.postgis,
+            schema_info=schema_info,
+            log=context.log,
+        )
+
+        # Step 3: Export to data lake
+        context.log.info("Exporting to data lake")
+        asset_info = _export_to_datalake(
+            gdal=context.resources.gdal,
+            postgis=context.resources.postgis,
+            minio=context.resources.minio,
+            mongodb=context.resources.mongodb,
+            transform_result=transform_result,
+            run_id=context.run_id,
+            log=context.log,
+        )
+
+        # Attach metadata to asset
+        context.add_output_metadata({
+            "dataset_id": MetadataValue.text(asset_info["dataset_id"]),
+            "version": MetadataValue.int(asset_info["version"]),
+            "s3_key": MetadataValue.text(asset_info["s3_key"]),
+            "asset_id": MetadataValue.text(str(asset_info["asset_id"])),
+            "content_hash": MetadataValue.text(asset_info["content_hash"][:20] + "..."),
+            "run_id": MetadataValue.text(asset_info["run_id"]),
+        })
+
+        return asset_info
+
+    finally:
+        # Always cleanup ephemeral PostGIS schema (architectural law)
+        if schema_info and schema_info.get("schema"):
+            schema = schema_info["schema"]
+            context.log.info(f"Cleaning up ephemeral schema: {schema}")
+            context.resources.postgis._drop_schema(schema)
 
 
 @asset(
