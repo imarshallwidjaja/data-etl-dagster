@@ -25,19 +25,14 @@ SAMPLE_JOIN_MANIFEST: dict = {
     "batch_id": "batch_join_001",
     "uploader": "test_user",
     "intent": "join_datasets",
-    "files": [
-        {
-            "path": "s3://landing-zone/batch_join_001/data.csv",
-            "type": "tabular",
-            "format": "CSV",
-        }
-    ],
+    "files": [],
     "metadata": {
         "project": "TEST_PROJECT",
         "description": "Test join",
         "tags": {"dataset_id": "joined_dataset_001"},
         "join_config": {
-            "target_asset_id": "507f1f77bcf86cd799439011",
+            "spatial_asset_id": "507f1f77bcf86cd799439011",
+            "tabular_asset_id": "507f1f77bcf86cd799439012",
             "left_key": "parcel_id",
             "right_key": "parcel_id",
             "how": "left",
@@ -106,7 +101,8 @@ class TestResolveJoinAssets:
         mock_mongodb = Mock()
         mock_log = Mock()
         spatial_asset = make_spatial_asset()
-        mock_mongodb.get_asset_by_id.return_value = spatial_asset
+        tabular_asset = make_tabular_asset()
+        mock_mongodb.get_asset_by_id.side_effect = [spatial_asset, tabular_asset]
 
         result = _resolve_join_assets(
             mongodb=mock_mongodb,
@@ -114,9 +110,13 @@ class TestResolveJoinAssets:
             log=mock_log,
         )
 
-        assert result["secondary_asset"].dataset_id == "spatial_001"
+        assert result["spatial_asset"].dataset_id == "spatial_001"
+        assert result["tabular_asset"].dataset_id == "tabular_001"
         assert result["join_config"].left_key == "parcel_id"
-        mock_mongodb.get_asset_by_id.assert_called_once_with("507f1f77bcf86cd799439011")
+        assert mock_mongodb.get_asset_by_id.call_args_list == [
+            (("507f1f77bcf86cd799439011",),),
+            (("507f1f77bcf86cd799439012",),),
+        ]
 
     def test_missing_join_config(self):
         mock_mongodb = Mock()
@@ -124,18 +124,22 @@ class TestResolveJoinAssets:
 
         manifest_no_config = {**SAMPLE_JOIN_MANIFEST, "metadata": {"project": "TEST"}}
 
-        with pytest.raises(ValueError, match="join_config is missing"):
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError):
             _resolve_join_assets(
                 mongodb=mock_mongodb,
                 manifest=manifest_no_config,
                 log=mock_log,
             )
 
-    def test_missing_target_asset_id(self):
+    def test_missing_spatial_or_tabular_asset_id(self):
+        from pydantic import ValidationError
+
         mock_mongodb = Mock()
         mock_log = Mock()
 
-        manifest_no_target = {
+        manifest_no_ids = {
             **SAMPLE_JOIN_MANIFEST,
             "metadata": {
                 **SAMPLE_JOIN_MANIFEST["metadata"],
@@ -143,10 +147,10 @@ class TestResolveJoinAssets:
             },
         }
 
-        with pytest.raises(ValueError, match="target_asset_id"):
+        with pytest.raises(ValidationError):
             _resolve_join_assets(
                 mongodb=mock_mongodb,
-                manifest=manifest_no_target,
+                manifest=manifest_no_ids,
                 log=mock_log,
             )
 
@@ -155,7 +159,7 @@ class TestResolveJoinAssets:
         mock_mongodb.get_asset_by_id.return_value = None
         mock_log = Mock()
 
-        with pytest.raises(ValueError, match="Secondary asset not found"):
+        with pytest.raises(ValueError, match="Spatial asset not found"):
             _resolve_join_assets(
                 mongodb=mock_mongodb,
                 manifest=SAMPLE_JOIN_MANIFEST,
@@ -164,10 +168,10 @@ class TestResolveJoinAssets:
 
     def test_wrong_asset_kind(self):
         mock_mongodb = Mock()
-        mock_mongodb.get_asset_by_id.return_value = make_tabular_asset()
+        mock_mongodb.get_asset_by_id.side_effect = [make_tabular_asset(), make_tabular_asset()]
         mock_log = Mock()
 
-        with pytest.raises(ValueError, match="must be spatial"):
+        with pytest.raises(ValueError, match="spatial_asset_id must reference a spatial asset"):
             _resolve_join_assets(
                 mongodb=mock_mongodb,
                 manifest=SAMPLE_JOIN_MANIFEST,

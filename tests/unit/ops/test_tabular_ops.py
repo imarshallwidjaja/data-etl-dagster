@@ -39,6 +39,8 @@ SAMPLE_TABULAR_MANIFEST = {
         "description": "Test tabular data",
         "tags": {"priority": 1},
         "join_config": {
+            "spatial_asset_id": "507f1f77bcf86cd799439011",
+            "tabular_asset_id": "507f1f77bcf86cd799439012",
             "left_key": "id",
             "right_key": "id",
             "how": "left",
@@ -245,6 +247,8 @@ def test_load_and_clean_tabular_join_key_not_found():
         "metadata": {
             **SAMPLE_TABULAR_MANIFEST["metadata"],
             "join_config": {
+                "spatial_asset_id": "507f1f77bcf86cd799439011",
+                "tabular_asset_id": "507f1f77bcf86cd799439012",
                 "left_key": "missing_column",
                 "right_key": "id",
                 "how": "left",

@@ -11,7 +11,7 @@ This directory includes:
   - `ingest_job` (spatial, legacy op-based): landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup
   - `spatial_asset_job` (spatial, asset-based): landing-zone → PostGIS (ephemeral) → data-lake + MongoDB ledger + schema cleanup
   - `tabular_asset_job` (tabular, asset-based): landing-zone → data-lake + MongoDB ledger (no PostGIS)
-  - `join_asset_job` (join, asset-based): landing-zone tabular + data-lake spatial → PostGIS join → data-lake joined + MongoDB ledger + lineage
+  - `join_asset_job` (join, asset-based): data-lake spatial + data-lake tabular → PostGIS join → data-lake joined + MongoDB ledger + lineage (both parents must be existing assets)
 
 ## Key invariants / non-negotiables
 

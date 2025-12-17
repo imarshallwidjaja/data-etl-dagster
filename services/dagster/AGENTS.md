@@ -68,7 +68,7 @@ The platform uses **dedicated sensors** to ensure manifests trigger the correct 
 - `manifest_sensor` (**LEGACY**) → triggers `ingest_job` for non-tabular, non-join intents
 - `spatial_sensor` → triggers `spatial_asset_job` for `intent in {"ingest_vector", "ingest_raster"}` (materializes `raw_spatial_asset`)
 - `tabular_sensor` → triggers `tabular_asset_job` for `intent == "ingest_tabular"` (materializes `raw_tabular_asset`)
-- `join_sensor` → triggers `join_asset_job` for `intent == "join_datasets"` (materializes `joined_spatial_asset`; requires `metadata.join_config.target_asset_id`)
+- `join_sensor` → triggers `join_asset_job` for `intent == "join_datasets"` (materializes `joined_spatial_asset`; requires `metadata.join_config.spatial_asset_id` + `tabular_asset_id`)
 
 **Note (asset architecture fix)**:
 - The legacy `manifest_sensor` intentionally **skips** tabular/join intents (it marks them processed for itself, but does not archive them) so the dedicated asset sensors can process + archive them.

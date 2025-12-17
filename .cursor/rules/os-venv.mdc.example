@@ -10,7 +10,7 @@ alwaysApply: true
 ## Dependency/environment management
 
 - **Conda-only**: Use conda for environment and dependency management.
-- **Required env**: Always you are in the proper conda environment **`data-etl-dagster`** before you start running commands. If not activate it with:
+- **Required env**: Always activate the proper conda environment **`data-etl-dagster`** when you first start using any terminal to run python commands.
 
 ```powershell
 conda activate data-etl-dagster

@@ -7,6 +7,8 @@ a spatialized tabular GeoParquet output in the data lake and records lineage in 
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import hashlib
 import re
 import tempfile
@@ -36,11 +38,10 @@ def _resolve_join_assets(
     manifest: Dict[str, Any],
     log,
 ) -> Dict[str, Any]:
-    """
-    Resolve and validate join inputs.
+    """Resolve and validate join inputs.
 
-    - Primary is incoming tabular (from manifest)
-    - Secondary is an existing spatial asset (from MongoDB via join_config.target_asset_id)
+    Both spatial_asset_id and tabular_asset_id are required.
+    Returns both assets fetched from MongoDB.
     """
     validated = Manifest(**manifest)
     join_config = validated.metadata.join_config
@@ -48,27 +49,42 @@ def _resolve_join_assets(
         raise ValueError(
             f"Manifest {validated.batch_id} has intent 'join_datasets' but metadata.join_config is missing"
         )
-    if join_config.target_asset_id is None:
+
+    # Fetch spatial asset
+    spatial_asset = mongodb.get_asset_by_id(join_config.spatial_asset_id)
+    if spatial_asset is None:
+        raise ValueError(f"Spatial asset not found: {join_config.spatial_asset_id}")
+    if spatial_asset.kind != AssetKind.SPATIAL:
         raise ValueError(
-            f"Manifest {validated.batch_id} requires join_config.target_asset_id for join_datasets"
+            f"spatial_asset_id must reference a spatial asset, got {spatial_asset.kind.value}"
         )
 
-    secondary_asset = mongodb.get_asset_by_id(join_config.target_asset_id)
-    if secondary_asset is None:
-        raise ValueError(f"Secondary asset not found: {join_config.target_asset_id}")
-    if secondary_asset.kind != AssetKind.SPATIAL:
-        raise ValueError(f"Secondary asset must be spatial, got {secondary_asset.kind.value}")
+    # Fetch tabular asset
+    tabular_asset = mongodb.get_asset_by_id(join_config.tabular_asset_id)
+    if tabular_asset is None:
+        raise ValueError(f"Tabular asset not found: {join_config.tabular_asset_id}")
+    if tabular_asset.kind != AssetKind.TABULAR:
+        raise ValueError(
+            f"tabular_asset_id must reference a tabular asset, got {tabular_asset.kind.value}"
+        )
 
-    log.info(f"Resolved secondary asset dataset_id={secondary_asset.dataset_id} v{secondary_asset.version}")
     log.info(
-        f"Join config: LEFT={join_config.left_key}, RIGHT={join_config.right_key or join_config.left_key}, HOW={join_config.how}"
+        f"Resolved join inputs: "
+        f"spatial={spatial_asset.dataset_id} v{spatial_asset.version}, "
+        f"tabular={tabular_asset.dataset_id} v{tabular_asset.version}"
+    )
+    log.info(
+        f"Join config: LEFT={join_config.left_key}, "
+        f"RIGHT={join_config.right_key}, HOW={join_config.how}"
     )
 
     return {
         "validated_manifest": validated,
         "join_config": join_config,
-        "secondary_asset": secondary_asset,
-        "secondary_asset_id": join_config.target_asset_id,
+        "spatial_asset": spatial_asset,
+        "spatial_asset_id": join_config.spatial_asset_id,
+        "tabular_asset": tabular_asset,
+        "tabular_asset_id": join_config.tabular_asset_id,
     }
 
 
@@ -149,6 +165,66 @@ def _load_geoparquet_to_postgis(
 
     log.info(f"Loaded GeoParquet to PostGIS: {schema}.{table_name}")
     return {"schema": schema, "table": table_name, "geom_column": "geom"}
+
+
+def _load_tabular_parquet_to_postgis(
+    *,
+    minio,
+    postgis,
+    s3_key: str,
+    schema: str,
+    table_name: str,
+    log,
+) -> Dict[str, Any]:
+    """Load tabular Parquet from data-lake to PostGIS as a non-spatial table.
+
+    Downloads parquet to a temp file, reads with pyarrow, loads to PostGIS.
+    """
+    import tempfile
+
+    import pyarrow.parquet as pq
+
+    _require_identifier(schema, label="schema")
+    _require_identifier(table_name, label="table_name")
+
+    log.info(f"Loading tabular parquet from data-lake: {s3_key}")
+
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        minio.download_from_lake(s3_key, tmp_path)
+
+        table = pq.read_table(tmp_path)
+        df = table.to_pandas()
+
+        # Drop geometry columns if present (tabular only)
+        if "geometry" in df.columns:
+            df = df.drop(columns=["geometry"])
+        if "geom" in df.columns:
+            df = df.drop(columns=["geom"])
+
+        engine = postgis.get_engine()
+        log.info(f"Loading tabular parquet to PostGIS: {schema}.{table_name} ({len(df)} rows)")
+
+        df.to_sql(
+            table_name,
+            engine,
+            schema=schema,
+            if_exists="replace",
+            index=False,
+            method="multi",
+            chunksize=10_000,
+        )
+
+        return {
+            "schema": schema,
+            "table": table_name,
+            "columns": list(df.columns),
+            "row_count": len(df),
+        }
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 def _execute_spatial_join(

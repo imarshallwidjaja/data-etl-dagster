@@ -164,47 +164,55 @@ class FileEntry(BaseModel):
 # =============================================================================
 
 class JoinConfig(BaseModel):
-    """
-    Optional join configuration for associating ingested data with existing assets.
-    
+    """Join configuration for derived assets that combine spatial + tabular assets.
+
+    Both spatial_asset_id and tabular_asset_id are required for join_datasets intent.
+    The join produces a spatialized output by joining tabular data with spatial geometries.
+
     Attributes:
-        target_asset_id: Identifier of the asset to join against (optional)
-        left_key: Field in the incoming dataset used for the join
-        right_key: Field in the target asset (defaults to left_key when omitted)
-        how: Join strategy (defaults to left join)
+        spatial_asset_id: MongoDB _id of the spatial asset (geometry source)
+        tabular_asset_id: MongoDB _id of the tabular asset (attribute source)
+        left_key: Join column in the tabular asset
+        right_key: Join column in the spatial asset (defaults to left_key)
+        how: Join strategy (left, inner, right, outer)
     """
-    
-    target_asset_id: str | None = Field(
-        None,
-        description="Identifier of the existing asset to join against (optional)",
+
+    spatial_asset_id: str = Field(
+        ...,
+        description="MongoDB _id of the spatial asset (geometry source)",
     )
-    left_key: str = Field(..., description="Field in incoming data used for join")
+    tabular_asset_id: str = Field(
+        ...,
+        description="MongoDB _id of the tabular asset (attribute source)",
+    )
+    left_key: str = Field(..., description="Join column in tabular asset")
     right_key: str | None = Field(
         None,
-        description="Field in target asset used for join (defaults to left_key)",
+        description="Join column in spatial asset (defaults to left_key)",
     )
     how: Literal["left", "inner", "right", "outer"] = Field(
         "left",
         description="Join strategy",
     )
-    
-    @model_validator(mode='after')
-    def default_right_key(self) -> 'JoinConfig':
+
+    @model_validator(mode="after")
+    def default_right_key(self) -> "JoinConfig":
         """Default right_key to left_key when not provided."""
         if self.right_key is None:
             self.right_key = self.left_key
         return self
-    
+
     model_config = ConfigDict(
         extra="forbid",
         json_schema_extra={
             "example": {
-                "target_asset_id": "dataset_ab12cd34ef56",
-                "left_key": "parcel_id",
-                "right_key": "parcel_id",
+                "spatial_asset_id": "507f1f77bcf86cd799439011",
+                "tabular_asset_id": "507f1f77bcf86cd799439012",
+                "left_key": "sa1_code21",
+                "right_key": "sa1_code21",
                 "how": "left",
             }
-        }
+        },
     )
 
 
@@ -245,7 +253,8 @@ class ManifestMetadata(BaseModel):
                 "description": "Satellite imagery for urban analysis",
                 "tags": {"priority": 1, "source": "user"},
                 "join_config": {
-                    "target_asset_id": "dataset_ab12cd34ef56",
+                    "spatial_asset_id": "507f1f77bcf86cd799439011",
+                    "tabular_asset_id": "507f1f77bcf86cd799439012",
                     "left_key": "parcel_id",
                     "right_key": "parcel_id",
                     "how": "left",
@@ -277,7 +286,10 @@ class Manifest(BaseModel):
     batch_id: str = Field(..., description="Unique batch identifier")
     uploader: str = Field(..., description="User or system identifier")
     intent: str = Field(..., description="Processing intent (e.g., 'ingest_raster', 'ingest_tabular')")
-    files: list[FileEntry] = Field(..., min_length=1, description="List of files to process")
+    files: list[FileEntry] = Field(
+        default_factory=list,
+        description="List of files to process",
+    )
     metadata: ManifestMetadata = Field(..., description="User-supplied metadata")
     
     @model_validator(mode='after')
@@ -320,12 +332,17 @@ class Manifest(BaseModel):
                     f"Found non-tabular files: {[f.path for f in non_tabular]}"
                 )
         elif self.intent == "join_datasets":
-            # Join workflow: tabular input joins with existing spatial asset
-            non_tabular = [f for f in self.files if f.type != FileType.TABULAR]
-            if non_tabular:
+            # Join workflow: requires spatial_asset_id + tabular_asset_id, no files
+            if len(self.files) > 0:
                 raise ValueError(
-                    f"Manifest with intent 'join_datasets' must have all files with type 'tabular'. "
-                    f"Found non-tabular files: {[f.path for f in non_tabular]}"
+                    f"Manifest with intent 'join_datasets' must have empty files[]. "
+                    f"Both spatial and tabular inputs must be existing assets specified in join_config. "
+                    f"Found {len(self.files)} file(s): {[f.path for f in self.files]}"
+                )
+            if self.metadata.join_config is None:
+                raise ValueError(
+                    "Manifest with intent 'join_datasets' requires metadata.join_config "
+                    "with spatial_asset_id and tabular_asset_id"
                 )
         else:
             # Forbid tabular files in non-tabular intents
@@ -336,6 +353,17 @@ class Manifest(BaseModel):
                     f"Use intent 'ingest_tabular' for tabular data or 'join_datasets' for join workflows. "
                     f"Found tabular files: {[f.path for f in tabular_files]}"
                 )
+        return self
+
+
+    @model_validator(mode="after")
+    def validate_files_required_for_ingestion(self) -> "Manifest":
+        """Require files for ingestion intents, forbid for join_datasets."""
+        if self.intent == "join_datasets":
+            # Files validated in validate_intent_type_coherence
+            pass
+        elif len(self.files) == 0:
+            raise ValueError(f"Manifest with intent '{self.intent}' requires at least one file")
         return self
     
     model_config = ConfigDict(

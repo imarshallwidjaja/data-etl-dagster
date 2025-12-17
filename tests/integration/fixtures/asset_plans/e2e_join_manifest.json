@@ -1,24 +1,21 @@
 {
-    "batch_id": "e2e_join_${UUID}",
-    "uploader": "e2e_test",
-    "intent": "join_datasets",
-    "files": [],
-    "metadata": {
-        "project": "E2E_JOIN_ASSET_TEST",
-        "description": "End-to-end test for join asset - Joins tabular vulnerability data with spatial SA1 boundaries",
-        "tags": {
-            "dataset_id": "sa1_joined_${UUID}",
-            "source": "ausurbhi_hhvi_nsw_sample",
-            "join_type": "left"
-        },
-        "join_config": {
-            "spatial_asset_id": "${SPATIAL_ASSET_ID}",
-            "tabular_asset_id": "${TABULAR_ASSET_ID}",
-            "join_type": "left",
-            "join_columns": {
-                "spatial": "sa1_code21",
-                "tabular": "sa1_code21"
-            }
-        }
+  "batch_id": "e2e_join_${UUID}",
+  "uploader": "e2e_test",
+  "intent": "join_datasets",
+  "files": [],
+  "metadata": {
+    "project": "E2E_JOIN_ASSET_TEST",
+    "description": "End-to-end test for join asset - Joins tabular with spatial assets",
+    "tags": {
+      "dataset_id": "sa1_joined_${UUID}",
+      "source": "ausurbhi_hhvi_nsw_sample"
+    },
+    "join_config": {
+      "spatial_asset_id": "${SPATIAL_ASSET_ID}",
+      "tabular_asset_id": "${TABULAR_ASSET_ID}",
+      "left_key": "sa1_code21",
+      "right_key": "sa1_code21",
+      "how": "left"
     }
+  }
 }

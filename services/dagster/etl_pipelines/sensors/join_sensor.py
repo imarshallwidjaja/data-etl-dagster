@@ -98,11 +98,9 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 continue
 
             join_config = manifest.metadata.join_config
-            target_asset_id = join_config.target_asset_id if join_config else None
-            if not target_asset_id:
-                context.log.error(
-                    f"Manifest '{manifest_key}' has intent=join_datasets but missing metadata.join_config.target_asset_id. "
-                    f"Marking as processed to prevent retry."
+            if join_config is None:
+                context.log.warning(
+                    f"Manifest '{manifest_key}' has intent=join_datasets but no join_config, skipping"
                 )
                 processed_this_run.append(manifest_key)
                 try:
@@ -110,6 +108,9 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 except Exception as archive_error:
                     context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
                 continue
+
+            # Note: spatial_asset_id and tabular_asset_id are required by the model,
+            # and validation will fail if they're missing.
 
             partition_key = extract_partition_key(manifest)
             run_request = RunRequest(
@@ -127,7 +128,8 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     "manifest_key": manifest_key,
                     "sensor": "join_sensor",
                     "partition_key": partition_key,
-                    "target_asset_id": str(target_asset_id),
+                    "spatial_asset_id": str(join_config.spatial_asset_id),
+                    "tabular_asset_id": str(join_config.tabular_asset_id),
                 },
             )
             yield run_request
@@ -140,7 +142,7 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
 
             context.log.info(
                 f"Triggered join_asset_job for manifest '{manifest_key}' "
-                f"(batch_id={manifest.batch_id}, partition={partition_key}, target_asset_id={target_asset_id})"
+                f"(batch_id={manifest.batch_id}, partition={partition_key}, spatial_asset_id={join_config.spatial_asset_id}, tabular_asset_id={join_config.tabular_asset_id})"
             )
         except Exception as e:
             context.log.error(f"Error processing manifest '{manifest_key}': {e}. Marking as processed to prevent retry.")

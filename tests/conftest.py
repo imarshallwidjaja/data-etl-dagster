@@ -70,12 +70,7 @@ def valid_tabular_manifest_dict(valid_tabular_file_entry_dict):
             "project": "ALPHA",
             "description": "Test tabular data",
             "tags": {"priority": 1, "source": "unit-test", "published": False},
-            "join_config": {
-                "left_key": "id",
-                "right_key": "id",
-                "how": "left",
-            },
-        }
+        },
     }
 
 
@@ -151,13 +146,7 @@ def valid_manifest_dict(valid_file_entry_dict):
             "project": "ALPHA",
             "description": "Test satellite imagery",
             "tags": {"priority": 1, "source": "unit-test", "published": False},
-            "join_config": {
-                "left_key": "parcel_id",
-                "right_key": "parcel_id",
-                "how": "left",
-                "target_asset_id": "dataset_ab12cd34ef56",
-            },
-        }
+        },
     }
 
 

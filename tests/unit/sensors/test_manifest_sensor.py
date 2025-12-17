@@ -127,11 +127,12 @@ def test_join_intent_is_skipped_and_not_archived(
         **valid_manifest_dict,
         "intent": "join_datasets",
         "batch_id": "batch_join",
-        "files": [valid_tabular_file_entry_dict],
+        "files": [],
         "metadata": {
             **valid_manifest_dict["metadata"],
             "join_config": {
-                "target_asset_id": "dataset_123",
+                "spatial_asset_id": "507f1f77bcf86cd799439011",
+                "tabular_asset_id": "507f1f77bcf86cd799439012",
                 "left_key": "parcel_id",
                 "right_key": "parcel_id",
                 "how": "left",

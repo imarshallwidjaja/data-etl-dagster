@@ -112,7 +112,8 @@ Create a `manifest.json` file describing your data. The manifest format is curre
       "priority": 1
     },
     "join_config": {
-      "target_asset_id": "dataset_ab12cd34ef56",
+      "spatial_asset_id": "507f1f77bcf86cd799439011",
+      "tabular_asset_id": "507f1f77bcf86cd799439012",
       "left_key": "parcel_id",
       "right_key": "parcel_id",
       "how": "left"
@@ -165,11 +166,12 @@ Create a `manifest.json` file describing your data. The manifest format is curre
   - `project`: Project identifier
   - `description`: Optional description
   - `tags`: Optional dictionary of primitive scalars only (`str`/`int`/`float`/`bool`)
-  - `join_config`: Optional join configuration:
-    - `left_key` (required): Field in the incoming data to join on
-    - `right_key` (optional): Field in the target asset (defaults to `left_key`)
+  - `join_config`: Required for `join_datasets` intent:
+    - `spatial_asset_id` (required): MongoDB `_id` of the spatial asset (geometry source)
+    - `tabular_asset_id` (required): MongoDB `_id` of the tabular asset (attribute source)
+    - `left_key` (required): Field in the tabular asset to join on
+    - `right_key` (optional): Field in the spatial asset (defaults to `left_key`)
     - `how` (optional): Join strategy (`left`|`inner`|`right`|`outer`, default `left`)
-    - `target_asset_id` (optional): Existing asset identifier to join against
 
 **Intent-Based Transformations:**
 The pipeline uses a recipe-based transformation architecture where the `intent` field determines which transformation steps are applied. Each recipe includes:
@@ -284,6 +286,8 @@ ops:
               source: "manual"
               priority: 1
             join_config:
+              spatial_asset_id: "507f1f77bcf86cd799439011"
+              tabular_asset_id: "507f1f77bcf86cd799439012"
               left_key: "parcel_id"
               right_key: "parcel_id"
               how: "left"

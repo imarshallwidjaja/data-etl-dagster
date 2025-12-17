@@ -49,7 +49,8 @@ alwaysApply: true
 - Dagster orchestration: `services/dagster/AGENTS.md`
 - MinIO/storage: `services/minio/AGENTS.md`
 
-## Misc
+## Misc MUST FOLLOWS
 
 - No emojis in code.
 - Do not create extra “summary” docs.
+- Always tell me what model you are using in your response

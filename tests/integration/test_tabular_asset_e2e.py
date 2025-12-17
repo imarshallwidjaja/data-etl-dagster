@@ -10,6 +10,7 @@ This test validates the tabular offline-first ETL loop:
 Run with: pytest tests/integration/test_tabular_asset_e2e.py -v -m "integration and e2e"
 """
 
+import json
 import os
 from pathlib import Path
 import time
@@ -31,6 +32,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures" / "asset_plans"
 TABULAR_DATASET_PATH = FIXTURES_DIR / "e2e_sample_table_data.csv"
+TABULAR_MANIFEST_TEMPLATE_PATH = FIXTURES_DIR / "e2e_tabular_manifest.json"
 
 
 @pytest.fixture
@@ -113,6 +115,10 @@ def mongo_client(mongo_settings):
 
 def _create_dummy_csv() -> bytes:
     return TABULAR_DATASET_PATH.read_bytes()
+
+
+def _load_manifest_template() -> dict:
+    return json.loads(TABULAR_MANIFEST_TEMPLATE_PATH.read_text())
 
 
 def _upload_csv_to_landing_zone(
@@ -257,10 +263,11 @@ def _poll_run_to_completion(
                 error_events = [
                     e
                     for e in events_list
-                    if e.get("level") == "ERROR"
-                    or "Failure" in e.get("__typename", "")
+                    if e.get("level") == "ERROR" or "Failure" in e.get("__typename", "")
                 ]
-                error_details = error_events or (events_list[-10:] if events_list else None)
+                error_details = error_events or (
+                    events_list[-10:] if events_list else None
+                )
 
     return status, error_details
 
@@ -274,7 +281,9 @@ def _assert_mongodb_asset_exists(
     collection = db["assets"]
 
     asset_doc = collection.find_one({"dagster_run_id": run_id})
-    assert asset_doc is not None, f"No asset record found in MongoDB for run_id: {run_id}"
+    assert asset_doc is not None, (
+        f"No asset record found in MongoDB for run_id: {run_id}"
+    )
     return asset_doc
 
 
@@ -340,23 +349,13 @@ class TestTabularAssetJobE2E:
         object_key = f"e2e/{batch_id}/data.csv"
 
         csv_bytes = _create_dummy_csv()
-        manifest = {
-            "batch_id": batch_id,
-            "uploader": "integration_test",
-            "intent": "ingest_tabular",
-            "files": [
-                {
-                    "path": f"s3://landing-zone/{object_key}",
-                    "type": "tabular",
-                    "format": "CSV",
-                }
-            ],
-            "metadata": {
-                "project": "test_tabular",
-                "description": "E2E tabular ingestion test",
-                "tags": {"priority": 1, "dataset_id": f"dataset_{batch_id}"},
-            },
-        }
+        # Load template and customize dynamic values
+        manifest = _load_manifest_template()
+        manifest["batch_id"] = batch_id
+        manifest["files"][0]["path"] = f"s3://landing-zone/{object_key}"
+        manifest["metadata"]["tags"] = dict(manifest["metadata"].get("tags", {}))
+        manifest["metadata"]["tags"]["dataset_id"] = f"dataset_{batch_id}"
+        manifest["metadata"]["tags"]["priority"] = 1
 
         run_id: str | None = None
         asset_doc: dict | None = None
@@ -434,28 +433,21 @@ class TestTabularAssetJobE2E:
         object_key = f"e2e/{batch_id}/data.csv"
 
         csv_bytes = _create_dummy_csv()
-        manifest = {
-            "batch_id": batch_id,
-            "uploader": "integration_test",
-            "intent": "ingest_tabular",
-            "files": [
-                {
-                    "path": f"s3://landing-zone/{object_key}",
-                    "type": "tabular",
-                    "format": "CSV",
-                }
-            ],
-            "metadata": {
-                "project": "test_tabular",
-                "description": "E2E tabular join-key normalization test",
-                "tags": {"priority": 1, "dataset_id": f"dataset_{batch_id}"},
-                "join_config": {
-                    "left_key": "Col A",
-                    "right_key": "Col A",
-                    "how": "left",
-                    "target_asset_id": "dataset_placeholder",
-                },
-            },
+        # Load template and customize for join-key normalization test
+        manifest = _load_manifest_template()
+        manifest["batch_id"] = batch_id
+        manifest["files"][0]["path"] = f"s3://landing-zone/{object_key}"
+        manifest["metadata"]["tags"] = dict(manifest["metadata"].get("tags", {}))
+        manifest["metadata"]["tags"]["dataset_id"] = f"dataset_{batch_id}"
+        manifest["metadata"]["tags"]["priority"] = 1
+        # Add join_config with placeholder asset IDs for join key normalization test
+        # Note: For ingest_tabular, join_config is optional but triggers join key normalization
+        manifest["metadata"]["join_config"] = {
+            "spatial_asset_id": "000000000000000000000000",  # Placeholder ObjectId
+            "tabular_asset_id": "000000000000000000000001",  # Placeholder ObjectId
+            "left_key": "Col A",
+            "right_key": "Col A",
+            "how": "left",
         }
 
         run_id: str | None = None
@@ -500,5 +492,3 @@ class TestTabularAssetJobE2E:
                     run_id,
                     asset_doc,
                 )
-
-

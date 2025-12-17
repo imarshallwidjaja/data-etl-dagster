@@ -190,7 +190,7 @@ class TestManifestValidation:
         """Test that empty files array is rejected."""
         data = valid_manifest_dict.copy()
         data["files"] = []
-        with pytest.raises(ValidationError, match="at least 1 item"):
+        with pytest.raises(ValidationError, match="requires at least one file"):
             Manifest(**data)
     
     def test_duplicate_paths_rejected(self, valid_file_entry_dict):
@@ -240,7 +240,11 @@ class TestManifestValidation:
     def test_join_config_defaults_right_key(self, valid_manifest_dict):
         """Test that join_config defaults right_key when omitted."""
         data = valid_manifest_dict.copy()
-        data["metadata"]["join_config"] = {"left_key": "id"}
+        data["metadata"]["join_config"] = {
+            "spatial_asset_id": "507f1f77bcf86cd799439011",
+            "tabular_asset_id": "507f1f77bcf86cd799439012",
+            "left_key": "id",
+        }
         manifest = Manifest(**data)
         assert manifest.metadata.join_config is not None
         assert manifest.metadata.join_config.right_key == "id"
