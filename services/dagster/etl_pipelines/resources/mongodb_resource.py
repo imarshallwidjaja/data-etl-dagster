@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from functools import cached_property
 from typing import ClassVar, Dict
 
+from bson import ObjectId
 from dagster import ConfigurableResource
 from pydantic import Field
 from pymongo import MongoClient
@@ -30,6 +31,7 @@ class MongoDBResource(ConfigurableResource):
 
     MANIFESTS: ClassVar[str] = "manifests"
     ASSETS: ClassVar[str] = "assets"
+    LINEAGE: ClassVar[str] = "lineage"
 
     @cached_property
     def _client(self) -> MongoClient:
@@ -145,3 +147,55 @@ class MongoDBResource(ConfigurableResource):
         if not latest:
             return 1
         return latest.version + 1
+
+    def get_asset_by_id(self, asset_id: str) -> Asset | None:
+        """
+        Retrieve an asset by its MongoDB ObjectId.
+
+        Args:
+            asset_id: MongoDB ObjectId as string
+
+        Returns:
+            Asset model or None if not found
+        """
+        collection = self._get_collection(self.ASSETS)
+        try:
+            document = collection.find_one({"_id": ObjectId(asset_id)})
+        except Exception:
+            return None
+        if not document:
+            return None
+        return Asset(**self._strip_object_id(document))
+
+    def insert_lineage(
+        self,
+        source_asset_id: str,
+        target_asset_id: str,
+        dagster_run_id: str,
+        transformation: str,
+        parameters: dict | None = None,
+    ) -> str:
+        """
+        Record a lineage edge between two assets.
+
+        Args:
+            source_asset_id: Parent asset ObjectId (string)
+            target_asset_id: Child asset ObjectId (string)
+            dagster_run_id: Dagster run ID
+            transformation: Type of transformation (e.g., "spatial_join")
+            parameters: Optional transformation parameters
+
+        Returns:
+            Inserted document ID as string
+        """
+        collection = self._get_collection(self.LINEAGE)
+        document = {
+            "source_asset_id": ObjectId(source_asset_id),
+            "target_asset_id": ObjectId(target_asset_id),
+            "dagster_run_id": dagster_run_id,
+            "transformation": transformation,
+            "parameters": parameters or {},
+            "created_at": datetime.now(timezone.utc),
+        }
+        result = collection.insert_one(document)
+        return str(result.inserted_id)

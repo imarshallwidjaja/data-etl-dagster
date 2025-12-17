@@ -6,11 +6,13 @@ from .base_assets import (
     raw_spatial_asset,
     raw_tabular_asset,
 )
+from .joined_assets import joined_spatial_asset
 
 __all__ = [
     "gdal_health_check",
     "raw_manifest_json",
     "raw_spatial_asset",
     "raw_tabular_asset",
+    "joined_spatial_asset",
 ]
 

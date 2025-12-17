@@ -77,6 +77,9 @@ graph TD
   // For tabular ingestion:
   // "intent": "ingest_tabular",
   // "files": [{"path": "s3://landing-zone/batch_XYZ/data.csv", "type": "tabular", "format": "CSV"}]
+  // For join intent:
+  // "intent": "join_datasets",
+  // "files": [{"path": "s3://landing-zone/batch_XYZ/attributes.csv", "type": "tabular", "format": "CSV"}]
   "metadata": {
     "project": "ALPHA",
     "description": "User supplied context",
@@ -86,7 +89,7 @@ graph TD
       "published": false
     },
     "join_config": {
-      "target_asset_id": "dataset_ab12cd34ef56",
+      "target_asset_id": "507f1f77bcf86cd799439011",
       "left_key": "parcel_id",
       "right_key": "parcel_id",
       "how": "left"
@@ -98,11 +101,12 @@ graph TD
 - The `intent` selects a transformation recipe or processing lane:
   - **Spatial intents** (e.g., `ingest_vector`, `ingest_building_footprints`): Route to spatial pipeline using PostGIS
   - **Tabular intent** (`ingest_tabular`): Routes to tabular pipeline (CSV → Parquet, no PostGIS)
+  - **Join intent** (`join_datasets`): Routes to join pipeline (joins tabular primary with spatial secondary, requires `metadata.join_config`)
   - Unknown spatial intents fall back to the default recipe
 - Vector geometry column is standardized to `geom` in PostGIS compute schemas.
 - Tabular ingestion requires exactly one file per manifest. Headers are automatically cleaned to valid Postgres identifiers.
 - `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.
-- Intent/type coherence: `intent="ingest_tabular"` requires all files to have `type="tabular"`; other intents forbid tabular files.
+- Intent/type coherence: `intent="ingest_tabular"` requires all files to have `type="tabular"`; `intent="join_datasets"` allows tabular files (primary dataset); other intents forbid tabular files.
 
 ## How to work here
 

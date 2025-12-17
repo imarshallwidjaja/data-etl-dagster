@@ -303,6 +303,7 @@ class Manifest(BaseModel):
         
         Rules:
         - If intent == "ingest_tabular" → all files[].type must be "tabular"
+        - If intent == "join_datasets" → allow tabular files (primary dataset)
         - Otherwise → forbid "tabular" (prevents accidental routing to spatial pipeline)
         
         Raises:
@@ -318,8 +319,12 @@ class Manifest(BaseModel):
                     f"Manifest with intent 'ingest_tabular' must have all files with type 'tabular'. "
                     f"Found non-tabular files: {[f.path for f in non_tabular]}"
                 )
+        elif self.intent == "join_datasets":
+            # Allow tabular files for join_datasets (primary dataset)
+            # No validation needed - tabular files are expected
+            pass
         else:
-            # Forbid tabular files in non-tabular intents
+            # Forbid tabular files in other non-tabular intents
             tabular_files = [f for f in self.files if f.type == FileType.TABULAR]
             if tabular_files:
                 raise ValueError(

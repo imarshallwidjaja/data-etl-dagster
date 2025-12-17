@@ -1,6 +1,6 @@
 """Dagster Definitions - Repository Configuration."""
 
-from dagster import Definitions, EnvVar, define_asset_job
+from dagster import Definitions, EnvVar, define_asset_job, AssetSelection
 
 from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
 from .assets import (
@@ -8,8 +8,9 @@ from .assets import (
     raw_manifest_json,
     raw_spatial_asset,
     raw_tabular_asset,
+    joined_spatial_asset,
 )
-from .jobs import ingest_job, ingest_tabular_job, join_datasets_job
+from .jobs import ingest_job, ingest_tabular_job
 from .sensors import manifest_sensor
 
 gdal_health_check_job = define_asset_job(
@@ -18,14 +19,21 @@ gdal_health_check_job = define_asset_job(
     description="Health check for GDAL installation and dependencies",
 )
 
+join_asset_job = define_asset_job(
+    "join_asset_job",
+    selection=AssetSelection.assets(joined_spatial_asset),
+    description="Materialize joined spatial asset from tabular + spatial parents",
+)
+
 defs = Definitions(
     assets=[
         gdal_health_check,
         raw_manifest_json,
         raw_spatial_asset,
         raw_tabular_asset,
+        joined_spatial_asset,
     ],
-    jobs=[gdal_health_check_job, ingest_job, ingest_tabular_job, join_datasets_job],
+    jobs=[gdal_health_check_job, ingest_job, ingest_tabular_job, join_asset_job],
     resources={
         "minio": MinIOResource(
             endpoint=EnvVar("MINIO_ENDPOINT"),

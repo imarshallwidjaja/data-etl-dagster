@@ -139,39 +139,78 @@ class MinIOResource(ConfigurableResource):
     def download_from_landing(self, s3_key: str, local_path: str) -> None:
         """
         Download a file from the landing zone to a local path.
-        
+
         Args:
             s3_key: Object key in landing bucket (e.g., "batch_001/data.csv")
             local_path: Local file path to write to
-            
+
         Raises:
             S3Error: If object doesn't exist or access denied
             RuntimeError: For other download errors
         """
         from pathlib import Path
-        
+
         client = self.get_client()
-        
+
         try:
             # Ensure parent directory exists
             local_file = Path(local_path)
             local_file.parent.mkdir(parents=True, exist_ok=True)
-            
+
             # Download object
             response = client.get_object(self.landing_bucket, s3_key)
-            
+
             # Write to local file
             with open(local_path, "wb") as f:
                 for chunk in response.stream(32 * 1024):  # 32KB chunks
                     f.write(chunk)
-            
+
             response.close()
             response.release_conn()
-            
+
         except S3Error as exc:
             if exc.code == "NoSuchKey":
                 raise RuntimeError(
                     f"Object '{s3_key}' not found in bucket '{self.landing_bucket}'"
+                ) from exc
+            raise
+
+    def download_from_lake(self, s3_key: str, local_path: str) -> None:
+        """
+        Download a file from the data lake to a local path.
+
+        Args:
+            s3_key: Object key in lake bucket (e.g., "dataset_001/v1/data.parquet")
+            local_path: Local file path to write to
+
+        Raises:
+            S3Error: If object doesn't exist or access denied
+            RuntimeError: For other download errors
+        """
+        from pathlib import Path
+
+        client = self.get_client()
+
+        try:
+            # Ensure parent directory exists
+            local_file = Path(local_path)
+            local_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Download object
+            response = client.get_object(self.lake_bucket, s3_key)
+
+            # Write to local file
+            with open(local_path, "wb") as f:
+                for chunk in response.stream(32 * 1024):  # 32KB chunks
+                    f.write(chunk)
+
+            response.close()
+            response.release_conn()
+
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                raise RuntimeError(
+                    f"Object '{s3_key}' not found in bucket '{self.lake_bucket}'"
                 ) from exc
             raise
     
