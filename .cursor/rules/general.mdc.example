@@ -18,10 +18,11 @@ alwaysApply: true
 - **Local**: Before editing a file, read the nearest `AGENTS.md` in that directory (and parent directories as needed).
 - **Update protocol**: If you change architecture/patterns, update the relevant `AGENTS.md`. If docs are wrong/outdated, correct them.
 
-### Anti-loop protocol (bugfix discipline)
+### Testing and Bugfixing
 
-- You get **one** analyze → fix → verify attempt.
-- If verification fails: **stop**. Revert the change, write a short post-mortem, and ask the user for guidance.
+- Ensure to install the dependencies for the project before running the tests.
+- Test → Fix → Verify loops are permitted, but must be finite and converge towards resolution.
+- Consider if the fix is lowering code quality. If so, revert the change and ask the user for guidance.
 
 ## Immutable architectural laws (enforced)
 
