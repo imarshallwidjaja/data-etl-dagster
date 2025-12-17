@@ -185,9 +185,14 @@ services:
       - ./libs:/opt/dagster/app/libs:ro
       - ./services/dagster/etl_pipelines:/opt/dagster/app/etl_pipelines
     depends_on:
-      - minio
-      - mongodb
-      - postgis
+      mongo-migration:
+        condition: service_completed_successfully
+      minio:
+        condition: service_started
+      mongodb:
+        condition: service_started
+      postgis:
+        condition: service_started
 
   # ===========================================================================
   # STORAGE SERVICES
@@ -261,6 +266,31 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # MongoDB Schema Migration Runner
+  mongo-migration:
+    image: python:3.10-slim
+    container_name: mongo-migration
+    networks:
+      - etl-network
+    working_dir: /app
+    command: >
+      sh -c "pip install --quiet pymongo pydantic pydantic-settings &&
+             python scripts/migrate_db.py"
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: "27017"
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-mongo}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_INITDB_ROOT_PASSWORD:-mongo_password}
+      MONGO_DATABASE: ${MONGO_DATABASE:-spatial_etl}
+      MONGO_AUTH_SOURCE: ${MONGO_AUTH_SOURCE:-admin}
+    volumes:
+      - ./scripts:/app/scripts:ro
+      - ./libs:/app/libs:ro
+      - ./services/mongodb/migrations:/app/services/mongodb/migrations:ro
+    depends_on:
+      mongodb:
+        condition: service_healthy
 
   # ===========================================================================
   # COMPUTE SERVICES
