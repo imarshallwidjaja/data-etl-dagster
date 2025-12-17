@@ -394,8 +394,9 @@ class TestTabularAssetJobE2E:
 
             header_mapping = metadata.get("header_mapping")
             assert isinstance(header_mapping, dict)
-            assert header_mapping.get("Col A") == "col_a"
-            assert header_mapping.get("Col B") == "col_b"
+            # Fixture CSV (`e2e_sample_table_data.csv`) already uses snake_case headers.
+            assert header_mapping.get("ogc_fid") == "ogc_fid"
+            assert header_mapping.get("sa1_code21") == "sa1_code21"
 
             s3_key = asset_doc.get("s3_key")
             assert s3_key, "Asset document missing s3_key"
@@ -445,8 +446,9 @@ class TestTabularAssetJobE2E:
         manifest["metadata"]["join_config"] = {
             "spatial_asset_id": "000000000000000000000000",  # Placeholder ObjectId
             "tabular_asset_id": "000000000000000000000001",  # Placeholder ObjectId
-            "left_key": "Col A",
-            "right_key": "Col A",
+            # Use a real column from the fixture CSV.
+            "left_key": "sa1_code21",
+            "right_key": "sa1_code21",
             "how": "left",
         }
 
@@ -477,7 +479,7 @@ class TestTabularAssetJobE2E:
             )
             metadata = asset_doc.get("metadata") or {}
             tags = metadata.get("tags") or {}
-            assert tags.get("join_key_clean") == "col_a"
+            assert tags.get("join_key_clean") == "sa1_code21"
 
         finally:
             _cleanup_landing_zone_object(
