@@ -36,13 +36,12 @@ class Lane(str, Enum):
 LANE_TO_JOB: dict[Lane, str] = {
     Lane.INGEST: "ingest_job",
     Lane.TABULAR: "ingest_tabular_job",
-    Lane.JOIN: "join_datasets_job",
+    Lane.JOIN: "join_asset_job",
 }
 
 # Lane to op name mapping for placeholder jobs
 LANE_TO_OP: dict[Lane, str] = {
     Lane.TABULAR: "tabular_validate_and_log",
-    Lane.JOIN: "join_validate_and_log",
 }
 
 
@@ -273,15 +272,12 @@ def build_run_request(
             }
         }
     else:
-        # Placeholder jobs (e.g., join) expect manifest as op input to their placeholder op
-        op_name = LANE_TO_OP[lane]
+        # Asset job (join_asset_job) expects raw_manifest_json asset config
         run_config = {
             "ops": {
-                op_name: {
-                    "inputs": {
-                        "manifest": {
-                            "value": manifest.model_dump(mode="json"),
-                        }
+                "raw_manifest_json": {
+                    "config": {
+                        "manifest": manifest.model_dump(mode="json"),
                     }
                 }
             }

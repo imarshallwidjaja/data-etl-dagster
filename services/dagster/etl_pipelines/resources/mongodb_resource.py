@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from functools import cached_property
-from typing import ClassVar, Dict
+from typing import Any, ClassVar, Dict
 
 from dagster import ConfigurableResource
 from pydantic import Field
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
+from bson import ObjectId
 
 from libs.models import Asset, ManifestRecord, ManifestStatus
 
@@ -30,6 +31,7 @@ class MongoDBResource(ConfigurableResource):
 
     MANIFESTS: ClassVar[str] = "manifests"
     ASSETS: ClassVar[str] = "assets"
+    LINEAGE: ClassVar[str] = "lineage"
 
     @cached_property
     def _client(self) -> MongoClient:
@@ -105,6 +107,51 @@ class MongoDBResource(ConfigurableResource):
         """
         collection = self._get_collection(self.ASSETS)
         result = collection.insert_one(asset.model_dump(exclude_none=True))
+        return str(result.inserted_id)
+
+    def get_asset_by_id(self, asset_id: str) -> Asset | None:
+        """
+        Retrieve an asset by its MongoDB ObjectId.
+
+        Notes:
+        - The returned Asset model does not include the MongoDB _id field.
+          Use the input asset_id when you need to reference the document.
+        """
+        collection = self._get_collection(self.ASSETS)
+        try:
+            oid = ObjectId(asset_id)
+        except Exception:
+            return None
+
+        document = collection.find_one({"_id": oid})
+        if not document:
+            return None
+        return Asset(**self._strip_object_id(document))
+
+    def insert_lineage(
+        self,
+        *,
+        source_asset_id: str,
+        target_asset_id: str,
+        dagster_run_id: str,
+        transformation: str,
+        parameters: dict[str, Any] | None = None,
+    ) -> str:
+        """
+        Record a lineage edge between two assets.
+
+        Stores ObjectId references to source/target asset documents.
+        """
+        collection = self._get_collection(self.LINEAGE)
+        document = {
+            "source_asset_id": ObjectId(source_asset_id),
+            "target_asset_id": ObjectId(target_asset_id),
+            "dagster_run_id": dagster_run_id,
+            "transformation": transformation,
+            "parameters": parameters or {},
+            "created_at": datetime.now(timezone.utc),
+        }
+        result = collection.insert_one(document)
         return str(result.inserted_id)
 
     def get_asset(self, dataset_id: str, version: int) -> Asset | None:

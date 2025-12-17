@@ -157,9 +157,9 @@ def test_join_intent_routes_to_join_lane(mock_sensor_context, mock_minio_resourc
     assert len(results) == 1
     run_request = results[0]
     assert run_request.run_key == f"join:{join_manifest['batch_id']}"
-    assert run_request.job_name == "join_datasets_job"
+    assert run_request.job_name == "join_asset_job"
     assert run_request.tags["lane"] == "join"
-    assert "join_validate_and_log" in run_request.run_config["ops"]
+    assert "raw_manifest_json" in run_request.run_config["ops"]
 
 
 # =============================================================================

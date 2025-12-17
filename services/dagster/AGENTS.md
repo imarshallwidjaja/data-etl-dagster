@@ -58,7 +58,7 @@ The `manifest_sensor` is a multi-lane router that routes manifests to different 
 
 **Lane Mapping:**
 - `intent == "ingest_tabular"` → `tabular` lane → `ingest_tabular_job`
-- `intent == "join_datasets"` → `join` lane → `join_datasets_job` (requires `metadata.join_config`)
+- `intent == "join_datasets"` → `join` lane → `join_asset_job` (materializes `joined_spatial_asset`; requires `metadata.join_config`)
 - All other intents → `ingest` lane → `ingest_job` (default)
 
 **Traffic Controller (`MANIFEST_ROUTER_ENABLED_LANES`):**

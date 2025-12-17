@@ -6,6 +6,7 @@ Uses mongomock to exercise MongoDB operations without a live service.
 
 from datetime import datetime, timezone
 
+from bson import ObjectId
 import mongomock
 import pytest
 
@@ -177,3 +178,39 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
     document = collection.find_one({"dataset_id": "test_dataset_none_bounds", "version": 1})
     assert document is not None
     assert "bounds" not in document  # bounds field should be excluded when None
+
+
+def test_get_asset_by_id_returns_asset(mongo_resource, asset):
+    inserted_id = mongo_resource.insert_asset(asset)
+    retrieved = mongo_resource.get_asset_by_id(inserted_id)
+    assert retrieved is not None
+    assert retrieved.dataset_id == asset.dataset_id
+    assert retrieved.version == asset.version
+
+
+def test_get_asset_by_id_returns_none_for_invalid_id(mongo_resource):
+    assert mongo_resource.get_asset_by_id("not_an_object_id") is None
+
+
+def test_insert_lineage_stores_object_ids(mongo_resource, mongomock_client, asset):
+    source_id = mongo_resource.insert_asset(asset)
+    target_id = mongo_resource.insert_asset(asset.model_copy(update={"dataset_id": "child_dataset"}))
+
+    lineage_id = mongo_resource.insert_lineage(
+        source_asset_id=source_id,
+        target_asset_id=target_id,
+        dagster_run_id="run_456",
+        transformation="spatial_join",
+        parameters={"how": "left"},
+    )
+    assert lineage_id is not None
+
+    stored = mongomock_client[mongo_resource.database][MongoDBResource.LINEAGE].find_one(
+        {"_id": ObjectId(lineage_id)}
+    )
+    # mongomock uses bson ObjectId; verify key fields exist
+    assert stored is not None
+    assert str(stored["source_asset_id"]) == source_id
+    assert str(stored["target_asset_id"]) == target_id
+    assert stored["dagster_run_id"] == "run_456"
+    assert stored["transformation"] == "spatial_join"
