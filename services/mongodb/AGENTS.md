@@ -34,6 +34,22 @@ MongoDB is the Source of Truth: if it’s not recorded in Mongo, it doesn’t ex
   - update Pydantic models in `libs/models/`
   - update unit tests that exercise Mongo behavior
 
+
+## Schema Migrations
+
+The migration system (`scripts/migrate_db.py`) replaces the legacy `init/01-init-db.js` for schema evolution.
+
+### Key Behavior
+- Migrations run automatically on container startup via `mongo-migration` service
+- Applied migrations are tracked in `schema_migrations` collection
+- Failed migrations are NOT recorded (will retry on next startup)
+- Migration `001_baseline_schema.py` includes tabular support, making `002_add_tabular_contracts.py` a no-op for fresh installs
+
+### Adding New Migrations
+1. Create `services/mongodb/migrations/NNN_description.py`
+2. Define `VERSION = "NNN"` and `def up(db): ...`
+3. Test locally: `python scripts/migrate_db.py`
+
 ## Testing / verification
 
 - Unit tests (mocked): `pytest tests/unit/test_mongodb_resource.py`

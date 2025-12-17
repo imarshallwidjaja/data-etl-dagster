@@ -271,6 +271,7 @@ services:
   mongo-migration:
     image: python:3.10-slim
     container_name: mongo-migration
+    restart: "no"
     networks:
       - etl-network
     working_dir: /app
@@ -278,6 +279,7 @@ services:
       sh -c "pip install --quiet pymongo pydantic pydantic-settings &&
              python scripts/migrate_db.py"
     environment:
+      PYTHONPATH: /app
       MONGO_HOST: mongodb
       MONGO_PORT: "27017"
       MONGO_INITDB_ROOT_USERNAME: ${MONGO_INITDB_ROOT_USERNAME:-mongo}
