@@ -3,6 +3,7 @@
 from dagster import Definitions, EnvVar, define_asset_job
 
 from .resources import MinIOResource, MongoDBResource, PostGISResource, GDALResource
+from .partitions import dataset_partitions  # noqa: F401
 from .assets import (
     gdal_health_check,
     raw_manifest_json,

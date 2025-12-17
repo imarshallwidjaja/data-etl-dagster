@@ -10,6 +10,7 @@ from typing import Any, Dict
 from dagster import AssetExecutionContext, MetadataValue, asset
 
 from libs.models import Manifest
+from ..partitions import dataset_partitions
 
 from ..ops.join_ops import (
     _choose_dataset_id,
@@ -27,6 +28,7 @@ from ..ops.tabular_ops import _download_tabular_from_landing, _load_and_clean_ta
     compute_kind="join",
     required_resource_keys={"gdal", "postgis", "minio", "mongodb"},
     description="Derived asset: joins tabular (primary) with spatial (secondary) datasets.",
+    partitions_def=dataset_partitions,
 )
 def joined_spatial_asset(
     context: AssetExecutionContext,
@@ -43,6 +45,14 @@ def joined_spatial_asset(
     5. Export joined GeoParquet to data lake, register Asset in MongoDB
     6. Record lineage (spatial parent -> joined)
     """
+    # Register dynamic partition key (idempotent)
+    partition_key = context.partition_key
+    if partition_key:
+        context.instance.add_dynamic_partitions(
+            partitions_def_name=dataset_partitions.name,
+            partition_keys=[partition_key],
+        )
+
     # Validate manifest structure (raw_manifest_json is already normalized upstream)
     validated_manifest = Manifest(**raw_manifest_json)
     join_resolution = _resolve_join_assets(

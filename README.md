@@ -12,6 +12,13 @@ This platform processes spatial data through a strict manifest-based ingestion p
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
 
+### Asset partitioning (dataset_id)
+
+Dagster assets are **partitioned by `dataset_id`** (dynamic partitions) so each dataset can be materialized, reprocessed, and joined independently.
+
+- **Partition key source**: `metadata.tags.dataset_id` if provided; otherwise generated as `dataset_{uuid12}`.
+- **Implication**: the same logical assets (spatial/tabular/join) materialize per dataset partition key.
+
 **Recipe-Based Transformations:** The pipeline uses a recipe-based transformation architecture that maps manifest `intent` fields to ordered lists of transformation steps (CRS normalization, geometry simplification, spatial indexing). See `libs/transformations/AGENTS.md` for details.
 
 **Geometry Column Contract:** In PostGIS compute schemas, vector geometry column is standardized to `geom`, and transforms preserve a single geometry column. Bounds may be empty for empty datasets.
@@ -91,6 +98,7 @@ Create a `manifest.json` file describing your data. The manifest format is curre
     "project": "BUILDINGS_DEMO",
     "description": "Building footprints with intent-driven heavy simplification",
     "tags": {
+      "dataset_id": "dataset_ab12cd34ef56",
       "source": "survey",
       "priority": 1
     },

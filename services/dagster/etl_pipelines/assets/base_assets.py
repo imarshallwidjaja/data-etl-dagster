@@ -10,6 +10,7 @@ from typing import Dict, Any
 from dagster import asset, AssetExecutionContext, Config, MetadataValue
 
 from libs.models import Manifest
+from ..partitions import dataset_partitions
 from ..ops.load_op import _load_files_to_postgis
 from ..ops.transform_op import _spatial_transform
 from ..ops.export_op import _export_to_datalake
@@ -64,6 +65,7 @@ def raw_manifest_json(context: AssetExecutionContext, config: ManifestConfig) ->
     compute_kind="spatial",
     required_resource_keys={"gdal", "postgis", "minio", "mongodb"},
     description="Spatial ingestion asset: loads, transforms, and exports spatial data.",
+    partitions_def=dataset_partitions,
     deps=[raw_manifest_json],
 )
 def raw_spatial_asset(context: AssetExecutionContext, raw_manifest_json: Dict[str, Any]) -> Dict[str, Any]:
@@ -85,6 +87,14 @@ def raw_spatial_asset(context: AssetExecutionContext, raw_manifest_json: Dict[st
     Raises:
         RuntimeError: If any step in the pipeline fails
     """
+    # Register dynamic partition key (idempotent)
+    partition_key = context.partition_key
+    if partition_key:
+        context.instance.add_dynamic_partitions(
+            partitions_def_name=dataset_partitions.name,
+            partition_keys=[partition_key],
+        )
+
     # Step 1: Load to PostGIS
     context.log.info("Loading spatial data to PostGIS")
     schema_info = _load_files_to_postgis(
@@ -134,6 +144,7 @@ def raw_spatial_asset(context: AssetExecutionContext, raw_manifest_json: Dict[st
     compute_kind="tabular",
     required_resource_keys={"minio", "mongodb"},
     description="Tabular ingestion asset: downloads, cleans, and exports tabular data.",
+    partitions_def=dataset_partitions,
     deps=[raw_manifest_json],
 )
 def raw_tabular_asset(context: AssetExecutionContext, raw_manifest_json: Dict[str, Any]) -> Dict[str, Any]:
@@ -156,6 +167,14 @@ def raw_tabular_asset(context: AssetExecutionContext, raw_manifest_json: Dict[st
         RuntimeError: If any step in the pipeline fails
         ValueError: If manifest has multiple files (tabular is single-file only)
     """
+    # Register dynamic partition key (idempotent)
+    partition_key = context.partition_key
+    if partition_key:
+        context.instance.add_dynamic_partitions(
+            partitions_def_name=dataset_partitions.name,
+            partition_keys=[partition_key],
+        )
+
     # Step 1: Download from landing zone
     context.log.info("Downloading tabular data from landing zone")
     download_result = _download_tabular_from_landing(

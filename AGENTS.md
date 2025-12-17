@@ -55,6 +55,13 @@ graph TD
 - `s3://landing-zone/`: raw uploads + manifests (ephemeral)
 - `s3://data-lake/`: processed outputs (permanent)
 
+### Asset partitioning (dataset_id)
+
+The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partitions (`DynamicPartitionsDefinition`).
+
+- **Partition key source**: `metadata.tags.dataset_id` if present and non-blank; otherwise the system generates `dataset_{uuid12}`.
+- **Why**: enables per-dataset materialization tracking and fan-in patterns (e.g., join assets depending on multiple upstream datasets).
+
 ### Upload sequence
 
 1. Upload raw files to a batch prefix (example: `s3://landing-zone/batch_XYZ/...`).
@@ -81,6 +88,7 @@ graph TD
     "project": "ALPHA",
     "description": "User supplied context",
     "tags": {
+      "dataset_id": "dataset_ab12cd34ef56",
       "priority": 1,
       "source": "user",
       "published": false

@@ -52,6 +52,14 @@ Notes:
 - Bucket names (`landing-zone`, `data-lake`) and DB names (`spatial_etl`, `spatial_compute`) are currently hardcoded in `etl_pipelines/definitions.py` to match architectural defaults.
 - Manifest schema is documented in the repo-root guide: `../../AGENTS.md`.
 
+### Asset partitioning (dataset_id)
+
+The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partitions.
+
+- Definition lives in `etl_pipelines/partitions.py` as `dataset_partitions` (`DynamicPartitionsDefinition(name="dataset_id")`).
+- Partition keys are **registered at runtime** by partitioned assets when they materialize.
+- Partition key source (from the manifest): `metadata.tags.dataset_id` if present, else generated `dataset_{uuid12}`.
+
 ### Manifest Sensor (Multi-Lane Router)
 
 The `manifest_sensor` is a multi-lane router that routes manifests to different jobs based on the `intent` field.
@@ -60,6 +68,10 @@ The `manifest_sensor` is a multi-lane router that routes manifests to different 
 - `intent == "ingest_tabular"` → `tabular` lane → `ingest_tabular_job`
 - `intent == "join_datasets"` → `join` lane → `join_asset_job` (materializes `joined_spatial_asset`; requires `metadata.join_config`)
 - All other intents → `ingest` lane → `ingest_job` (default)
+
+**Note (asset architecture fix)**:
+- The target architecture introduces dedicated sensors that launch **asset-based jobs** for spatial/tabular ingestion so `raw_spatial_asset` / `raw_tabular_asset` are materialized (not just op-based jobs).
+- Component 1 (dynamic partitions) is implemented; sensor/job separation is handled in later components.
 
 **Traffic Controller (`MANIFEST_ROUTER_ENABLED_LANES`):**
 - Controls which lanes may launch runs
