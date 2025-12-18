@@ -20,7 +20,16 @@ from typing import Any, Dict, Literal
 import pandas as pd
 import pyarrow as pa
 
-from libs.models import Asset, AssetKind, AssetMetadata, Bounds, CRS, JoinConfig, Manifest, OutputFormat
+from libs.models import (
+    Asset,
+    AssetKind,
+    AssetMetadata,
+    Bounds,
+    CRS,
+    JoinConfig,
+    Manifest,
+    OutputFormat,
+)
 from libs.s3_utils import s3_to_vsis3
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -28,7 +37,9 @@ _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 def _require_identifier(name: str, *, label: str) -> str:
     if not _IDENTIFIER_RE.match(name):
-        raise ValueError(f"Invalid {label}: {name!r}. Must match: {_IDENTIFIER_RE.pattern}")
+        raise ValueError(
+            f"Invalid {label}: {name!r}. Must match: {_IDENTIFIER_RE.pattern}"
+        )
     return name
 
 
@@ -51,7 +62,7 @@ def _resolve_join_assets(
         )
 
     # Fetch spatial asset
-    spatial_asset = mongodb.get_asset_by_id(join_config.spatial_asset_id)
+    spatial_asset = mongodb.get_latest_asset(join_config.spatial_asset_id)
     if spatial_asset is None:
         raise ValueError(f"Spatial asset not found: {join_config.spatial_asset_id}")
     if spatial_asset.kind != AssetKind.SPATIAL:
@@ -60,7 +71,7 @@ def _resolve_join_assets(
         )
 
     # Fetch tabular asset
-    tabular_asset = mongodb.get_asset_by_id(join_config.tabular_asset_id)
+    tabular_asset = mongodb.get_latest_asset(join_config.tabular_asset_id)
     if tabular_asset is None:
         raise ValueError(f"Tabular asset not found: {join_config.tabular_asset_id}")
     if tabular_asset.kind != AssetKind.TABULAR:
@@ -205,7 +216,9 @@ def _load_tabular_parquet_to_postgis(
             df = df.drop(columns=["geom"])
 
         engine = postgis.get_engine()
-        log.info(f"Loading tabular parquet to PostGIS: {schema}.{table_name} ({len(df)} rows)")
+        log.info(
+            f"Loading tabular parquet to PostGIS: {schema}.{table_name} ({len(df)} rows)"
+        )
 
         df.to_sql(
             table_name,
@@ -274,9 +287,19 @@ def _execute_spatial_join(
     bounds = postgis.get_table_bounds(schema, output_table, geom_column="geom")
     bounds_dict = None
     if bounds is not None:
-        bounds_dict = {"minx": bounds.minx, "miny": bounds.miny, "maxx": bounds.maxx, "maxy": bounds.maxy}
+        bounds_dict = {
+            "minx": bounds.minx,
+            "miny": bounds.miny,
+            "maxx": bounds.maxx,
+            "maxy": bounds.maxy,
+        }
 
-    return {"schema": schema, "table": output_table, "bounds": bounds_dict, "geom_column": "geom"}
+    return {
+        "schema": schema,
+        "table": output_table,
+        "bounds": bounds_dict,
+        "geom_column": "geom",
+    }
 
 
 def _export_joined_to_datalake(
@@ -396,5 +419,3 @@ def _choose_dataset_id(manifest: Manifest) -> str:
     if isinstance(raw, str) and raw.strip():
         return raw.strip()
     return f"dataset_{uuid.uuid4().hex[:12]}"
-
-
