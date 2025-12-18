@@ -121,6 +121,29 @@ def _load_manifest_template() -> dict:
     return json.loads(TABULAR_MANIFEST_TEMPLATE_PATH.read_text())
 
 
+def _add_dynamic_partition(dagster_client, partition_key: str) -> None:
+    """Register a dynamic partition key via GraphQL before launching a partitioned job.
+
+    Required when bypassing the sensor path which normally handles partition registration.
+    """
+    mutation = """
+    mutation AddDynamicPartition($partitionsDefName: String!, $partitionKey: String!) {
+        addDynamicPartition(partitionsDefName: $partitionsDefName, partitionKey: $partitionKey) {
+            ... on AddDynamicPartitionSuccess { partitionsDefName partitionKey }
+            ... on PythonError { message }
+        }
+    }
+    """
+    result = dagster_client.query(
+        mutation,
+        variables={"partitionsDefName": "dataset_id", "partitionKey": partition_key},
+        timeout=10,
+    )
+    assert "errors" not in result, (
+        f"Failed to add dynamic partition: {result.get('errors')}"
+    )
+
+
 def _upload_csv_to_landing_zone(
     minio_client: Minio,
     landing_bucket: str,
@@ -368,6 +391,11 @@ class TestTabularAssetJobE2E:
                 csv_bytes,
             )
 
+            # Register partition before launching (bypasses sensor path)
+            _add_dynamic_partition(
+                dagster_client, manifest["metadata"]["tags"]["dataset_id"]
+            )
+
             run_id = _launch_tabular_asset_job(dagster_client, manifest)
 
             status, error_details = _poll_run_to_completion(dagster_client, run_id)
@@ -461,6 +489,11 @@ class TestTabularAssetJobE2E:
                 minio_settings.landing_bucket,
                 object_key,
                 csv_bytes,
+            )
+
+            # Register partition before launching (bypasses sensor path)
+            _add_dynamic_partition(
+                dagster_client, manifest["metadata"]["tags"]["dataset_id"]
             )
 
             run_id = _launch_tabular_asset_job(dagster_client, manifest)

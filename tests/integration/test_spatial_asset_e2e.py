@@ -151,6 +151,29 @@ def _upload_bytes(
     )
 
 
+def _add_dynamic_partition(dagster_client, partition_key: str) -> None:
+    """Register a dynamic partition key via GraphQL before launching a partitioned job.
+
+    Required when bypassing the sensor path which normally handles partition registration.
+    """
+    mutation = """
+    mutation AddDynamicPartition($partitionsDefName: String!, $partitionKey: String!) {
+        addDynamicPartition(partitionsDefName: $partitionsDefName, partitionKey: $partitionKey) {
+            ... on AddDynamicPartitionSuccess { partitionsDefName partitionKey }
+            ... on PythonError { message }
+        }
+    }
+    """
+    result = dagster_client.query(
+        mutation,
+        variables={"partitionsDefName": "dataset_id", "partitionKey": partition_key},
+        timeout=10,
+    )
+    assert "errors" not in result, (
+        f"Failed to add dynamic partition: {result.get('errors')}"
+    )
+
+
 def _launch_spatial_asset_job(
     dagster_client, *, manifest: dict, partition_key: str
 ) -> str:
@@ -264,7 +287,9 @@ def _get_run_error_details(dagster_client, run_id: str) -> Optional[dict]:
         }
     }
     """
-    log_result = dagster_client.query(log_query, variables={"runId": run_id}, timeout=10)
+    log_result = dagster_client.query(
+        log_query, variables={"runId": run_id}, timeout=10
+    )
     logs = log_result.get("data", {}).get("logsForRun")
     if not logs or logs.get("__typename") != "EventConnection":
         return None
@@ -286,7 +311,9 @@ def _assert_mongodb_asset_exists(
     return asset_doc
 
 
-def _assert_datalake_object_exists(minio_client: Minio, bucket: str, s3_key: str) -> None:
+def _assert_datalake_object_exists(
+    minio_client: Minio, bucket: str, s3_key: str
+) -> None:
     try:
         stat = minio_client.stat_object(bucket, s3_key)
         assert stat.size > 0, f"Data-lake object {s3_key} has zero size"
@@ -355,7 +382,9 @@ class TestSpatialAssetE2E:
         manifest["files"][0]["type"] = "vector"
 
         # Normalize tags (fixture stores some values as strings; pipeline expects primitives, but strings are OK)
-        manifest["metadata"]["tags"] = dict(manifest.get("metadata", {}).get("tags", {}))
+        manifest["metadata"]["tags"] = dict(
+            manifest.get("metadata", {}).get("tags", {})
+        )
         manifest["metadata"]["tags"]["dataset_id"] = partition_key
 
         run_id: str | None = None
@@ -370,6 +399,9 @@ class TestSpatialAssetE2E:
                 content_type="application/json",
             )
 
+            # Register partition before launching (bypasses sensor path)
+            _add_dynamic_partition(dagster_client, partition_key)
+
             run_id = _launch_spatial_asset_job(
                 dagster_client, manifest=manifest, partition_key=partition_key
             )
@@ -380,7 +412,9 @@ class TestSpatialAssetE2E:
                     f"spatial_asset_job failed: {status}. Details: {error_details}"
                 )
 
-            asset_doc = _assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
+            asset_doc = _assert_mongodb_asset_exists(
+                mongo_client, mongo_settings, run_id
+            )
             assert asset_doc.get("kind") == "spatial", (
                 f"Expected kind=spatial, got {asset_doc.get('kind')}"
             )
@@ -399,5 +433,3 @@ class TestSpatialAssetE2E:
                 landing_key,
                 asset_doc,
             )
-
-

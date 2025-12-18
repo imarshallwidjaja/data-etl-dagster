@@ -40,6 +40,8 @@ SPATIAL_MANIFEST_TEMPLATE_PATH = FIXTURES_DIR / "e2e_spatial_manifest.json"
 SPATIAL_DATASET_PATH = FIXTURES_DIR / "e2e_sample_sa1_data.json"
 TABULAR_DATASET_PATH = FIXTURES_DIR / "e2e_sample_table_data.csv"
 JOIN_MANIFEST_TEMPLATE_PATH = FIXTURES_DIR / "e2e_join_manifest.json"
+
+
 @pytest.fixture
 def dagster_graphql_url():
     port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
@@ -162,6 +164,29 @@ def _upload_bytes(
     )
 
 
+def _add_dynamic_partition(dagster_client, partition_key: str) -> None:
+    """Register a dynamic partition key via GraphQL before launching a partitioned job.
+
+    Required when bypassing the sensor path which normally handles partition registration.
+    """
+    mutation = """
+    mutation AddDynamicPartition($partitionsDefName: String!, $partitionKey: String!) {
+        addDynamicPartition(partitionsDefName: $partitionsDefName, partitionKey: $partitionKey) {
+            ... on AddDynamicPartitionSuccess { partitionsDefName partitionKey }
+            ... on PythonError { message }
+        }
+    }
+    """
+    result = dagster_client.query(
+        mutation,
+        variables={"partitionsDefName": "dataset_id", "partitionKey": partition_key},
+        timeout=10,
+    )
+    assert "errors" not in result, (
+        f"Failed to add dynamic partition: {result.get('errors')}"
+    )
+
+
 def _launch_job_with_run_config(
     dagster_client, *, job_name: str, run_config: dict, partition_key: str | None = None
 ) -> str:
@@ -275,7 +300,9 @@ def _get_run_error_details(dagster_client, run_id: str) -> Optional[dict]:
         }
     }
     """
-    log_result = dagster_client.query(log_query, variables={"runId": run_id}, timeout=10)
+    log_result = dagster_client.query(
+        log_query, variables={"runId": run_id}, timeout=10
+    )
     logs = log_result.get("data", {}).get("logsForRun")
     if not logs or logs.get("__typename") != "EventConnection":
         return None
@@ -288,14 +315,20 @@ def _get_run_error_details(dagster_client, run_id: str) -> Optional[dict]:
     return {"events": error_events or events_list[-10:]}
 
 
-def _assert_mongodb_asset_exists(mongo_client: MongoClient, mongo_settings: MongoSettings, run_id: str) -> dict:
+def _assert_mongodb_asset_exists(
+    mongo_client: MongoClient, mongo_settings: MongoSettings, run_id: str
+) -> dict:
     db = mongo_client[mongo_settings.database]
     asset_doc = db["assets"].find_one({"dagster_run_id": run_id})
-    assert asset_doc is not None, f"No asset record found in MongoDB for run_id: {run_id}"
+    assert asset_doc is not None, (
+        f"No asset record found in MongoDB for run_id: {run_id}"
+    )
     return asset_doc
 
 
-def _assert_datalake_object_exists(minio_client: Minio, bucket: str, s3_key: str) -> None:
+def _assert_datalake_object_exists(
+    minio_client: Minio, bucket: str, s3_key: str
+) -> None:
     try:
         stat = minio_client.stat_object(bucket, s3_key)
         assert stat.size > 0, f"Data-lake object {s3_key} has zero size"
@@ -329,7 +362,9 @@ def _extract_join_key_and_value(spatial_dataset_bytes: bytes) -> tuple[str, str]
 
     key = "sa1_code" if "sa1_code" in props else None
     if key is None:
-        candidates = [k for k in props.keys() if "sa1" in k.lower() and "co" in k.lower()]
+        candidates = [
+            k for k in props.keys() if "sa1" in k.lower() and "co" in k.lower()
+        ]
         assert candidates, "Could not find a join key candidate in fixture properties"
         key = candidates[0]
 
@@ -338,7 +373,9 @@ def _extract_join_key_and_value(spatial_dataset_bytes: bytes) -> tuple[str, str]
     return key, str(value)
 
 
-def _cleanup_landing_zone_object(minio_client: Minio, landing_bucket: str, object_key: str) -> None:
+def _cleanup_landing_zone_object(
+    minio_client: Minio, landing_bucket: str, object_key: str
+) -> None:
     try:
         minio_client.remove_object(landing_bucket, object_key)
     except S3Error:
@@ -390,7 +427,9 @@ class TestJoinAssetE2E:
             spatial_manifest = spatial_manifest_template.copy()
             spatial_manifest["batch_id"] = batch_id
             spatial_manifest["intent"] = "ingest_vector"
-            spatial_manifest["files"][0]["path"] = f"s3://landing-zone/{spatial_object_key}"
+            spatial_manifest["files"][0]["path"] = (
+                f"s3://landing-zone/{spatial_object_key}"
+            )
             spatial_manifest["files"][0]["type"] = "vector"
             spatial_manifest["metadata"]["tags"] = dict(
                 spatial_manifest.get("metadata", {}).get("tags", {})
@@ -405,17 +444,26 @@ class TestJoinAssetE2E:
                 content_type="application/json",
             )
 
+            # Register partition before launching (bypasses sensor path)
+            _add_dynamic_partition(dagster_client, spatial_partition_key)
+
             spatial_run_id = _launch_job_with_run_config(
                 dagster_client,
                 job_name="spatial_asset_job",
                 run_config={
-                    "ops": {"raw_manifest_json": {"config": {"manifest": spatial_manifest}}}
+                    "ops": {
+                        "raw_manifest_json": {"config": {"manifest": spatial_manifest}}
+                    }
                 },
                 partition_key=spatial_partition_key,
             )
-            status, error_details = _poll_run_to_completion(dagster_client, spatial_run_id)
+            status, error_details = _poll_run_to_completion(
+                dagster_client, spatial_run_id
+            )
             if status != "SUCCESS":
-                pytest.fail(f"spatial_asset_job failed: {status}. Details: {error_details}")
+                pytest.fail(
+                    f"spatial_asset_job failed: {status}. Details: {error_details}"
+                )
 
             spatial_asset_doc = _assert_mongodb_asset_exists(
                 mongo_client, mongo_settings, spatial_run_id
@@ -453,17 +501,26 @@ class TestJoinAssetE2E:
                 content_type="text/csv",
             )
 
+            # Register partition before launching (bypasses sensor path)
+            _add_dynamic_partition(dagster_client, tabular_partition_key)
+
             tabular_run_id = _launch_job_with_run_config(
                 dagster_client,
                 job_name="tabular_asset_job",
                 run_config={
-                    "ops": {"raw_manifest_json": {"config": {"manifest": tabular_manifest}}}
+                    "ops": {
+                        "raw_manifest_json": {"config": {"manifest": tabular_manifest}}
+                    }
                 },
                 partition_key=tabular_partition_key,
             )
-            status, error_details = _poll_run_to_completion(dagster_client, tabular_run_id)
+            status, error_details = _poll_run_to_completion(
+                dagster_client, tabular_run_id
+            )
             if status != "SUCCESS":
-                pytest.fail(f"tabular_asset_job failed: {status}. Details: {error_details}")
+                pytest.fail(
+                    f"tabular_asset_job failed: {status}. Details: {error_details}"
+                )
 
             tabular_asset_doc = _assert_mongodb_asset_exists(
                 mongo_client, mongo_settings, tabular_run_id
@@ -476,22 +533,35 @@ class TestJoinAssetE2E:
             join_manifest = _load_join_manifest_template()
             join_manifest = join_manifest.copy()
             join_manifest["batch_id"] = f"join_{batch_id}"
-            join_manifest["metadata"]["tags"] = dict(join_manifest["metadata"].get("tags", {}))
+            join_manifest["metadata"]["tags"] = dict(
+                join_manifest["metadata"].get("tags", {})
+            )
             join_manifest["metadata"]["tags"]["dataset_id"] = join_partition_key
-            join_manifest["metadata"]["join_config"]["spatial_asset_id"] = spatial_asset_id
-            join_manifest["metadata"]["join_config"]["tabular_asset_id"] = tabular_asset_id
+            join_manifest["metadata"]["join_config"]["spatial_asset_id"] = (
+                spatial_asset_id
+            )
+            join_manifest["metadata"]["join_config"]["tabular_asset_id"] = (
+                tabular_asset_id
+            )
+
+            # Register partition before launching (bypasses sensor path)
+            _add_dynamic_partition(dagster_client, join_partition_key)
 
             join_run_id = _launch_job_with_run_config(
                 dagster_client,
                 job_name="join_asset_job",
                 run_config={
-                    "ops": {"raw_manifest_json": {"config": {"manifest": join_manifest}}}
+                    "ops": {
+                        "raw_manifest_json": {"config": {"manifest": join_manifest}}
+                    }
                 },
                 partition_key=join_partition_key,
             )
             status, error_details = _poll_run_to_completion(dagster_client, join_run_id)
             if status != "SUCCESS":
-                pytest.fail(f"join_asset_job failed: {status}. Details: {error_details}")
+                pytest.fail(
+                    f"join_asset_job failed: {status}. Details: {error_details}"
+                )
 
             # =========================================================
             # 4) Verify joined asset in MongoDB + data-lake
@@ -511,13 +581,19 @@ class TestJoinAssetE2E:
             joined_id = joined_asset_doc["_id"]
 
             spatial_lineage = db["lineage"].find_one(
-                {"source_asset_id": ObjectId(spatial_asset_id), "target_asset_id": joined_id}
+                {
+                    "source_asset_id": ObjectId(spatial_asset_id),
+                    "target_asset_id": joined_id,
+                }
             )
             assert spatial_lineage is not None, "Spatial parent lineage not found"
             assert spatial_lineage["transformation"] == "spatial_join"
 
             tabular_lineage = db["lineage"].find_one(
-                {"source_asset_id": ObjectId(tabular_asset_id), "target_asset_id": joined_id}
+                {
+                    "source_asset_id": ObjectId(tabular_asset_id),
+                    "target_asset_id": joined_id,
+                }
             )
             assert tabular_lineage is not None, "Tabular parent lineage not found"
             assert tabular_lineage["transformation"] == "spatial_join"
@@ -540,7 +616,9 @@ class TestJoinAssetE2E:
                 if doc is None:
                     continue
                 try:
-                    minio_client.remove_object(minio_settings.lake_bucket, doc["s3_key"])
+                    minio_client.remove_object(
+                        minio_settings.lake_bucket, doc["s3_key"]
+                    )
                 except Exception:
                     pass
                 try:
@@ -565,5 +643,3 @@ class TestJoinAssetE2E:
                     )
             except Exception:
                 pass
-
-
