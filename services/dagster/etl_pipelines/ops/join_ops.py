@@ -61,8 +61,8 @@ def _resolve_join_assets(
             f"Manifest {validated.batch_id} has intent 'join_datasets' but metadata.join_config is missing"
         )
 
-    # Fetch spatial asset
-    spatial_asset = mongodb.get_latest_asset(join_config.spatial_asset_id)
+    # Fetch spatial asset by ObjectId
+    spatial_asset = mongodb.get_asset_by_id(join_config.spatial_asset_id)
     if spatial_asset is None:
         raise ValueError(f"Spatial asset not found: {join_config.spatial_asset_id}")
     if spatial_asset.kind != AssetKind.SPATIAL:
@@ -70,8 +70,8 @@ def _resolve_join_assets(
             f"spatial_asset_id must reference a spatial asset, got {spatial_asset.kind.value}"
         )
 
-    # Fetch tabular asset
-    tabular_asset = mongodb.get_latest_asset(join_config.tabular_asset_id)
+    # Fetch tabular asset by ObjectId
+    tabular_asset = mongodb.get_asset_by_id(join_config.tabular_asset_id)
     if tabular_asset is None:
         raise ValueError(f"Tabular asset not found: {join_config.tabular_asset_id}")
     if tabular_asset.kind != AssetKind.TABULAR:
