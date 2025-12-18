@@ -24,6 +24,7 @@ from libs.models import MinIOSettings
 from services.dagster.etl_pipelines.partitions import dataset_partitions
 from services.dagster.etl_pipelines.resources import MinIOResource
 from services.dagster.etl_pipelines.sensors.tabular_sensor import tabular_sensor
+from services.dagster.etl_pipelines.sensors.spatial_sensor import spatial_sensor
 
 
 pytestmark = [pytest.mark.integration]
@@ -32,7 +33,7 @@ pytestmark = [pytest.mark.integration]
 @pytest.fixture
 def dagster_instance():
     """Get ephemeral Dagster instance for sensor evaluation.
-    
+
     Uses ephemeral instance for testing sensor logic without requiring
     DAGSTER_HOME to be set. The sensor will create partitions in this
     instance, which we can verify.
@@ -215,9 +216,9 @@ class TestSensorPartitionCreation:
             )
 
             # 2. Verify partition does NOT exist yet
-            assert not _check_partition_exists(
-                dagster_instance, dataset_id
-            ), "Partition should not exist before sensor evaluation"
+            assert not _check_partition_exists(dagster_instance, dataset_id), (
+                "Partition should not exist before sensor evaluation"
+            )
 
             # 3. Create sensor context with real Dagster instance
             from unittest.mock import Mock
@@ -244,19 +245,19 @@ class TestSensorPartitionCreation:
                 if isinstance(r, RunRequest)
                 and r.tags.get("manifest_key") == manifest_key
             ]
-            assert (
-                len(test_run_requests) == 1
-            ), f"Expected 1 RunRequest for our test manifest, got {len(test_run_requests)}. All results: {[r.tags.get('manifest_key') for r in results if isinstance(r, RunRequest)]}"
+            assert len(test_run_requests) == 1, (
+                f"Expected 1 RunRequest for our test manifest, got {len(test_run_requests)}. All results: {[r.tags.get('manifest_key') for r in results if isinstance(r, RunRequest)]}"
+            )
 
             run_request = test_run_requests[0]
-            assert (
-                run_request.partition_key == dataset_id
-            ), f"Expected partition_key={dataset_id}, got {run_request.partition_key}"
+            assert run_request.partition_key == dataset_id, (
+                f"Expected partition_key={dataset_id}, got {run_request.partition_key}"
+            )
 
             # 6. Verify partition was created
-            assert _check_partition_exists(
-                dagster_instance, dataset_id
-            ), f"Partition {dataset_id} should exist after sensor evaluation"
+            assert _check_partition_exists(dagster_instance, dataset_id), (
+                f"Partition {dataset_id} should exist after sensor evaluation"
+            )
 
             # 7. Verify RunRequest is valid (can be used to launch a run)
             assert run_request.run_key is not None
@@ -284,3 +285,145 @@ class TestSensorPartitionCreation:
             except Exception:
                 pass  # Partition may not exist or may have been cleaned up
 
+    def test_spatial_sensor_creates_partition_before_run_request(
+        self,
+        dagster_instance: DagsterInstance,
+        minio_client: Minio,
+        minio_settings: MinIOSettings,
+        minio_resource: MinIOResource,
+    ):
+        """
+        Test that spatial_sensor creates dynamic partition before creating RunRequest.
+
+        This test:
+        1. Uploads a spatial manifest with a specific dataset_id to MinIO
+        2. Evaluates the sensor manually
+        3. Verifies the partition was created
+        4. Verifies the RunRequest was created successfully
+        """
+        # Generate unique test identifiers
+        batch_id = f"spatial_sensor_test_{uuid4().hex[:12]}"
+        dataset_id = f"test_spatial_{uuid4().hex[:12]}"
+        manifest_key = f"manifests/{batch_id}.json"
+        geojson_key = f"test/{batch_id}/data.geojson"
+
+        # Create minimal valid GeoJSON
+        geojson_data = {
+            "type": "FeatureCollection",
+            "features": [
+                {
+                    "type": "Feature",
+                    "geometry": {"type": "Point", "coordinates": [151.2093, -33.8688]},
+                    "properties": {"name": "Sydney"},
+                }
+            ],
+        }
+
+        # Create manifest with explicit dataset_id
+        manifest = {
+            "batch_id": batch_id,
+            "uploader": "sensor_test",
+            "intent": "ingest_vector",
+            "files": [
+                {
+                    "path": f"s3://landing-zone/{geojson_key}",
+                    "type": "vector",
+                    "format": "GeoJSON",
+                }
+            ],
+            "metadata": {
+                "project": "SENSOR_TEST",
+                "description": "Test spatial sensor partition creation",
+                "tags": {
+                    "dataset_id": dataset_id,
+                    "source": "sensor_test",
+                },
+            },
+        }
+
+        try:
+            # 1. Upload GeoJSON and manifest to landing zone
+            geojson_bytes = json.dumps(geojson_data).encode("utf-8")
+            data = BytesIO(geojson_bytes)
+            minio_client.put_object(
+                minio_settings.landing_bucket,
+                geojson_key,
+                data,
+                length=len(geojson_bytes),
+                content_type="application/geo+json",
+            )
+            _upload_manifest_to_minio(
+                minio_client,
+                minio_settings.landing_bucket,
+                manifest_key,
+                manifest,
+            )
+
+            # 2. Verify partition does NOT exist yet
+            assert not _check_partition_exists(dagster_instance, dataset_id), (
+                "Partition should not exist before sensor evaluation"
+            )
+
+            # 3. Create sensor context with real Dagster instance
+            from unittest.mock import Mock
+
+            context = Mock()
+            context.instance = dagster_instance
+            context.cursor = None
+            context.log = Mock()
+            context.log.info = Mock()
+            context.log.error = Mock()
+            context.log.warning = Mock()
+            context.update_cursor = Mock()
+
+            # 4. Evaluate sensor
+            results = list(spatial_sensor._raw_fn(context, minio_resource))
+
+            # 5. Filter results to find our test manifest's RunRequest
+            from dagster import RunRequest
+
+            test_run_requests = [
+                r
+                for r in results
+                if isinstance(r, RunRequest)
+                and r.tags.get("manifest_key") == manifest_key
+            ]
+            assert len(test_run_requests) == 1, (
+                f"Expected 1 RunRequest for our test manifest, got {len(test_run_requests)}"
+            )
+
+            run_request = test_run_requests[0]
+            assert run_request.partition_key == dataset_id, (
+                f"Expected partition_key={dataset_id}, got {run_request.partition_key}"
+            )
+
+            # 6. Verify partition was created
+            assert _check_partition_exists(dagster_instance, dataset_id), (
+                f"Partition {dataset_id} should exist after sensor evaluation"
+            )
+
+            # 7. Verify RunRequest is valid
+            assert run_request.run_key is not None
+            assert run_request.run_config is not None
+            assert "ops" in run_request.run_config
+            assert "raw_manifest_json" in run_request.run_config["ops"]
+
+        finally:
+            # Cleanup
+            _cleanup_manifest(minio_client, minio_settings.landing_bucket, manifest_key)
+            _cleanup_archived_manifest(
+                minio_client, minio_settings.landing_bucket, manifest_key
+            )
+            try:
+                minio_client.remove_object(minio_settings.landing_bucket, geojson_key)
+            except Exception:
+                pass
+
+            # Clean up partition
+            try:
+                dagster_instance.delete_dynamic_partition(
+                    partitions_def_name=dataset_partitions.name,
+                    partition_key=dataset_id,
+                )
+            except Exception:
+                pass

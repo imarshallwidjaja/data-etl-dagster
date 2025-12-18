@@ -5,7 +5,7 @@
     "files": [
         {
             "path": "s3://landing-zone/e2e/${BATCH_ID}/e2e_sample_sa1_data.json",
-            "type": "spatial",
+            "type": "vector",
             "format": "GeoJSON"
         }
     ],
