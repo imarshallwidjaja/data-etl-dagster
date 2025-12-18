@@ -7,7 +7,7 @@ with an existing spatial asset (right) and exporting GeoParquet to the data lake
 
 from typing import Any, Dict
 
-from dagster import AssetExecutionContext, MetadataValue, asset
+from dagster import AssetExecutionContext, AssetKey, MetadataValue, asset
 
 from libs.models import Manifest
 from ..partitions import dataset_partitions
@@ -29,6 +29,7 @@ from ..ops.join_ops import (
     required_resource_keys={"gdal", "postgis", "minio", "mongodb"},
     description="Derived asset: joins tabular (primary) with spatial (secondary) datasets.",
     partitions_def=dataset_partitions,
+    deps=[AssetKey("raw_spatial_asset"), AssetKey("raw_tabular_asset")],
 )
 def joined_spatial_asset(
     context: AssetExecutionContext,
