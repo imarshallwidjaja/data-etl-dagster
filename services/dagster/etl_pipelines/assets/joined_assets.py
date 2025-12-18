@@ -126,8 +126,12 @@ def joined_spatial_asset(
 
     joined_asset_id = asset_info["asset_id"]
 
+    # Resolve MongoDB ObjectIds for lineage (spatial_asset_id/tabular_asset_id are dataset_ids)
+    spatial_object_id = context.resources.mongodb.get_asset_object_id(spatial_asset_id)
+    tabular_object_id = context.resources.mongodb.get_asset_object_id(tabular_asset_id)
+
     spatial_lineage_id = context.resources.mongodb.insert_lineage(
-        source_asset_id=spatial_asset_id,
+        source_asset_id=spatial_object_id,
         target_asset_id=joined_asset_id,
         dagster_run_id=context.run_id,
         transformation="spatial_join",
@@ -140,7 +144,7 @@ def joined_spatial_asset(
     context.log.info(f"Recorded spatial lineage edge: {spatial_lineage_id}")
 
     tabular_lineage_id = context.resources.mongodb.insert_lineage(
-        source_asset_id=tabular_asset_id,
+        source_asset_id=tabular_object_id,
         target_asset_id=joined_asset_id,
         dagster_run_id=context.run_id,
         transformation="spatial_join",
@@ -167,5 +171,3 @@ def joined_spatial_asset(
     )
 
     return asset_info
-
-
