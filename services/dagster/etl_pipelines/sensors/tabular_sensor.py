@@ -18,7 +18,7 @@ from dagster import (
 from pydantic import ValidationError
 
 from libs.models import Manifest
-from ..partitions import extract_partition_key
+from ..partitions import dataset_partitions, extract_partition_key
 from ..resources import MinIOResource
 
 
@@ -95,6 +95,11 @@ def tabular_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 continue
 
             partition_key = extract_partition_key(manifest)
+            # Register dynamic partition key before creating RunRequest (idempotent)
+            context.instance.add_dynamic_partitions(
+                partitions_def_name=dataset_partitions.name,
+                partition_keys=[partition_key],
+            )
             run_request = RunRequest(
                 run_key=f"tabular_asset:{manifest.batch_id}:{partition_key}",
                 run_config={

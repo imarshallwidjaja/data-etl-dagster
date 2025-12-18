@@ -29,6 +29,9 @@ def mock_sensor_context():
     context.cursor = None
     context.log = Mock()
     context.update_cursor = Mock()
+    # Mock instance for dynamic partition management
+    context.instance = Mock()
+    context.instance.add_dynamic_partitions = Mock()
     return context
 
 
@@ -54,6 +57,11 @@ def test_tabular_sensor_emits_run_request_for_ingest_tabular(
     assert rr.job_name is None
     assert rr.partition_key is not None
     assert rr.run_config["ops"]["raw_manifest_json"]["config"]["manifest"]["batch_id"] == valid_tabular_manifest_dict["batch_id"]
+    # Verify partition was created before RunRequest
+    mock_sensor_context.instance.add_dynamic_partitions.assert_called_once()
+    call_args = mock_sensor_context.instance.add_dynamic_partitions.call_args
+    assert call_args[1]["partitions_def_name"] == "dataset_id"
+    assert call_args[1]["partition_keys"] == [rr.partition_key]
     mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
 
 
