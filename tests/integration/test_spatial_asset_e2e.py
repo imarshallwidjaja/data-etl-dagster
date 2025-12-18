@@ -157,8 +157,20 @@ def _add_dynamic_partition(dagster_client, partition_key: str) -> None:
     Required when bypassing the sensor path which normally handles partition registration.
     """
     mutation = """
-    mutation AddDynamicPartition($partitionsDefName: String!, $partitionKey: String!) {
-        addDynamicPartition(partitionsDefName: $partitionsDefName, partitionKey: $partitionKey) {
+    mutation AddDynamicPartition(
+        $repositoryLocationName: String!
+        $repositoryName: String!
+        $partitionsDefName: String!
+        $partitionKey: String!
+    ) {
+        addDynamicPartition(
+            repositorySelector: {
+                repositoryLocationName: $repositoryLocationName
+                repositoryName: $repositoryName
+            }
+            partitionsDefName: $partitionsDefName
+            partitionKey: $partitionKey
+        ) {
             ... on AddDynamicPartitionSuccess { partitionsDefName partitionKey }
             ... on PythonError { message }
         }
@@ -166,7 +178,12 @@ def _add_dynamic_partition(dagster_client, partition_key: str) -> None:
     """
     result = dagster_client.query(
         mutation,
-        variables={"partitionsDefName": "dataset_id", "partitionKey": partition_key},
+        variables={
+            "repositoryLocationName": "etl_pipelines",
+            "repositoryName": "__repository__",
+            "partitionsDefName": "dataset_id",
+            "partitionKey": partition_key,
+        },
         timeout=10,
     )
     assert "errors" not in result, (
