@@ -127,9 +127,10 @@ def joined_spatial_asset(
 
     joined_asset_id = asset_info["asset_id"]
 
-    # Resolve MongoDB ObjectIds for lineage (spatial_asset_id/tabular_asset_id are dataset_ids)
-    spatial_object_id = context.resources.mongodb.get_asset_object_id(spatial_asset_id)
-    tabular_object_id = context.resources.mongodb.get_asset_object_id(tabular_asset_id)
+    # spatial_asset_id and tabular_asset_id from join_config are MongoDB ObjectId strings
+    # Use them directly for lineage recording (no need to look up by dataset_id)
+    spatial_object_id = spatial_asset_id
+    tabular_object_id = tabular_asset_id
 
     spatial_lineage_id = context.resources.mongodb.insert_lineage(
         source_asset_id=spatial_object_id,
