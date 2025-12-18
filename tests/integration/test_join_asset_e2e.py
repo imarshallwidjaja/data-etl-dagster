@@ -303,6 +303,11 @@ def _poll_run_to_completion(
 
 
 def _get_run_error_details(dagster_client, run_id: str) -> Optional[dict]:
+    """Fetch detailed error information from Dagster GraphQL for a failed run.
+
+    Captures the full error chain including cause and nested errors for better
+    CI/CD debugging visibility.
+    """
     log_query = """
     query GetRunLogs($runId: ID!) {
         logsForRun(runId: $runId) {
@@ -311,25 +316,123 @@ def _get_run_error_details(dagster_client, run_id: str) -> Optional[dict]:
                 events {
                     __typename
                     ... on MessageEvent { message level }
-                    ... on ExecutionStepFailureEvent { error { message stack } }
+                    ... on ExecutionStepFailureEvent {
+                        stepKey
+                        error {
+                            message
+                            stack
+                            errorChain {
+                                error {
+                                    message
+                                    stack
+                                }
+                                isExplicitLink
+                            }
+                            cause {
+                                message
+                                stack
+                            }
+                        }
+                    }
+                    ... on EngineEvent { message level }
+                    ... on RunFailureEvent { message }
                 }
             }
         }
     }
     """
     log_result = dagster_client.query(
-        log_query, variables={"runId": run_id}, timeout=10
+        log_query, variables={"runId": run_id}, timeout=30
     )
     logs = log_result.get("data", {}).get("logsForRun")
     if not logs or logs.get("__typename") != "EventConnection":
-        return None
+        return {"error": "Could not fetch logs", "raw": log_result}
+
     events_list = logs.get("events", [])
-    error_events = [
-        e
-        for e in events_list
-        if e.get("level") == "ERROR" or "Failure" in e.get("__typename", "")
-    ]
-    return {"events": error_events or events_list[-10:]}
+
+    # Collect all failure events with full error details
+    failure_events = []
+    for e in events_list:
+        if "Failure" in e.get("__typename", ""):
+            failure_events.append(e)
+        elif e.get("level") == "ERROR":
+            failure_events.append(e)
+
+    # Also get last N events for context
+    context_events = events_list[-20:] if len(events_list) > 20 else events_list
+
+    return {
+        "failure_events": failure_events,
+        "context_events": context_events,
+        "total_events": len(events_list),
+    }
+
+
+def _format_error_details(error_details: Optional[dict]) -> str:
+    """Format error details into a readable string for pytest failure output.
+
+    Extracts the most important error information and formats it for
+    easy reading in CI/CD logs.
+    """
+    if not error_details:
+        return "No error details available"
+
+    lines = []
+    lines.append("\n" + "=" * 80)
+    lines.append("DAGSTER RUN ERROR DETAILS")
+    lines.append("=" * 80)
+
+    failure_events = error_details.get("failure_events", [])
+
+    for i, event in enumerate(failure_events, 1):
+        event_type = event.get("__typename", "Unknown")
+        lines.append(f"\n--- Failure Event {i}: {event_type} ---")
+
+        if event_type == "ExecutionStepFailureEvent":
+            step_key = event.get("stepKey", "unknown")
+            lines.append(f"Step: {step_key}")
+
+            error = event.get("error", {})
+            if error:
+                lines.append(f"\nError Message:\n{error.get('message', 'N/A')}")
+
+                # Print stack trace
+                stack = error.get("stack", [])
+                if stack:
+                    lines.append("\nStack Trace:")
+                    for frame in stack[-10:]:  # Last 10 frames
+                        lines.append(f"  {frame.strip()}")
+
+                # Print error chain (nested causes)
+                error_chain = error.get("errorChain", [])
+                for j, chain_item in enumerate(error_chain, 1):
+                    chain_error = chain_item.get("error", {})
+                    lines.append(f"\n--- Caused By ({j}) ---")
+                    lines.append(f"Message: {chain_error.get('message', 'N/A')}")
+                    chain_stack = chain_error.get("stack", [])
+                    if chain_stack:
+                        lines.append("Stack:")
+                        for frame in chain_stack[-5:]:
+                            lines.append(f"  {frame.strip()}")
+
+                # Print direct cause
+                cause = error.get("cause", {})
+                if cause and cause.get("message"):
+                    lines.append("\n--- Root Cause ---")
+                    lines.append(f"Message: {cause.get('message', 'N/A')}")
+                    cause_stack = cause.get("stack", [])
+                    if cause_stack:
+                        lines.append("Stack:")
+                        for frame in cause_stack[-5:]:
+                            lines.append(f"  {frame.strip()}")
+        else:
+            # Generic error event
+            message = event.get("message", "")
+            if message:
+                lines.append(f"Message: {message}")
+
+    lines.append("\n" + "=" * 80)
+    return "\n".join(lines)
 
 
 def _assert_mongodb_asset_exists(
@@ -479,7 +582,7 @@ class TestJoinAssetE2E:
             )
             if status != "SUCCESS":
                 pytest.fail(
-                    f"spatial_asset_job failed: {status}. Details: {error_details}"
+                    f"spatial_asset_job failed: {status}.{_format_error_details(error_details)}"
                 )
 
             spatial_asset_doc = _assert_mongodb_asset_exists(
@@ -536,7 +639,7 @@ class TestJoinAssetE2E:
             )
             if status != "SUCCESS":
                 pytest.fail(
-                    f"tabular_asset_job failed: {status}. Details: {error_details}"
+                    f"tabular_asset_job failed: {status}.{_format_error_details(error_details)}"
                 )
 
             tabular_asset_doc = _assert_mongodb_asset_exists(
@@ -577,7 +680,7 @@ class TestJoinAssetE2E:
             status, error_details = _poll_run_to_completion(dagster_client, join_run_id)
             if status != "SUCCESS":
                 pytest.fail(
-                    f"join_asset_job failed: {status}. Details: {error_details}"
+                    f"join_asset_job failed: {status}.{_format_error_details(error_details)}"
                 )
 
             # =========================================================
