@@ -24,6 +24,7 @@ from dagster import (
 from pydantic import ValidationError
 
 from ..resources import MinIOResource
+from ..jobs import ingest_job
 from libs.models import Manifest
 
 
@@ -31,8 +32,10 @@ from libs.models import Manifest
 # Lane Definitions
 # =============================================================================
 
+
 class Lane(str, Enum):
     """Processing lanes for legacy manifest routing."""
+
     INGEST = "ingest"
 
 
@@ -155,22 +158,26 @@ def build_cursor(processed_keys: list[str]) -> str:
 # Lane Routing
 # =============================================================================
 
+
 def determine_lane(manifest: Manifest) -> Lane:
     """
     Determine processing lane for the **legacy** ingest_job only.
 
     Returns None for intents handled by asset sensors.
-    
+
     Args:
         manifest: Validated manifest
-        
+
     Returns:
         Lane enum value, or None if the manifest is handled by asset sensors.
     """
     intent = manifest.intent
-    
+
     # Skip intents handled by dedicated asset sensors
-    if intent in ("ingest_tabular", "join_datasets"):
+    # - spatial_sensor: ingest_vector, ingest_raster
+    # - tabular_sensor: ingest_tabular
+    # - join_sensor: join_datasets
+    if intent in ("ingest_tabular", "join_datasets", "ingest_vector", "ingest_raster"):
         return None
 
     # Default to ingest lane for all other intents
@@ -180,36 +187,37 @@ def determine_lane(manifest: Manifest) -> Lane:
 def enabled_lanes() -> set[Lane]:
     """
     Get set of enabled lanes from MANIFEST_ROUTER_ENABLED_LANES env var.
-    
+
     Defaults to {INGEST} when unset.
-    
+
     Returns:
         Set of enabled Lane enums
     """
     env_value = os.getenv("MANIFEST_ROUTER_ENABLED_LANES", "").strip()
-    
+
     if not env_value:
         return {Lane.INGEST}
-    
+
     # Parse comma-separated values
     enabled_strs = [s.strip().lower() for s in env_value.split(",")]
     enabled = set()
-    
+
     for lane_str in enabled_strs:
         # Only INGEST is supported by this legacy sensor.
         if lane_str == Lane.INGEST.value:
             enabled.add(Lane.INGEST)
-    
+
     # Always include ingest if nothing else is enabled
     if not enabled:
         enabled = {Lane.INGEST}
-    
+
     return enabled
 
 
 # =============================================================================
 # Run Request Building
 # =============================================================================
+
 
 def build_run_request(
     lane: Lane,
@@ -218,19 +226,19 @@ def build_run_request(
 ) -> RunRequest:
     """
     Build RunRequest for a manifest based on its lane.
-    
+
     Args:
         lane: Processing lane
         manifest: Validated manifest
         manifest_key: S3 key of the manifest
-        
+
     Returns:
         RunRequest with lane-prefixed run_key and appropriate job config
     """
     job_name = LANE_TO_JOB[lane]
     run_key = f"{lane.value}:{manifest.batch_id}"
     archive_key = f"archive/{manifest_key}"
-    
+
     # Build run config based on lane
     # ingest_job expects manifest as op input to load_to_postgis
     run_config = {
@@ -244,7 +252,7 @@ def build_run_request(
             }
         }
     }
-    
+
     tags = {
         "batch_id": manifest.batch_id,
         "uploader": manifest.uploader,
@@ -253,7 +261,7 @@ def build_run_request(
         "lane": lane.value,
         "manifest_archive_key": archive_key,
     }
-    
+
     return RunRequest(
         run_key=run_key,
         job_name=job_name,
@@ -266,7 +274,9 @@ def build_run_request(
 # Sensor Implementation
 # =============================================================================
 
+
 @sensor(
+    job=ingest_job,
     minimum_interval_seconds=30,
     default_status=DefaultSensorStatus.RUNNING,
     name="manifest_sensor",
@@ -275,7 +285,7 @@ def build_run_request(
 def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
     """
     Poll landing-zone/manifests/ for new JSON files and route to appropriate jobs.
-    
+
     Flow:
     1. List all .json files in manifests/ prefix
     2. Filter out already-processed (check cursor)
@@ -288,11 +298,11 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
        f. If disabled: log and mark as processed (one-shot)
        g. Archive manifest after processing (legacy ingest lane only)
        h. Update cursor to track processed manifests
-    
+
     Args:
         context: Dagster sensor evaluation context
         minio: MinIOResource instance (injected by Dagster)
-    
+
     Yields:
         RunRequest: For each valid new manifest with enabled lane
         SkipReason: If no new manifests found or errors occur
@@ -304,18 +314,18 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
         context.log.error(f"Failed to list manifests: {e}")
         yield SkipReason(f"Error listing manifests: {e}")
         return
-    
+
     # Parse cursor to get processed manifests (ordered list)
     processed_order = parse_cursor(context.cursor)
     processed_set = set(processed_order)
 
     # Filter to new manifests only
     new_manifests = [m for m in manifests if m not in processed_set]
-    
+
     if not new_manifests:
         yield SkipReason("No new manifests found")
         return
-    
+
     # Get enabled lanes (Traffic Controller)
     enabled = enabled_lanes()
 
@@ -325,7 +335,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
         try:
             # Download manifest
             manifest_data = minio.get_manifest(manifest_key)
-            
+
             # Validate against Pydantic model
             try:
                 manifest = Manifest(**manifest_data)
@@ -341,9 +351,11 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 try:
                     minio.move_to_archive(manifest_key)
                 except Exception as archive_error:
-                    context.log.warning(f"Failed to archive invalid manifest '{manifest_key}': {archive_error}")
+                    context.log.warning(
+                        f"Failed to archive invalid manifest '{manifest_key}': {archive_error}"
+                    )
                 continue
-            
+
             # Determine lane for legacy ingest_job
             lane = determine_lane(manifest)
 
@@ -356,7 +368,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 )
                 processed_this_run.append(manifest_key)
                 continue
-            
+
             # Check if lane is enabled (Traffic Controller)
             if lane not in enabled:
                 context.log.info(
@@ -370,27 +382,31 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 try:
                     minio.move_to_archive(manifest_key)
                 except Exception as archive_error:
-                    context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
+                    context.log.warning(
+                        f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                    )
                 continue
-            
+
             # Build and yield RunRequest
             run_request = build_run_request(lane, manifest, manifest_key)
             yield run_request
-            
+
             context.log.info(
                 f"Triggered {lane.value} job for manifest '{manifest_key}' "
                 f"(batch_id: {manifest.batch_id}, run_key: {run_request.run_key})"
             )
-            
+
             # Mark as processed
             processed_this_run.append(manifest_key)
-            
+
             # Archive manifest after successful routing
             try:
                 minio.move_to_archive(manifest_key)
             except Exception as archive_error:
-                context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
-            
+                context.log.warning(
+                    f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                )
+
         except Exception as e:
             # Log error but continue processing other manifests
             context.log.error(
@@ -404,11 +420,12 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
             try:
                 minio.move_to_archive(manifest_key)
             except Exception as archive_error:
-                context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
-    
+                context.log.warning(
+                    f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                )
+
     # Update cursor with all processed manifests (old + new)
     if processed_this_run:
         all_processed = merge_processed_keys(processed_order, processed_this_run)
         cursor_str = build_cursor(all_processed)
         context.update_cursor(cursor_str)
-
