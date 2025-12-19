@@ -70,6 +70,11 @@ fieldset legend {
     margin-bottom: 0.5rem;
 }
 
+/* Global scale adjustment - reduce size by 25% for better information density */
+html {
+    font-size: 75%;
+}
+
 .file-entry,
 .tag-entry {
     margin-bottom: 0.75rem;
