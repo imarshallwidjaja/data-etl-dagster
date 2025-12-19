@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
-from app.routers import health
+from app.routers import health, landing, manifests, runs, assets
 
 # Application instance
 app = FastAPI(
@@ -35,6 +35,10 @@ if STATIC_DIR.exists():
 
 # Include routers
 app.include_router(health.router)
+app.include_router(landing.router)
+app.include_router(manifests.router)
+app.include_router(runs.router)
+app.include_router(assets.router)
 
 
 @app.get("/", response_class=HTMLResponse)
