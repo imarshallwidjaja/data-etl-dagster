@@ -320,3 +320,38 @@ services:
       timeout: 5s
       retries: 5
 
+  # ===========================================================================
+  # TOOLING WEBAPP
+  # ===========================================================================
+
+  # FastAPI webapp for managing the ETL pipeline
+  webapp:
+    build:
+      context: .                         # Repo root for access to libs/
+      dockerfile: services/webapp/Dockerfile
+    container_name: webapp
+    restart: unless-stopped
+    networks:
+      - etl-network
+    ports:
+      - "8080:8080"
+    environment:
+      # MinIO Configuration
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_USE_SSL: "false"
+      MINIO_LANDING_BUCKET: ${MINIO_LANDING_BUCKET:-landing-zone}
+      MINIO_LAKE_BUCKET: ${MINIO_LAKE_BUCKET:-data-lake}
+      # MongoDB Configuration
+      MONGO_CONNECTION_STRING: mongodb://${MONGO_INITDB_ROOT_USERNAME:-mongo}:${MONGO_INITDB_ROOT_PASSWORD:-mongo_password}@mongodb:27017/${MONGO_DATABASE:-spatial_etl}?authSource=${MONGO_AUTH_SOURCE:-admin}
+      # Dagster Configuration
+      DAGSTER_GRAPHQL_URL: http://dagster-webserver:3000/graphql
+      # Webapp Authentication
+      WEBAPP_USERNAME: ${WEBAPP_USERNAME:-admin}
+      WEBAPP_PASSWORD: ${WEBAPP_PASSWORD:-admin}
+    depends_on:
+      - dagster-webserver
+      - minio
+      - mongodb
+

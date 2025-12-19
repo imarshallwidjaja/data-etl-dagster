@@ -182,6 +182,7 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 - `services/minio/AGENTS.md`
 - `services/mongodb/AGENTS.md`
 - `services/postgis/AGENTS.md`
+- `services/webapp/AGENTS.md`
 
 **Libraries:**
 - `libs/models/AGENTS.md`
@@ -202,5 +203,6 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 
 - `services/dagster/README.md` - Dagster orchestration layer
 - `services/mongodb/README.md` - MongoDB ledger and migrations
+- `services/webapp/README.md` - Tooling webapp
 - `libs/transformations/README.md` - Recipe-based transformation system
 - `scripts/README.md` - Utility scripts

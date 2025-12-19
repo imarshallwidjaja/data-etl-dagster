@@ -1,0 +1,97 @@
+/* =============================================================================
+ * Data ETL Tooling - Custom Styles
+ * =============================================================================
+ * PicoCSS overrides and custom styling.
+ * ============================================================================= */
+
+/* Navigation improvements */
+nav ul li a {
+    padding: 0.5rem 1rem;
+}
+
+/* Card grid spacing */
+.grid > article {
+    margin-bottom: 0;
+}
+
+/* Status badges */
+.badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.badge-success {
+    background-color: var(--pico-color-green-550);
+    color: white;
+}
+
+.badge-warning {
+    background-color: var(--pico-color-yellow-550);
+    color: black;
+}
+
+.badge-error {
+    background-color: var(--pico-color-red-550);
+    color: white;
+}
+
+.badge-info {
+    background-color: var(--pico-color-blue-550);
+    color: white;
+}
+
+.badge-pending {
+    background-color: var(--pico-color-grey-550);
+    color: white;
+}
+
+/* File browser table */
+.file-list {
+    font-size: 0.9rem;
+}
+
+.file-list td:first-child {
+    word-break: break-all;
+}
+
+/* Form improvements */
+.form-hint {
+    font-size: 0.85rem;
+    color: var(--pico-muted-color);
+    margin-top: -0.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Error display */
+.error-chain {
+    background-color: var(--pico-code-background-color);
+    padding: 1rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+}
+
+/* Lineage visualization */
+.lineage-diagram {
+    text-align: center;
+    padding: 2rem;
+    background-color: var(--pico-card-background-color);
+    border-radius: 0.5rem;
+}
+
+.lineage-node {
+    display: inline-block;
+    padding: 0.5rem 1rem;
+    margin: 0.5rem;
+    border: 2px solid var(--pico-primary);
+    border-radius: 0.5rem;
+}
+
+.lineage-arrow {
+    display: inline-block;
+    padding: 0 1rem;
+    color: var(--pico-muted-color);
+}

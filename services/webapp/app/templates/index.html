@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <h1>Welcome to Data ETL Tooling</h1>
+        <p>Manage the data-etl-dagster pipeline without direct access to Dagster, MongoDB, or MinIO.</p>
+    </header>
+
+    <div class="grid">
+        <article>
+            <header>
+                <h3>📁 Landing Zone</h3>
+            </header>
+            <p>Browse, upload, and delete files in the landing zone. Manage pending data files before processing.</p>
+            <footer>
+                <a href="/landing/" role="button">Manage Files</a>
+            </footer>
+        </article>
+
+        <article>
+            <header>
+                <h3>📋 Manifests</h3>
+            </header>
+            <p>Create, view, and re-run manifests. Define how your data should be processed.</p>
+            <footer>
+                <a href="/manifests/" role="button">Manage Manifests</a>
+            </footer>
+        </article>
+    </div>
+
+    <div class="grid">
+        <article>
+            <header>
+                <h3>🔄 Runs</h3>
+            </header>
+            <p>Monitor Dagster run progress. View logs, errors, and diagnostics for each pipeline run.</p>
+            <footer>
+                <a href="/runs/" role="button">View Runs</a>
+            </footer>
+        </article>
+
+        <article>
+            <header>
+                <h3>🗂️ Assets</h3>
+            </header>
+            <p>Browse processed assets. View metadata, lineage, and download data files.</p>
+            <footer>
+                <a href="/assets/" role="button">Browse Assets</a>
+            </footer>
+        </article>
+    </div>
+</article>
+{% endblock %}

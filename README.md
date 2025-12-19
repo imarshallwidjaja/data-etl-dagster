@@ -61,6 +61,7 @@ docker compose up -d
 | Service | URL | Credentials |
 |---------|-----|-------------|
 | Dagster UI | http://localhost:3000 | - |
+| Tooling Webapp | http://localhost:8080 | admin:admin |
 | MinIO Console | http://localhost:9001 | See .env |
 | MinIO API | http://localhost:9000 | See .env |
 | MongoDB | localhost:27017 | See .env |
@@ -365,7 +366,8 @@ data-etl-dagster/
 │   ├── dagster/           # Dagster orchestrator
 │   ├── minio/             # Object storage config
 │   ├── mongodb/           # Metadata store config
-│   └── postgis/           # Compute engine config
+│   ├── postgis/           # Compute engine config
+│   └── webapp/            # Tooling webapp
 ├── libs/                   # Shared Python libraries (installable package)
 │   ├── pyproject.toml     # Package definition
 │   ├── __init__.py        # Package root
@@ -381,6 +383,7 @@ data-etl-dagster/
 
 - [Dagster Service](./services/dagster/README.md) - Orchestration layer, pipelines, development
 - [MongoDB Service](./services/mongodb/README.md) - Metadata ledger, schema migrations
+- [Tooling Webapp](./services/webapp/README.md) - Web interface for pipeline management
 - [Transformations](./libs/transformations/README.md) - Recipe-based transformation system
 - [Scripts](./scripts/README.md) - Utility scripts for dev and CI
 

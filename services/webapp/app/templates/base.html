@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Data ETL Tooling Webapp - Manage the data-etl-dagster pipeline">
+    <title>{% block title %}Data ETL Tooling{% endblock %}</title>
+    
+    <!-- PicoCSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    
+    <!-- Custom styles -->
+    {% if static_css %}
+    <link rel="stylesheet" href="/static/css/custom.css">
+    {% endif %}
+    
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <header class="container">
+        <nav>
+            <ul>
+                <li><strong>📊 Data ETL Tooling</strong></li>
+            </ul>
+            <ul>
+                <li><a href="/">Home</a></li>
+                <li><a href="/landing/">Landing Zone</a></li>
+                <li><a href="/manifests/">Manifests</a></li>
+                <li><a href="/runs/">Runs</a></li>
+                <li><a href="/assets/">Assets</a></li>
+            </ul>
+            <ul>
+                {% if user %}
+                <li><small>👤 {{ user.display_name }}</small></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </header>
+    
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    
+    <footer class="container">
+        <hr>
+        <p><small>Data ETL Tooling Webapp v{{ version or "0.1.0" }} — 
+            <a href="/health">Health</a> | 
+            <a href="/ready">Ready</a>
+        </small></p>
+    </footer>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
