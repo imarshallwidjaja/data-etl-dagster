@@ -7,21 +7,21 @@ FastAPI-based web interface for managing the data-etl-dagster pipeline.
 This webapp provides a user-friendly interface for:
 
 - **Landing Zone Management** - Browse, upload, delete files in the landing zone
-- **Manifest Creation** - Intent-specific forms with validation
-- **Manifest Re-run** - Re-process archived manifests
+- **Manifest Creation** - Asset-type-specific forms with validation
+- **Manifest Re-run** - Re-process archived manifests with versioned batch IDs
 - **Run Tracking** - Monitor Dagster run progress with error diagnostics
-- **Asset Browsing** - View metadata, lineage, and download processed assets
+- **Asset Browsing** - View metadata, versions, lineage, and download assets
 
 ## Quick Start
 
 ### Start the Webapp
 
 ```powershell
-# Build and start (with dependencies)
+# Build and start
 docker compose up -d --build webapp
 
-# Or start only webapp (if dependencies are running)
-docker compose up -d webapp
+# Or start with all dependencies
+docker compose -f docker-compose.yaml up -d dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
 ```
 
 ### Access
@@ -34,11 +34,10 @@ docker compose up -d webapp
 
 ```powershell
 # Health endpoint (no auth)
-Invoke-WebRequest -Uri "http://localhost:8080/health" -UseBasicParsing
+curl http://localhost:8080/health
 
 # Authenticated endpoint
-$cred = [System.Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes("admin:admin"))
-Invoke-WebRequest -Uri "http://localhost:8080/whoami" -Headers @{Authorization="Basic $cred"} -UseBasicParsing
+curl -u admin:admin http://localhost:8080/whoami
 ```
 
 ## Configuration
@@ -71,15 +70,20 @@ services/webapp/
 ├── requirements.txt
 ├── AGENTS.md              # AI agent context
 ├── README.md              # This file
+├── tests/                 # Unit tests
+│   ├── conftest.py
+│   └── unit/
+│       ├── test_auth.py
+│       ├── test_manifest_builder.py
+│       └── test_rerun_versioning.py
 └── app/
     ├── main.py            # FastAPI entry point
     ├── config.py          # Pydantic Settings
     ├── auth/              # Authentication module
     ├── routers/           # API endpoints
-    ├── services/          # Service wrappers
-    ├── templates/         # Jinja2 templates
-    ├── static/            # CSS, JS
-    └── models/            # SQLite models (ephemeral)
+    ├── services/          # Service wrappers (MinIO, MongoDB, Dagster)
+    ├── templates/         # Jinja2 templates (landing, manifests, runs, assets)
+    └── static/            # CSS, JS
 ```
 
 ## API Endpoints
@@ -91,40 +95,62 @@ services/webapp/
 | GET | `/health` | Returns `{"status":"healthy","version":"0.1.0"}` |
 | GET | `/ready` | Returns service connectivity status |
 
-### User (Auth Required)
+### Landing Zone
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/` | Index page with navigation |
-| GET | `/whoami` | Returns authenticated user info |
+| GET | `/landing/` | File browser (HTML) or list (`?format=json`) |
+| POST | `/landing/upload` | Upload file to landing zone |
+| GET | `/landing/download/{path}` | Download file |
+| POST | `/landing/delete/{path}` | Delete file |
 
-### Coming Soon (Phase 2-4)
+### Manifests
 
-- `/landing/` - Landing zone management
-- `/manifests/` - Manifest CRUD & re-run
-- `/runs/` - Dagster run tracking
-- `/assets/` - Asset browsing & lineage
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/manifests/` | List manifests with filters |
+| GET | `/manifests/new` | Asset type selection |
+| GET/POST | `/manifests/new/{type}` | Asset-specific form & create |
+| GET | `/manifests/{batch_id}` | Manifest details |
+| POST | `/manifests/{batch_id}/rerun` | Re-run archived manifest |
+
+### Runs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/runs/` | List Dagster runs with status filter |
+| GET | `/runs/{run_id}` | Run details with events/logs |
+
+### Assets
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/assets/` | List assets with kind filter |
+| GET | `/assets/{dataset_id}` | Asset versions |
+| GET | `/assets/{id}/v{ver}/download` | Download asset file |
+| GET | `/assets/{id}/v{ver}/lineage` | View parent assets |
 
 ## Development
 
-### Local Development
+### Rebuild After Code Changes
 
 ```powershell
-# Rebuild after code changes
 docker compose build webapp
 docker compose up -d webapp
-
-# View logs
 docker compose logs -f webapp
 ```
 
-### Dependencies
+### Run Tests
 
-The Dockerfile installs `libs/` from the repo root for shared model validation:
+```powershell
+# Activate conda environment
+conda activate data-etl-dagster
 
-```dockerfile
-COPY libs /opt/webapp/libs
-RUN pip install --no-cache-dir -e /opt/webapp/libs
+# Unit tests
+pytest services/webapp/tests/unit -v
+
+# Integration tests (Docker stack must be running)
+pytest -m integration tests/integration/test_webapp*.py -v
 ```
 
 ## Implementation Status
@@ -132,7 +158,7 @@ RUN pip install --no-cache-dir -e /opt/webapp/libs
 | Phase | Description | Status |
 |-------|-------------|--------|
 | Phase 1 | Foundation (auth, health) | ✅ Complete |
-| Phase 2 | Service wrappers | 🔲 Pending |
-| Phase 3 | API endpoints | 🔲 Pending |
-| Phase 4 | Templates & forms | 🔲 Pending |
-| Phase 5 | Testing & docs | 🔲 Pending |
+| Phase 2 | Service wrappers | ✅ Complete |
+| Phase 3 | API endpoints | ✅ Complete |
+| Phase 4 | Templates & forms | ✅ Complete |
+| Phase 5 | Testing & docs | ✅ Complete |

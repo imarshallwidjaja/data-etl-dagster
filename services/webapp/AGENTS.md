@@ -10,6 +10,7 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
 - **Auth abstraction**: `AuthProvider` interface enables future SSO without changing dependencies.
 - **No direct lake writes**: All data flows through the pipeline via manifest creation.
 - **Libs reuse**: Use `libs/models` for manifest/asset validation (consistency with pipeline).
+- **Mixed response format**: All list endpoints support `?format=json` for API access.
 
 ## Entry points / key files
 
@@ -20,16 +21,17 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
   - `dependencies.py` - FastAPI `get_current_user()` dependency
 - `app/routers/` - API endpoints
   - `health.py` - `/health`, `/ready`, `/whoami`
-  - `landing.py` - Landing zone management (Phase 3)
-  - `manifests.py` - Manifest CRUD & re-run (Phase 3)
-  - `runs.py` - Dagster run tracking (Phase 3)
-  - `assets.py` - Asset browsing & lineage (Phase 3)
-- `app/services/` - Service wrappers (Phase 2)
+  - `landing.py` - Landing zone management
+  - `manifests.py` - Manifest CRUD & re-run
+  - `runs.py` - Dagster run tracking
+  - `assets.py` - Asset browsing & lineage
+- `app/services/` - Service wrappers
   - `minio_service.py` - MinIO operations
   - `mongodb_service.py` - MongoDB queries
   - `dagster_service.py` - Dagster GraphQL
   - `manifest_builder.py` - Form → Manifest conversion
 - `app/templates/` - Jinja2 templates with PicoCSS
+- `app/static/` - CSS and JavaScript
 - `Dockerfile` - Python 3.11-slim, installs `libs/`
 
 ## How to work here
@@ -61,18 +63,46 @@ Environment variables (via `app/config.py`):
 | GET | `/ready` | ❌ | Service readiness probe |
 | GET | `/whoami` | ✅ | Return authenticated user |
 | GET | `/` | ✅ | Index page (HTML) |
+| GET | `/landing/` | ✅ | Landing zone file browser |
+| POST | `/landing/upload` | ✅ | Upload file |
+| GET | `/landing/download/{path}` | ✅ | Download file |
+| POST | `/landing/delete/{path}` | ✅ | Delete file |
+| GET | `/manifests/` | ✅ | List manifests |
+| GET | `/manifests/new` | ✅ | Asset type selection |
+| GET | `/manifests/new/{type}` | ✅ | Asset-specific form |
+| POST | `/manifests/new/{type}` | ✅ | Create manifest |
+| GET | `/manifests/{batch_id}` | ✅ | Manifest details |
+| POST | `/manifests/{batch_id}/rerun` | ✅ | Re-run manifest |
+| GET | `/runs/` | ✅ | List Dagster runs |
+| GET | `/runs/{run_id}` | ✅ | Run details + events |
+| GET | `/assets/` | ✅ | List assets |
+| GET | `/assets/{dataset_id}` | ✅ | Asset versions |
+| GET | `/assets/{id}/v{ver}/download` | ✅ | Download asset |
+| GET | `/assets/{id}/v{ver}/lineage` | ✅ | View lineage |
 
-## Testing / verification
+## Testing
 
-- **Build container**: `docker compose build webapp`
-- **Start container**: `docker compose up -d webapp`
-- **Health check**: `curl http://localhost:8080/health`
-- **Auth test**: `curl -u admin:admin http://localhost:8080/whoami`
+### Unit tests (in `tests/unit/`):
+- `test_auth.py` - Auth provider tests
+- `test_manifest_builder.py` - Form → model tests
+- `test_rerun_versioning.py` - Batch ID versioning
+
+### Integration tests (in `../../tests/integration/`):
+- `test_webapp_health.py` - Health endpoint tests
+- `test_webapp_landing.py` - Landing zone CRUD
+- `test_webapp_assets.py` - Asset listing
+
+### Run tests:
+```powershell
+# Unit tests
+pytest services/webapp/tests/unit -v
+
+# Integration tests (Docker stack must be running)
+pytest -m integration tests/integration/test_webapp*.py -v
+```
 
 ## Links
 
 - Parent guide: `../../AGENTS.md`
 - Dagster: `../dagster/AGENTS.md`
-- MinIO: `../minio/AGENTS.md`
-- MongoDB: `../mongodb/AGENTS.md`
 - Implementation plan: `../../tmp/webapp-implementation-plan.md`
