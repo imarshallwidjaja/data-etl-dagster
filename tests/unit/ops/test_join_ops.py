@@ -39,8 +39,8 @@ SAMPLE_JOIN_MANIFEST: dict = {
         "description": "Test join",
         "tags": {"dataset_id": "joined_dataset_001"},
         "join_config": {
-            "spatial_asset_id": "507f1f77bcf86cd799439011",
-            "tabular_asset_id": "507f1f77bcf86cd799439012",
+            "spatial_dataset_id": "spatial_001",
+            "tabular_dataset_id": "tabular_001",
             "left_key": "parcel_id",
             "right_key": "parcel_id",
             "how": "left",
@@ -110,7 +110,13 @@ class TestResolveJoinAssets:
         mock_log = Mock()
         spatial_asset = make_spatial_asset()
         tabular_asset = make_tabular_asset()
-        mock_mongodb.get_asset_by_id.side_effect = [spatial_asset, tabular_asset]
+        # New: mock get_latest_asset instead of get_asset_by_id
+        mock_mongodb.get_latest_asset.side_effect = [spatial_asset, tabular_asset]
+        # Mock ObjectID lookup for lineage
+        mock_mongodb.get_asset_object_id_for_version.side_effect = [
+            "507f1f77bcf86cd799439011",
+            "507f1f77bcf86cd799439012",
+        ]
 
         result = _resolve_join_assets(
             mongodb=mock_mongodb,
@@ -121,9 +127,12 @@ class TestResolveJoinAssets:
         assert result["spatial_asset"].dataset_id == "spatial_001"
         assert result["tabular_asset"].dataset_id == "tabular_001"
         assert result["join_config"].left_key == "parcel_id"
-        assert mock_mongodb.get_asset_by_id.call_args_list == [
-            (("507f1f77bcf86cd799439011",),),
-            (("507f1f77bcf86cd799439012",),),
+        assert result["spatial_object_id"] == "507f1f77bcf86cd799439011"
+        assert result["tabular_object_id"] == "507f1f77bcf86cd799439012"
+        # Verify get_latest_asset was called with dataset_ids
+        assert mock_mongodb.get_latest_asset.call_args_list == [
+            (("spatial_001",),),
+            (("tabular_001",),),
         ]
 
     def test_missing_join_config(self):
@@ -164,10 +173,10 @@ class TestResolveJoinAssets:
 
     def test_asset_not_found(self):
         mock_mongodb = Mock()
-        mock_mongodb.get_asset_by_id.return_value = None
+        mock_mongodb.get_latest_asset.return_value = None
         mock_log = Mock()
 
-        with pytest.raises(ValueError, match="Spatial asset not found"):
+        with pytest.raises(ValueError, match="Spatial dataset not found"):
             _resolve_join_assets(
                 mongodb=mock_mongodb,
                 manifest=SAMPLE_JOIN_MANIFEST,
@@ -176,14 +185,14 @@ class TestResolveJoinAssets:
 
     def test_wrong_asset_kind(self):
         mock_mongodb = Mock()
-        mock_mongodb.get_asset_by_id.side_effect = [
+        mock_mongodb.get_latest_asset.side_effect = [
             make_tabular_asset(),
             make_tabular_asset(),
         ]
         mock_log = Mock()
 
         with pytest.raises(
-            ValueError, match="spatial_asset_id must reference a spatial asset"
+            ValueError, match="spatial_dataset_id must reference a spatial asset"
         ):
             _resolve_join_assets(
                 mongodb=mock_mongodb,

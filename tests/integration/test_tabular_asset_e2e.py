@@ -544,11 +544,11 @@ class TestTabularAssetJobE2E:
         manifest["metadata"]["tags"] = dict(manifest["metadata"].get("tags", {}))
         manifest["metadata"]["tags"]["dataset_id"] = f"dataset_{batch_id}"
         manifest["metadata"]["tags"]["priority"] = 1
-        # Add join_config with placeholder asset IDs for join key normalization test
+        # Add join_config with placeholder dataset IDs for join key normalization test
         # Note: For ingest_tabular, join_config is optional but triggers join key normalization
         manifest["metadata"]["join_config"] = {
-            "spatial_asset_id": "000000000000000000000000",  # Placeholder ObjectId
-            "tabular_asset_id": "000000000000000000000001",  # Placeholder ObjectId
+            "spatial_dataset_id": "placeholder_spatial",  # Placeholder dataset ID
+            "tabular_dataset_id": "placeholder_tabular",  # Placeholder dataset ID
             # Use a real column from the fixture CSV.
             "left_key": "sa1_code21",
             "right_key": "sa1_code21",

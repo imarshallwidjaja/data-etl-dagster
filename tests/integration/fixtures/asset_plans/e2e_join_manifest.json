@@ -11,8 +11,8 @@
       "source": "ausurbhi_hhvi_nsw_sample"
     },
     "join_config": {
-      "spatial_asset_id": "${SPATIAL_ASSET_ID}",
-      "tabular_asset_id": "${TABULAR_ASSET_ID}",
+      "spatial_dataset_id": "${SPATIAL_DATASET_ID}",
+      "tabular_dataset_id": "${TABULAR_DATASET_ID}",
       "left_key": "sa1_code21",
       "right_key": "sa1_code21",
       "how": "left"

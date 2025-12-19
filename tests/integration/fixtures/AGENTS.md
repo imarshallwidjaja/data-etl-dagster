@@ -42,10 +42,16 @@ Manifest JSON files contain placeholders that MUST be substituted at runtime:
 |-------------|-------------|---------------------|
 | `${UUID}` | Unique test run identifier | `abc123def456` |
 | `${BATCH_ID}` | Full batch identifier | `sensor_e2e_tabular_abc123` |
-| `${SPATIAL_ASSET_ID}` | MongoDB `_id` of the spatial asset (join only) | `507f1f77bcf86cd799439011` |
-| `${TABULAR_ASSET_ID}` | MongoDB `_id` of the tabular asset (join only) | `507f1f77bcf86cd799439012` |
+| `${SPATIAL_DATASET_ID}` | Dataset ID of the spatial asset (join only) | `spatial_abc123` |
+| `${TABULAR_DATASET_ID}` | Dataset ID of the tabular asset (join only) | `tabular_abc123` |
 
-> **Note**: `SPATIAL_ASSET_ID` and `TABULAR_ASSET_ID` are MongoDB ObjectId strings, not `dataset_id` values. The test creates parent assets first and uses their `_id` fields.
+### Version pinning (optional)
+
+Join config supports optional `spatial_version` and `tabular_version` fields:
+- `null` or omitted → uses **latest** version
+- Integer value → pins to specific version (e.g., `"spatial_version": 2`)
+
+
 
 ## How to work here
 

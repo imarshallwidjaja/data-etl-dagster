@@ -193,6 +193,23 @@ class MongoDBResource(ConfigurableResource):
             return None
         return str(document["_id"])
 
+    def get_asset_object_id_for_version(
+        self, dataset_id: str, version: int
+    ) -> str | None:
+        """
+        Return the MongoDB ObjectId (as string) for a specific dataset version.
+
+        Useful for lineage recording when the exact version is known.
+        """
+        collection = self._get_collection(self.ASSETS)
+        document = collection.find_one(
+            {"dataset_id": dataset_id, "version": version},
+            projection={"_id": 1},
+        )
+        if not document:
+            return None
+        return str(document["_id"])
+
     def asset_exists(self, content_hash: str) -> bool:
         """
         Check for an existing asset with the given content hash.

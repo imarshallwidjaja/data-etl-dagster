@@ -65,9 +65,9 @@ def joined_spatial_asset(
 
     join_config = join_resolution["join_config"]
     spatial_asset = join_resolution["spatial_asset"]
-    spatial_asset_id = join_resolution["spatial_asset_id"]
+    spatial_object_id = join_resolution["spatial_object_id"]
     tabular_asset = join_resolution["tabular_asset"]
-    tabular_asset_id = join_resolution["tabular_asset_id"]
+    tabular_object_id = join_resolution["tabular_object_id"]
 
     left_key = join_config.left_key
     right_key = join_config.right_key or join_config.left_key
@@ -127,11 +127,7 @@ def joined_spatial_asset(
 
     joined_asset_id = asset_info["asset_id"]
 
-    # spatial_asset_id and tabular_asset_id from join_config are MongoDB ObjectId strings
-    # Use them directly for lineage recording (no need to look up by dataset_id)
-    spatial_object_id = spatial_asset_id
-    tabular_object_id = tabular_asset_id
-
+    # spatial_object_id and tabular_object_id are MongoDB ObjectId strings from _resolve_join_assets
     spatial_lineage_id = context.resources.mongodb.insert_lineage(
         source_asset_id=spatial_object_id,
         target_asset_id=joined_asset_id,
@@ -164,10 +160,12 @@ def joined_spatial_asset(
             "version": MetadataValue.int(asset_info["version"]),
             "s3_key": MetadataValue.text(asset_info["s3_key"]),
             "asset_id": MetadataValue.text(str(asset_info["asset_id"])),
-            "spatial_parent_asset_id": MetadataValue.text(spatial_asset_id),
-            "spatial_parent_dataset_id": MetadataValue.text(spatial_asset.dataset_id),
-            "tabular_parent_asset_id": MetadataValue.text(tabular_asset_id),
-            "tabular_parent_dataset_id": MetadataValue.text(tabular_asset.dataset_id),
+            "spatial_parent": MetadataValue.text(
+                f"{spatial_asset.dataset_id}@v{spatial_asset.version}"
+            ),
+            "tabular_parent": MetadataValue.text(
+                f"{tabular_asset.dataset_id}@v{tabular_asset.version}"
+            ),
             "join_type": MetadataValue.text(join_config.how),
         }
     )

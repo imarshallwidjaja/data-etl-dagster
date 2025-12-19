@@ -3,8 +3,8 @@
 Polls `landing-zone/manifests/` for join manifests (`intent=join_datasets`) and triggers
 `join_asset_job` to materialize `joined_spatial_asset`.
 
-Joins are **explicit only**: they require `metadata.join_config.target_asset_id` to
-identify the secondary (spatial) dataset to join against.
+Joins are **explicit only**: they require `metadata.join_config.spatial_dataset_id` and
+`metadata.join_config.tabular_dataset_id` to identify the datasets to join.
 """
 
 from __future__ import annotations
@@ -50,7 +50,9 @@ def _parse_cursor(cursor: str | None) -> list[str]:
 
 def _build_cursor(processed_keys: list[str]) -> str:
     keys_list = processed_keys[-MAX_CURSOR_KEYS:]
-    return json.dumps({"v": CURSOR_VERSION, "processed_keys": keys_list, "max_keys": MAX_CURSOR_KEYS})
+    return json.dumps(
+        {"v": CURSOR_VERSION, "processed_keys": keys_list, "max_keys": MAX_CURSOR_KEYS}
+    )
 
 
 @sensor(
@@ -91,7 +93,9 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 try:
                     minio.move_to_archive(manifest_key)
                 except Exception as archive_error:
-                    context.log.warning(f"Failed to archive invalid manifest '{manifest_key}': {archive_error}")
+                    context.log.warning(
+                        f"Failed to archive invalid manifest '{manifest_key}': {archive_error}"
+                    )
                 continue
 
             if manifest.intent != "join_datasets":
@@ -106,10 +110,12 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 try:
                     minio.move_to_archive(manifest_key)
                 except Exception as archive_error:
-                    context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
+                    context.log.warning(
+                        f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                    )
                 continue
 
-            # Note: spatial_asset_id and tabular_asset_id are required by the model,
+            # Note: spatial_dataset_id and tabular_dataset_id are required by the model,
             # and validation will fail if they're missing.
 
             partition_key = extract_partition_key(manifest)
@@ -122,7 +128,9 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 run_key=f"join_asset:{manifest.batch_id}:{partition_key}",
                 run_config={
                     "ops": {
-                        "raw_manifest_json": {"config": {"manifest": manifest.model_dump(mode="json")}},
+                        "raw_manifest_json": {
+                            "config": {"manifest": manifest.model_dump(mode="json")}
+                        },
                     }
                 },
                 partition_key=partition_key,
@@ -133,8 +141,8 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     "manifest_key": manifest_key,
                     "sensor": "join_sensor",
                     "partition_key": partition_key,
-                    "spatial_asset_id": str(join_config.spatial_asset_id),
-                    "tabular_asset_id": str(join_config.tabular_asset_id),
+                    "spatial_dataset_id": join_config.spatial_dataset_id,
+                    "tabular_dataset_id": join_config.tabular_dataset_id,
                 },
             )
             yield run_request
@@ -143,22 +151,40 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
             try:
                 minio.move_to_archive(manifest_key)
             except Exception as archive_error:
-                context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
+                context.log.warning(
+                    f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                )
 
+            spatial_version_str = (
+                f"v{join_config.spatial_version}"
+                if join_config.spatial_version
+                else "latest"
+            )
+            tabular_version_str = (
+                f"v{join_config.tabular_version}"
+                if join_config.tabular_version
+                else "latest"
+            )
             context.log.info(
                 f"Triggered join_asset_job for manifest '{manifest_key}' "
-                f"(batch_id={manifest.batch_id}, partition={partition_key}, spatial_asset_id={join_config.spatial_asset_id}, tabular_asset_id={join_config.tabular_asset_id})"
+                f"(batch_id={manifest.batch_id}, partition={partition_key}, "
+                f"spatial={join_config.spatial_dataset_id}@{spatial_version_str}, "
+                f"tabular={join_config.tabular_dataset_id}@{tabular_version_str})"
             )
         except Exception as e:
-            context.log.error(f"Error processing manifest '{manifest_key}': {e}. Marking as processed to prevent retry.")
+            context.log.error(
+                f"Error processing manifest '{manifest_key}': {e}. Marking as processed to prevent retry."
+            )
             processed_this_run.append(manifest_key)
             try:
                 minio.move_to_archive(manifest_key)
             except Exception as archive_error:
-                context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
+                context.log.warning(
+                    f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                )
 
     if processed_this_run:
-        all_processed = processed_order + [k for k in processed_this_run if k not in processed_set]
+        all_processed = processed_order + [
+            k for k in processed_this_run if k not in processed_set
+        ]
         context.update_cursor(_build_cursor(all_processed))
-
-

@@ -49,10 +49,27 @@ Manifests use placeholder syntax for dynamic values:
 |-------------|---------|
 | `${UUID}` | Unique identifier for test isolation |
 | `${BATCH_ID}` | Full batch identifier |
-| `${SPATIAL_ASSET_ID}` | MongoDB `_id` of the spatial asset (join tests) |
-| `${TABULAR_ASSET_ID}` | MongoDB `_id` of the tabular asset (join tests) |
+| `${SPATIAL_DATASET_ID}` | Dataset ID of the spatial asset (join tests) |
+| `${TABULAR_DATASET_ID}` | Dataset ID of the tabular asset (join tests) |
 
-> **Note**: Asset IDs are MongoDB ObjectId strings (the document's `_id` field), not `dataset_id` values.
+### Join Config Version Pinning
+
+The `join_config` supports optional version fields:
+
+```json
+"join_config": {
+  "spatial_dataset_id": "sa1_spatial_102",
+  "spatial_version": null,
+  "tabular_dataset_id": "sa1_tabular_101",
+  "tabular_version": null,
+  "left_key": "sa1_code21"
+}
+```
+
+- `spatial_version` / `tabular_version`: If `null` (or omitted), uses the **latest** version
+- To pin a specific version, set to an integer (e.g., `"spatial_version": 2`)
+
+
 
 ## Usage in Tests
 

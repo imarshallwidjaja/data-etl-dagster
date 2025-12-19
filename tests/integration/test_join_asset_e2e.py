@@ -588,7 +588,8 @@ class TestJoinAssetE2E:
             spatial_asset_doc = _assert_mongodb_asset_exists(
                 mongo_client, mongo_settings, spatial_run_id
             )
-            spatial_asset_id = str(spatial_asset_doc["_id"])
+            spatial_dataset_id = spatial_asset_doc["dataset_id"]
+            spatial_object_id = str(spatial_asset_doc["_id"])  # For lineage assertion
 
             # =========================================================
             # 2) Create tabular parent via tabular_asset_job
@@ -645,7 +646,8 @@ class TestJoinAssetE2E:
             tabular_asset_doc = _assert_mongodb_asset_exists(
                 mongo_client, mongo_settings, tabular_run_id
             )
-            tabular_asset_id = str(tabular_asset_doc["_id"])
+            tabular_dataset_id = tabular_asset_doc["dataset_id"]
+            tabular_object_id = str(tabular_asset_doc["_id"])  # For lineage assertion
 
             # =========================================================
             # 3) Launch join_asset_job with both asset IDs (no files)
@@ -657,11 +659,12 @@ class TestJoinAssetE2E:
                 join_manifest["metadata"].get("tags", {})
             )
             join_manifest["metadata"]["tags"]["dataset_id"] = join_partition_key
-            join_manifest["metadata"]["join_config"]["spatial_asset_id"] = (
-                spatial_asset_id
+            # Use dataset_id instead of MongoDB ObjectId for join config
+            join_manifest["metadata"]["join_config"]["spatial_dataset_id"] = (
+                spatial_dataset_id
             )
-            join_manifest["metadata"]["join_config"]["tabular_asset_id"] = (
-                tabular_asset_id
+            join_manifest["metadata"]["join_config"]["tabular_dataset_id"] = (
+                tabular_dataset_id
             )
 
             # Register partition before launching (bypasses sensor path)
@@ -700,9 +703,10 @@ class TestJoinAssetE2E:
             db = mongo_client[mongo_settings.database]
             joined_id = joined_asset_doc["_id"]
 
+            # Verify lineage uses MongoDB ObjectIds (internal detail)
             spatial_lineage = db["lineage"].find_one(
                 {
-                    "source_asset_id": ObjectId(spatial_asset_id),
+                    "source_asset_id": ObjectId(spatial_object_id),
                     "target_asset_id": joined_id,
                 }
             )
@@ -711,7 +715,7 @@ class TestJoinAssetE2E:
 
             tabular_lineage = db["lineage"].find_one(
                 {
-                    "source_asset_id": ObjectId(tabular_asset_id),
+                    "source_asset_id": ObjectId(tabular_object_id),
                     "target_asset_id": joined_id,
                 }
             )

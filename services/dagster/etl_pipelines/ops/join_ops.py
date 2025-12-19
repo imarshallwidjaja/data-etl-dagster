@@ -51,8 +51,9 @@ def _resolve_join_assets(
 ) -> Dict[str, Any]:
     """Resolve and validate join inputs.
 
-    Both spatial_asset_id and tabular_asset_id are required.
-    Returns both assets fetched from MongoDB.
+    Both spatial_dataset_id and tabular_dataset_id are required.
+    Optional version fields allow pinning to specific versions (None = latest).
+    Returns both assets fetched from MongoDB along with their ObjectIDs for lineage.
     """
     validated = Manifest(**manifest)
     join_config = validated.metadata.join_config
@@ -61,28 +62,74 @@ def _resolve_join_assets(
             f"Manifest {validated.batch_id} has intent 'join_datasets' but metadata.join_config is missing"
         )
 
-    # Fetch spatial asset by ObjectId
-    spatial_asset = mongodb.get_asset_by_id(join_config.spatial_asset_id)
-    if spatial_asset is None:
-        raise ValueError(f"Spatial asset not found: {join_config.spatial_asset_id}")
-    if spatial_asset.kind != AssetKind.SPATIAL:
-        raise ValueError(
-            f"spatial_asset_id must reference a spatial asset, got {spatial_asset.kind.value}"
+    # Resolve spatial asset by dataset_id + optional version
+    if join_config.spatial_version is not None:
+        spatial_asset = mongodb.get_asset(
+            join_config.spatial_dataset_id, join_config.spatial_version
+        )
+        spatial_version_info = f"v{join_config.spatial_version} (pinned)"
+    else:
+        spatial_asset = mongodb.get_latest_asset(join_config.spatial_dataset_id)
+        spatial_version_info = (
+            f"v{spatial_asset.version} (latest)" if spatial_asset else "N/A"
         )
 
-    # Fetch tabular asset by ObjectId
-    tabular_asset = mongodb.get_asset_by_id(join_config.tabular_asset_id)
+    if spatial_asset is None:
+        version_suffix = (
+            f" v{join_config.spatial_version}"
+            if join_config.spatial_version
+            else " (latest)"
+        )
+        raise ValueError(
+            f"Spatial dataset not found: {join_config.spatial_dataset_id}{version_suffix}"
+        )
+    if spatial_asset.kind != AssetKind.SPATIAL:
+        raise ValueError(
+            f"spatial_dataset_id must reference a spatial asset, "
+            f"got {spatial_asset.kind.value} for '{join_config.spatial_dataset_id}'"
+        )
+
+    # Get MongoDB ObjectID for lineage recording
+    spatial_object_id = mongodb.get_asset_object_id_for_version(
+        join_config.spatial_dataset_id, spatial_asset.version
+    )
+
+    # Resolve tabular asset by dataset_id + optional version
+    if join_config.tabular_version is not None:
+        tabular_asset = mongodb.get_asset(
+            join_config.tabular_dataset_id, join_config.tabular_version
+        )
+        tabular_version_info = f"v{join_config.tabular_version} (pinned)"
+    else:
+        tabular_asset = mongodb.get_latest_asset(join_config.tabular_dataset_id)
+        tabular_version_info = (
+            f"v{tabular_asset.version} (latest)" if tabular_asset else "N/A"
+        )
+
     if tabular_asset is None:
-        raise ValueError(f"Tabular asset not found: {join_config.tabular_asset_id}")
+        version_suffix = (
+            f" v{join_config.tabular_version}"
+            if join_config.tabular_version
+            else " (latest)"
+        )
+        raise ValueError(
+            f"Tabular dataset not found: {join_config.tabular_dataset_id}{version_suffix}"
+        )
     if tabular_asset.kind != AssetKind.TABULAR:
         raise ValueError(
-            f"tabular_asset_id must reference a tabular asset, got {tabular_asset.kind.value}"
+            f"tabular_dataset_id must reference a tabular asset, "
+            f"got {tabular_asset.kind.value} for '{join_config.tabular_dataset_id}'"
         )
+
+    # Get MongoDB ObjectID for lineage recording
+    tabular_object_id = mongodb.get_asset_object_id_for_version(
+        join_config.tabular_dataset_id, tabular_asset.version
+    )
 
     log.info(
         f"Resolved join inputs: "
-        f"spatial={spatial_asset.dataset_id} v{spatial_asset.version}, "
-        f"tabular={tabular_asset.dataset_id} v{tabular_asset.version}"
+        f"spatial={spatial_asset.dataset_id}@{spatial_version_info}, "
+        f"tabular={tabular_asset.dataset_id}@{tabular_version_info}"
     )
     log.info(
         f"Join config: LEFT={join_config.left_key}, "
@@ -93,9 +140,9 @@ def _resolve_join_assets(
         "validated_manifest": validated,
         "join_config": join_config,
         "spatial_asset": spatial_asset,
-        "spatial_asset_id": join_config.spatial_asset_id,
+        "spatial_object_id": spatial_object_id,
         "tabular_asset": tabular_asset,
-        "tabular_asset_id": join_config.tabular_asset_id,
+        "tabular_object_id": tabular_object_id,
     }
 
 
