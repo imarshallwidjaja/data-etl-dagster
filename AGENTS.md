@@ -81,9 +81,6 @@ The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partiti
       "format": "GeoJSON"
     }
   ],
-  // For tabular ingestion:
-  // "intent": "ingest_tabular",
-  // "files": [{"path": "s3://landing-zone/batch_XYZ/data.csv", "type": "tabular", "format": "CSV"}]
   "metadata": {
     "project": "ALPHA",
     "description": "User supplied context",
@@ -99,6 +96,27 @@ The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partiti
       "right_key": "parcel_id",
       "how": "left"
     }
+  }
+}
+```
+
+**Alternative: Tabular Ingestion**
+
+```json
+{
+  "batch_id": "unique_batch_identifier_tab",
+  "uploader": "user_or_system_id",
+  "intent": "ingest_tabular",
+  "files": [
+    {
+      "path": "s3://landing-zone/batch_XYZ/data.csv",
+      "type": "tabular",
+      "format": "CSV"
+    }
+  ],
+  "metadata": {
+    "project": "ALPHA",
+    "tags": { "dataset_id": "dataset_ab12cd34ef56" }
   }
 }
 ```
@@ -157,11 +175,32 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 
 ## Links
 
+### AGENTS.md (AI context)
+
+**Services:**
 - `services/dagster/AGENTS.md`
 - `services/minio/AGENTS.md`
 - `services/mongodb/AGENTS.md`
 - `services/postgis/AGENTS.md`
+
+**Libraries:**
 - `libs/models/AGENTS.md`
 - `libs/spatial_utils/AGENTS.md`
 - `libs/transformations/AGENTS.md`
+
+**Tests:**
 - `tests/AGENTS.md`
+- `tests/unit/AGENTS.md`
+- `tests/integration/AGENTS.md`
+- `tests/integration/fixtures/AGENTS.md`
+
+**Other:**
+- `configs/AGENTS.md`
+- `scripts/AGENTS.md`
+
+### README.md (Developer docs)
+
+- `services/dagster/README.md` - Dagster orchestration layer
+- `services/mongodb/README.md` - MongoDB ledger and migrations
+- `libs/transformations/README.md` - Recipe-based transformation system
+- `scripts/README.md` - Utility scripts

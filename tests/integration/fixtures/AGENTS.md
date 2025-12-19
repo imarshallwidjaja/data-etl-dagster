@@ -1,26 +1,40 @@
-# Test Fixtures - AI Agent Instructions
+# tests/integration/fixtures/ — Agent Guide
 
-## Purpose
+## What this directory is / owns
 
 This directory contains test fixtures for integration and E2E tests. Fixtures include sample data files and manifest templates used to test the Dagster ETL pipelines.
 
-## Directory Structure
+## Key invariants / non-negotiables
 
-```
-fixtures/
-├── asset_plans/           # Manifest templates and sample data for asset tests
-│   ├── e2e_spatial_manifest.json    # Spatial ingestion manifest template
-│   ├── e2e_tabular_manifest.json    # Tabular ingestion manifest template
-│   ├── e2e_join_manifest.json       # Join workflow manifest template
-│   ├── e2e_sample_sa1_data.json     # Sample GeoJSON (42 SA1 features)
-│   └── e2e_sample_table_data.csv    # Sample CSV (42 rows, heat vulnerability)
-├── e2e_sample_sa1_data.json         # Full GeoJSON dataset (larger version)
-└── e2e_sample_sa1_data-manifest.json  # Legacy manifest format
-```
+- **Template placeholders must be substituted at runtime** - never upload templates directly
+- **FileType enum values** must match `libs/models/spatial.py`: `"raster"`, `"vector"`, or `"tabular"` (NOT `"spatial"`)
+- **Intent/type coherence** must be maintained (e.g., `ingest_tabular` requires all files with `type: "tabular"`)
 
-## Manifest Templates
+## Entry points / key files
 
-### Template Placeholders
+### Manifest templates (`asset_plans/`)
+
+| File | Intent | Description |
+|------|--------|-------------|
+| `e2e_spatial_manifest.json` | `ingest_vector` | Spatial vector ingestion |
+| `e2e_tabular_manifest.json` | `ingest_tabular` | Tabular CSV ingestion |
+| `e2e_join_manifest.json` | `join_datasets` | Join workflow (asset-only, no files) |
+
+### Sample data (`asset_plans/`)
+
+| File | Description |
+|------|-------------|
+| `e2e_sample_sa1_data.json` | GeoJSON - 42 SA1 boundaries from NSW (CRS: EPSG:4283) |
+| `e2e_sample_table_data.csv` | CSV - 42 rows of heat vulnerability indices |
+
+### Legacy root files
+
+| File | Description |
+|------|-------------|
+| `e2e_sample_sa1_data.json` | Full GeoJSON dataset |
+| `e2e_sample_sa1_data-manifest.json` | Legacy manifest format |
+
+## Template placeholders
 
 Manifest JSON files contain placeholders that MUST be substituted at runtime:
 
@@ -28,12 +42,18 @@ Manifest JSON files contain placeholders that MUST be substituted at runtime:
 |-------------|-------------|---------------------|
 | `${UUID}` | Unique test run identifier | `abc123def456` |
 | `${BATCH_ID}` | Full batch identifier | `sensor_e2e_tabular_abc123` |
-| `${SPATIAL_ASSET_ID}` | MongoDB ObjectId of spatial asset (join only) | `507f1f77bcf86cd799439011` |
-| `${TABULAR_ASSET_ID}` | MongoDB ObjectId of tabular asset (join only) | `507f1f77bcf86cd799439012` |
+| `${SPATIAL_ASSET_ID}` | MongoDB `_id` of the spatial asset (join only) | `507f1f77bcf86cd799439011` |
+| `${TABULAR_ASSET_ID}` | MongoDB `_id` of the tabular asset (join only) | `507f1f77bcf86cd799439012` |
 
-### Loading Manifests in Tests
+> **Note**: `SPATIAL_ASSET_ID` and `TABULAR_ASSET_ID` are MongoDB ObjectId strings, not `dataset_id` values. The test creates parent assets first and uses their `_id` fields.
 
-Use the `_load_manifest_template()` helper function:
+## How to work here
+
+- **Loading manifests in tests**: Use the `_load_manifest_template()` helper function pattern
+- **Adding new fixtures**: Place in `asset_plans/` with descriptive names
+- **Join key alignment**: Ensure spatial and tabular fixtures share a common join key column
+
+### Example loading pattern
 
 ```python
 from pathlib import Path
@@ -49,43 +69,24 @@ manifest = _load_manifest_template(
 )
 ```
 
-## Manifest Schema Requirements
+## Common errors
 
-### FileType Enum Values
+| Error | Cause |
+|-------|-------|
+| `"Input should be 'raster', 'vector' or 'tabular'"` | Wrong `type` value in manifest (e.g., using `"spatial"`) |
+| `"source must be CopySource type"` | MinIO archive bug (fixed in `minio_resource.py`) |
+| `"Partition not found"` | Sensor didn't create dynamic partition before RunRequest |
 
-The `files[].type` field MUST be one of:
-- `"raster"` - For raster/imagery data
-- `"vector"` - For vector/feature data (GeoJSON, GPKG, SHP)
-- `"tabular"` - For tabular data (CSV)
+## Testing / verification
 
-⚠️ `"spatial"` is NOT valid - use `"vector"` or `"raster"` instead.
+Fixtures are used by E2E tests:
+- `test_spatial_asset_e2e.py`
+- `test_tabular_asset_e2e.py`
+- `test_join_asset_e2e.py`
+- `test_sensor_e2e.py`
 
-### Intent Values
+## Links
 
-| Intent | Description | Required Fields |
-|--------|-------------|-----------------|
-| `ingest_vector` | Spatial vector ingestion | `files[0]` with `type: "vector"` |
-| `ingest_raster` | Raster ingestion | `files[0]` with `type: "raster"` |
-| `ingest_tabular` | Tabular CSV ingestion | `files[0]` with `type: "tabular"` |
-| `join_datasets` | Join spatial + tabular assets | `metadata.join_config`, `files: []` empty |
-
-## Data Files
-
-### e2e_sample_sa1_data.json (GeoJSON)
-
-- 42 SA1 boundary features from NSW
-- MultiPolygon geometries
-- CRS: EPSG:4283 (GDA94)
-- Join key column: `sa1_code21`
-
-### e2e_sample_table_data.csv (CSV)
-
-- 42 rows of heat vulnerability indices
-- Columns include: `ogc_fid`, `sa1_code21`, `hhvi_*` metrics
-- Join key column: `sa1_code21`
-
-## Common Errors
-
-1. **"Input should be 'raster', 'vector' or 'tabular'"** - Wrong `type` value in manifest
-2. **"source must be CopySource type"** - MinIO archive bug (fixed in minio_resource.py)
-3. **"Partition not found"** - Sensor didn't create dynamic partition before RunRequest
+- Parent tests guide: `../../AGENTS.md`
+- Integration tests guide: `../AGENTS.md`
+- Root guide: `../../../AGENTS.md`

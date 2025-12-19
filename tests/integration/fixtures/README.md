@@ -49,8 +49,10 @@ Manifests use placeholder syntax for dynamic values:
 |-------------|---------|
 | `${UUID}` | Unique identifier for test isolation |
 | `${BATCH_ID}` | Full batch identifier |
-| `${SPATIAL_ASSET_ID}` | MongoDB ObjectId (join tests) |
-| `${TABULAR_ASSET_ID}` | MongoDB ObjectId (join tests) |
+| `${SPATIAL_ASSET_ID}` | MongoDB `_id` of the spatial asset (join tests) |
+| `${TABULAR_ASSET_ID}` | MongoDB `_id` of the tabular asset (join tests) |
+
+> **Note**: Asset IDs are MongoDB ObjectId strings (the document's `_id` field), not `dataset_id` values.
 
 ## Usage in Tests
 

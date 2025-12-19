@@ -41,3 +41,4 @@ It owns the run-id ↔ PostGIS schema mapping logic and tabular header normaliza
 
 - Root guide: `../../AGENTS.md`
 - Settings/models: `../models/AGENTS.md`
+- PostGIS service: `../../services/postgis/AGENTS.md`

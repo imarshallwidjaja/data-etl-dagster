@@ -21,17 +21,33 @@ This directory includes:
 
 ## Entry points / key files
 
-- `test_minio.py`, `test_mongodb.py`, `test_postgis.py`: service connectivity + basic operations
+### Service connectivity tests
+
+- `test_minio.py`: MinIO connectivity + basic operations
+- `test_mongodb.py`: MongoDB connectivity + basic operations
+- `test_postgis.py`: PostGIS connectivity + basic operations
 - `test_dagster.py`: Dagster GraphQL/API reachability
-- `test_gdal_health.py`: GDAL tooling availability
-- `test_schema_cleanup.py`: verifies ephemeral schema lifecycle
+- `test_gdal_health.py`: GDAL tooling availability inside user-code container
+
+### Initialization tests
+
 - `test_mongodb_init.py`: verifies MongoDB initialization (collections, indexes)
+- `test_mongodb_migrations.py`: verifies MongoDB migration runner and schema evolution
 - `test_postgis_init.py`: verifies PostGIS initialization (extensions, utility functions)
-- `test_ingest_job_e2e.py`: launches `ingest_job` via GraphQL and asserts lake + ledger + cleanup
-- `test_spatial_asset_e2e.py`: launches `spatial_asset_job` via GraphQL with partition key and asserts lake + ledger + cleanup
-- `test_tabular_asset_e2e.py`: launches `tabular_asset_job` via GraphQL with partition key and asserts lake + ledger + header mapping + join key normalization
-- `test_join_asset_e2e.py`: launches `join_asset_job` via GraphQL and asserts joined output + lineage record
-- `fixtures/`: versioned E2E sample inputs used by `test_ingest_job_e2e.py`
+- `test_schema_cleanup.py`: verifies ephemeral schema lifecycle
+
+### E2E pipeline tests
+
+- `test_ingest_job_e2e.py`: launches `ingest_job` (legacy op-based) via GraphQL
+- `test_spatial_asset_e2e.py`: launches `spatial_asset_job` via GraphQL with partition key
+- `test_tabular_asset_e2e.py`: launches `tabular_asset_job` via GraphQL with partition key
+- `test_join_asset_e2e.py`: launches `join_asset_job` via GraphQL, asserts joined output + lineage
+- `test_sensor_e2e.py`: tests sensor-triggered pipelines (manifest detection → job launch)
+- `test_sensor_partition_creation.py`: tests dynamic partition creation by sensors
+
+### Fixtures
+
+- `fixtures/`: versioned sample data and manifest templates used by E2E tests (see `fixtures/AGENTS.md`)
 
 ## Running
 

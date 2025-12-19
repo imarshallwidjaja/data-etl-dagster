@@ -377,16 +377,14 @@ data-etl-dagster/
 
 ## Documentation
 
-Each component has its own `AGENTS.md` with detailed documentation:
+### Developer Guides
 
-- [Global Context](./AGENTS.md) - Architecture and philosophy
-- [Dagster](./services/dagster/AGENTS.md) - Orchestration layer
-- [MinIO](./services/minio/AGENTS.md) - Object storage
-- [MongoDB](./services/mongodb/AGENTS.md) - Metadata ledger
-- [PostGIS](./services/postgis/AGENTS.md) - Compute engine
-- [Spatial Utils](./libs/spatial_utils/AGENTS.md) - GDAL wrappers
-- [Transformations](./libs/transformations/AGENTS.md) - Recipe-based transformation architecture
-- [Models](./libs/models/AGENTS.md) - Data schemas
+- [Dagster Service](./services/dagster/README.md) - Orchestration layer, pipelines, development
+- [MongoDB Service](./services/mongodb/README.md) - Metadata ledger, schema migrations
+- [Transformations](./libs/transformations/README.md) - Recipe-based transformation system
+- [Scripts](./scripts/README.md) - Utility scripts for dev and CI
+
+> **Note**: Each directory also contains an `AGENTS.md` file providing context for AI coding assistants.
 
 ## Development
 
