@@ -92,6 +92,10 @@ async def get_asset(
     if not asset:
         raise HTTPException(status_code=404, detail=f"Asset not found: {dataset_id}")
 
+    # Convert datetime to ISO string for template rendering
+    if asset.get("created_at"):
+        asset["created_at"] = asset["created_at"].isoformat()
+
     versions = mongodb.get_asset_versions(dataset_id)
     version_dicts = [
         {

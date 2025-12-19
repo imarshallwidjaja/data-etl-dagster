@@ -174,17 +174,11 @@ class DagsterService:
                     }
                     eventConnection(afterCursor: null) {
                         events {
-                            timestamp
-                            eventType
-                            message
-                            ... on StepEvent {
+                            ... on MessageEvent {
+                                message
+                                timestamp
+                                eventType
                                 stepKey
-                            }
-                            ... on EngineEvent {
-                                message
-                            }
-                            ... on RunFailureEvent {
-                                message
                             }
                         }
                     }
@@ -224,8 +218,11 @@ class DagsterService:
             timestamp = datetime.now()
             if event.get("timestamp"):
                 try:
-                    timestamp = datetime.fromtimestamp(float(event["timestamp"]))
-                except (ValueError, TypeError):
+                    # Dagster timestamps are in milliseconds, convert to seconds
+                    timestamp = datetime.fromtimestamp(
+                        float(event["timestamp"]) / 1000.0
+                    )
+                except (ValueError, TypeError, OSError):
                     pass
 
             event_obj = RunEvent(

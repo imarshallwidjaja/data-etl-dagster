@@ -111,7 +111,7 @@
                 <tbody>
                     {% for e in events %}
                     <tr
-                        class="{% if 'FAILURE' in e.event_type %}error-row{% elif 'SUCCESS' in e.event_type %}success-row{% endif %}">
+                        class="{% if 'FAILURE' in (e.event_type or '') %}error-row{% elif 'SUCCESS' in (e.event_type or '') %}success-row{% endif %}">
                         <td><small>{{ e.timestamp[11:19] if e.timestamp else '-' }}</small></td>
                         <td><small><code>{{ e.event_type }}</code></small></td>
                         <td><small>{{ e.step_key or '-' }}</small></td>
