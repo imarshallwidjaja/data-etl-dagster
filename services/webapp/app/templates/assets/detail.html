@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+
+{% block title %}Asset: {{ asset.dataset_id }} - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📦 {{ asset.dataset_id }}</h1>
+            <p>
+                {% if asset.kind == 'spatial' %}
+                🗺️ Spatial Asset
+                {% elif asset.kind == 'tabular' %}
+                📊 Tabular Asset
+                {% elif asset.kind == 'joined' %}
+                🔗 Joined Asset
+                {% else %}
+                📦 {{ asset.kind }}
+                {% endif %}
+            </p>
+        </hgroup>
+    </header>
+
+    <!-- Details -->
+    <h2>Latest Version (v{{ asset.version }})</h2>
+    <figure>
+        <table>
+            <tbody>
+                <tr>
+                    <td><strong>Dataset ID</strong></td>
+                    <td><code>{{ asset.dataset_id }}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Version</strong></td>
+                    <td>{{ asset.version }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Kind</strong></td>
+                    <td>{{ asset.kind }}</td>
+                </tr>
+                <tr>
+                    <td><strong>S3 Key</strong></td>
+                    <td><code>{{ asset.s3_key }}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Content Hash</strong></td>
+                    <td><code>{{ asset.content_hash[:16] if asset.content_hash else '-' }}...</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Created</strong></td>
+                    <td>{{ asset.created_at[:19] if asset.created_at else '-' }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </figure>
+
+    <!-- Actions -->
+    <div class="grid">
+        <a href="/assets/{{ asset.dataset_id }}/v{{ asset.version }}/download" role="button">Download Latest</a>
+        <a href="/assets/{{ asset.dataset_id }}/v{{ asset.version }}/lineage" role="button" class="secondary">View
+            Lineage</a>
+    </div>
+
+    <!-- Metadata -->
+    {% if asset.metadata %}
+    <h2>Metadata</h2>
+    <figure>
+        <table>
+            <tbody>
+                {% if asset.metadata.project %}
+                <tr>
+                    <td><strong>Project</strong></td>
+                    <td>{{ asset.metadata.project }}</td>
+                </tr>
+                {% endif %}
+                {% if asset.metadata.description %}
+                <tr>
+                    <td><strong>Description</strong></td>
+                    <td>{{ asset.metadata.description }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </figure>
+    {% endif %}
+
+    <!-- Versions -->
+    <h2>All Versions ({{ versions|length }})</h2>
+    {% if versions %}
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Version</th>
+                    <th>S3 Key</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for v in versions %}
+                <tr>
+                    <td>v{{ v.version }}</td>
+                    <td><code>{{ v.s3_key }}</code></td>
+                    <td>{{ v.created_at[:19] if v.created_at else '-' }}</td>
+                    <td>
+                        <a href="/assets/{{ asset.dataset_id }}/v{{ v.version }}/download" role="button" class="outline"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Download</a>
+                        <a href="/assets/{{ asset.dataset_id }}/v{{ v.version }}/lineage" role="button"
+                            class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Lineage</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% else %}
+    <p><em>No version history available.</em></p>
+    {% endif %}
+</article>
+{% endblock %}

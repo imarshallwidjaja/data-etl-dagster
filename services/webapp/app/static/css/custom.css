@@ -1,97 +1,183 @@
 /* =============================================================================
- * Data ETL Tooling - Custom Styles
- * =============================================================================
- * PicoCSS overrides and custom styling.
- * ============================================================================= */
+   Custom CSS for Data ETL Tooling Webapp
+   Extends PicoCSS dark theme
+   ============================================================================= */
 
-/* Navigation improvements */
-nav ul li a {
-    padding: 0.5rem 1rem;
-}
-
-/* Card grid spacing */
-.grid > article {
-    margin-bottom: 0;
+/* Navigation active state */
+nav a[aria-current="page"] {
+    font-weight: bold;
+    text-decoration: underline;
 }
 
 /* Status badges */
 .badge {
     display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
+    padding: 0.15rem 0.45rem;
     font-size: 0.75rem;
     font-weight: 600;
+    border-radius: var(--pico-border-radius);
     text-transform: uppercase;
 }
 
 .badge-success {
-    background-color: var(--pico-color-green-550);
-    color: white;
-}
-
-.badge-warning {
-    background-color: var(--pico-color-yellow-550);
-    color: black;
+    background-color: rgba(46, 160, 67, 0.2);
+    color: #3fb950;
+    border: 1px solid rgba(46, 160, 67, 0.4);
 }
 
 .badge-error {
-    background-color: var(--pico-color-red-550);
-    color: white;
+    background-color: rgba(248, 81, 73, 0.2);
+    color: #f85149;
+    border: 1px solid rgba(248, 81, 73, 0.4);
 }
 
-.badge-info {
-    background-color: var(--pico-color-blue-550);
-    color: white;
+.badge-warning {
+    background-color: rgba(187, 128, 9, 0.2);
+    color: #d29922;
+    border: 1px solid rgba(187, 128, 9, 0.4);
 }
 
 .badge-pending {
-    background-color: var(--pico-color-grey-550);
-    color: white;
+    background-color: rgba(139, 148, 158, 0.2);
+    color: #8b949e;
+    border: 1px solid rgba(139, 148, 158, 0.4);
 }
 
-/* File browser table */
-.file-list {
-    font-size: 0.9rem;
+.badge-info {
+    background-color: rgba(56, 139, 253, 0.2);
+    color: #388bfd;
+    border: 1px solid rgba(56, 139, 253, 0.4);
 }
 
-.file-list td:first-child {
-    word-break: break-all;
+/* File browser */
+.file-list td {
+    vertical-align: middle;
 }
 
-/* Form improvements */
-.form-hint {
+.file-list code {
     font-size: 0.85rem;
-    color: var(--pico-muted-color);
-    margin-top: -0.5rem;
-    margin-bottom: 1rem;
+    background: transparent;
+    padding: 0;
+}
+
+/* Forms */
+fieldset {
+    margin-bottom: 1.5rem;
+}
+
+fieldset legend {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.file-entry,
+.tag-entry {
+    margin-bottom: 0.75rem;
 }
 
 /* Error display */
 .error-chain {
-    background-color: var(--pico-code-background-color);
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: var(--pico-border-radius);
     padding: 1rem;
-    border-radius: 0.5rem;
+    margin: 1rem 0;
+}
+
+.error-chain pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #f85149;
+    background: transparent;
+}
+
+/* Alerts/Messages */
+.success {
+    color: #3fb950;
+}
+
+.error {
+    color: #f85149;
+}
+
+/* Tables */
+figure>table {
+    margin: 0;
+}
+
+table small {
+    opacity: 0.8;
+}
+
+/* Cards grid */
+article header h3 {
+    margin-bottom: 0;
+}
+
+/* Action buttons in tables */
+td a[role="button"],
+td button {
+    white-space: nowrap;
+}
+
+/* Code blocks */
+pre {
     overflow-x: auto;
+    max-width: 100%;
 }
 
-/* Lineage visualization */
-.lineage-diagram {
-    text-align: center;
-    padding: 2rem;
-    background-color: var(--pico-card-background-color);
-    border-radius: 0.5rem;
+/* Lineage styling */
+.lineage-graph {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 1rem;
 }
 
-.lineage-node {
-    display: inline-block;
-    padding: 0.5rem 1rem;
-    margin: 0.5rem;
-    border: 2px solid var(--pico-primary);
-    border-radius: 0.5rem;
+.lineage-node article {
+    margin: 0;
 }
 
-.lineage-arrow {
-    display: inline-block;
-    padding: 0 1rem;
-    color: var(--pico-muted-color);
+/* Event log */
+.events-table {
+    font-size: 0.85rem;
+}
+
+.error-row {
+    background-color: rgba(248, 81, 73, 0.1);
+}
+
+.success-row {
+    background-color: rgba(46, 160, 67, 0.05);
+}
+
+/* File size formatting filter workaround */
+/* We'll use JS to format, but this helps with alignment */
+td:nth-child(2) {
+    white-space: nowrap;
+}
+
+/* Compact buttons */
+button.outline,
+a[role="button"].outline {
+    --pico-form-element-spacing-vertical: 0.25rem;
+    --pico-form-element-spacing-horizontal: 0.5rem;
+}
+
+/* Article header with button */
+article>header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+}
+
+article>header hgroup {
+    flex: 1;
+}
+
+/* Details summary styling */
+details>summary {
+    margin-bottom: 1rem;
 }

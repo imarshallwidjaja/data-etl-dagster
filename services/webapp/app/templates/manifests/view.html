@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+
+{% block title %}Manifest: {{ manifest.batch_id }} - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📋 Manifest: {{ manifest.batch_id }}</h1>
+            <p>
+                {% if manifest.status == 'completed' %}
+                <span class="badge badge-success">{{ manifest.status }}</span>
+                {% elif manifest.status == 'failed' %}
+                <span class="badge badge-error">{{ manifest.status }}</span>
+                {% elif manifest.status == 'processing' %}
+                <span class="badge badge-warning">{{ manifest.status }}</span>
+                {% else %}
+                <span class="badge badge-pending">{{ manifest.status }}</span>
+                {% endif %}
+            </p>
+        </hgroup>
+    </header>
+
+    <!-- Actions -->
+    <div class="grid" style="margin-bottom: 1rem;">
+        {% if manifest.dagster_run_id %}
+        <a href="/runs/{{ manifest.dagster_run_id }}" role="button" class="outline">View Run</a>
+        {% endif %}
+        {% if manifest.status in ['completed', 'failed'] %}
+        <button id="rerun-btn" class="secondary">Re-run Manifest</button>
+        {% endif %}
+        {% if manifest.status == 'pending' %}
+        <button id="delete-btn" class="secondary outline">Delete</button>
+        {% endif %}
+    </div>
+
+    <div id="action-status"></div>
+
+    <!-- Details -->
+    <h2>Details</h2>
+    <figure>
+        <table>
+            <tbody>
+                <tr>
+                    <td><strong>Intent</strong></td>
+                    <td><code>{{ manifest.intent }}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Uploader</strong></td>
+                    <td>{{ manifest.uploader }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Project</strong></td>
+                    <td>{{ manifest.metadata.project if manifest.metadata else '-' }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Description</strong></td>
+                    <td>{{ manifest.metadata.description if manifest.metadata and manifest.metadata.description else '-'
+                        }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Created</strong></td>
+                    <td>{{ manifest.created_at[:19] if manifest.created_at else '-' }}</td>
+                </tr>
+                {% if manifest.dagster_run_id %}
+                <tr>
+                    <td><strong>Dagster Run</strong></td>
+                    <td><a href="/runs/{{ manifest.dagster_run_id }}">{{ manifest.dagster_run_id }}</a></td>
+                </tr>
+                {% endif %}
+                {% if manifest.error_message %}
+                <tr>
+                    <td><strong>Error</strong></td>
+                    <td class="error">{{ manifest.error_message }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </figure>
+
+    <!-- Files -->
+    <h2>Files ({{ manifest.files|length if manifest.files else 0 }})</h2>
+    {% if manifest.files %}
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Path</th>
+                    <th>Type</th>
+                    <th>Format</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for file in manifest.files %}
+                <tr>
+                    <td><code>{{ file.path }}</code></td>
+                    <td>{{ file.type }}</td>
+                    <td>{{ file.format }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% else %}
+    <p><em>No files (join manifest)</em></p>
+    {% endif %}
+
+    <!-- Tags -->
+    {% if manifest.metadata and manifest.metadata.tags %}
+    <h2>Tags</h2>
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key, value in manifest.metadata.tags.items() %}
+                <tr>
+                    <td><code>{{ key }}</code></td>
+                    <td>{{ value }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% endif %}
+
+    <!-- Join Config -->
+    {% if manifest.metadata and manifest.metadata.join_config %}
+    <h2>Join Configuration</h2>
+    <figure>
+        <table>
+            <tbody>
+                <tr>
+                    <td><strong>Spatial Dataset</strong></td>
+                    <td>{{ manifest.metadata.join_config.spatial_dataset_id }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Tabular Dataset</strong></td>
+                    <td>{{ manifest.metadata.join_config.tabular_dataset_id }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Left Key</strong></td>
+                    <td><code>{{ manifest.metadata.join_config.left_key }}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Right Key</strong></td>
+                    <td><code>{{ manifest.metadata.join_config.right_key or manifest.metadata.join_config.left_key }}</code>
+                    </td>
+                </tr>
+                <tr>
+                    <td><strong>Join Type</strong></td>
+                    <td>{{ manifest.metadata.join_config.how or 'left' }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </figure>
+    {% endif %}
+</article>
+
+<script>
+    // Re-run button
+    const rerunBtn = document.getElementById('rerun-btn');
+    if (rerunBtn) {
+        rerunBtn.addEventListener('click', async function () {
+            const status = document.getElementById('action-status');
+            status.innerHTML = '<p aria-busy="true">Creating re-run manifest...</p>';
+
+            try {
+                const response = await fetch('/manifests/{{ manifest.batch_id }}/rerun', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    status.innerHTML = '<p class="success">✅ ' + result.message + '</p>';
+                    setTimeout(() => window.location.href = '/manifests/', 1500);
+                } else {
+                    const error = await response.json();
+                    status.innerHTML = '<p class="error">❌ ' + (error.detail || 'Re-run failed') + '</p>';
+                }
+            } catch (err) {
+                status.innerHTML = '<p class="error">❌ ' + err.message + '</p>';
+            }
+        });
+    }
+
+    // Delete button
+    const deleteBtn = document.getElementById('delete-btn');
+    if (deleteBtn) {
+        deleteBtn.addEventListener('click', async function () {
+            if (!confirm('Delete this manifest?')) return;
+
+            const status = document.getElementById('action-status');
+            status.innerHTML = '<p aria-busy="true">Deleting...</p>';
+
+            try {
+                const response = await fetch('/manifests/{{ manifest.batch_id }}/delete', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    window.location.href = '/manifests/';
+                } else {
+                    const error = await response.json();
+                    status.innerHTML = '<p class="error">❌ ' + (error.detail || 'Delete failed') + '</p>';
+                }
+            } catch (err) {
+                status.innerHTML = '<p class="error">❌ ' + err.message + '</p>';
+            }
+        });
+    }
+</script>
+
+<style>
+    .success {
+        color: var(--pico-color-green-550);
+    }
+
+    .error {
+        color: var(--pico-color-red-550);
+    }
+</style>
+{% endblock %}

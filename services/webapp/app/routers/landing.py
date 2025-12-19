@@ -4,16 +4,22 @@
 # Endpoints for landing zone file management.
 # =============================================================================
 
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
 from app.services.minio_service import get_minio_service, LandingZoneObject
 
 router = APIRouter(prefix="/landing", tags=["landing"])
+
+# Templates
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 class FileListResponse(BaseModel):
@@ -38,12 +44,14 @@ class DeleteResponse(BaseModel):
     message: str
 
 
-@router.get("/", response_model=FileListResponse)
+@router.get("/", response_model=None)
 async def list_landing_zone(
+    request: Request,
     prefix: str = Query("", description="Optional prefix to filter files"),
     include_archive: bool = Query(False, description="Include archived files"),
+    format: str = Query("html", description="Response format: html or json"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> FileListResponse:
+):
     """
     List files in the landing zone.
 
@@ -62,10 +70,22 @@ async def list_landing_zone(
         for obj in objects
     ]
 
-    return FileListResponse(
-        prefix=prefix,
-        files=files,
-        count=len(files),
+    if format == "json":
+        return FileListResponse(
+            prefix=prefix,
+            files=files,
+            count=len(files),
+        )
+
+    return templates.TemplateResponse(
+        "landing/list.html",
+        {
+            "request": request,
+            "user": current_user,
+            "prefix": prefix,
+            "files": files,
+            "include_archive": include_archive,
+        },
     )
 
 

@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block title %}Run: {{ run.run_id[:8] }} - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>🔄 Run: {{ run.run_id[:16] }}...</h1>
+            <p>
+                {% if run.status == 'SUCCESS' %}
+                <span class="badge badge-success">{{ run.status }}</span>
+                {% elif run.status == 'FAILURE' %}
+                <span class="badge badge-error">{{ run.status }}</span>
+                {% elif run.status == 'STARTED' %}
+                <span class="badge badge-warning">{{ run.status }}</span>
+                {% else %}
+                <span class="badge badge-info">{{ run.status }}</span>
+                {% endif %}
+            </p>
+        </hgroup>
+    </header>
+
+    <!-- Details -->
+    <h2>Details</h2>
+    <figure>
+        <table>
+            <tbody>
+                <tr>
+                    <td><strong>Run ID</strong></td>
+                    <td><code>{{ run.run_id }}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Job</strong></td>
+                    <td><code>{{ run.job_name }}</code></td>
+                </tr>
+                <tr>
+                    <td><strong>Status</strong></td>
+                    <td>{{ run.status }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Started</strong></td>
+                    <td>{{ run.started_at or '-' }}</td>
+                </tr>
+                <tr>
+                    <td><strong>Ended</strong></td>
+                    <td>{{ run.ended_at or '-' }}</td>
+                </tr>
+                {% if run.batch_id %}
+                <tr>
+                    <td><strong>Batch ID</strong></td>
+                    <td><a href="/manifests/{{ run.batch_id }}">{{ run.batch_id }}</a></td>
+                </tr>
+                {% endif %}
+                {% if run.intent %}
+                <tr>
+                    <td><strong>Intent</strong></td>
+                    <td><code>{{ run.intent }}</code></td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </figure>
+
+    <!-- Error -->
+    {% if run.error_message %}
+    <h2>Error</h2>
+    <div class="error-chain">
+        <pre>{{ run.error_message }}</pre>
+    </div>
+    {% endif %}
+
+    <!-- Tags -->
+    {% if run.tags %}
+    <h2>Tags</h2>
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key, value in run.tags.items() %}
+                <tr>
+                    <td><code>{{ key }}</code></td>
+                    <td>{{ value }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% endif %}
+
+    <!-- Events -->
+    <h2>Events ({{ events|length }})</h2>
+    {% if events %}
+    <details>
+        <summary>Show all events</summary>
+        <figure>
+            <table class="events-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Type</th>
+                        <th>Step</th>
+                        <th>Message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for e in events %}
+                    <tr
+                        class="{% if 'FAILURE' in e.event_type %}error-row{% elif 'SUCCESS' in e.event_type %}success-row{% endif %}">
+                        <td><small>{{ e.timestamp[11:19] if e.timestamp else '-' }}</small></td>
+                        <td><small><code>{{ e.event_type }}</code></small></td>
+                        <td><small>{{ e.step_key or '-' }}</small></td>
+                        <td><small>{{ e.message[:100] }}{% if e.message|length > 100 %}...{% endif %}</small></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </figure>
+    </details>
+    {% else %}
+    <p><em>No events recorded.</em></p>
+    {% endif %}
+</article>
+
+<style>
+    .events-table {
+        font-size: 0.85rem;
+    }
+
+    .error-row {
+        background-color: rgba(255, 0, 0, 0.1);
+    }
+
+    .success-row {
+        background-color: rgba(0, 255, 0, 0.05);
+    }
+</style>
+{% endblock %}

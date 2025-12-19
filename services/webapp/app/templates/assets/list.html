@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block title %}Assets - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📦 Assets</h1>
+            <p>Browse processed data assets.</p>
+        </hgroup>
+    </header>
+
+    <!-- Filter -->
+    <form method="get" class="grid">
+        <label>
+            Kind
+            <select name="kind" onchange="this.form.submit()">
+                <option value="">All</option>
+                <option value="spatial" {% if kind=='spatial' %}selected{% endif %}>Spatial</option>
+                <option value="tabular" {% if kind=='tabular' %}selected{% endif %}>Tabular</option>
+                <option value="joined" {% if kind=='joined' %}selected{% endif %}>Joined</option>
+            </select>
+        </label>
+    </form>
+
+    <!-- Asset List -->
+    <h2>Assets ({{ assets|length }})</h2>
+
+    {% if assets %}
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Dataset ID</th>
+                    <th>Version</th>
+                    <th>Kind</th>
+                    <th>Project</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in assets %}
+                <tr>
+                    <td><a href="/assets/{{ a.dataset_id }}">{{ a.dataset_id }}</a></td>
+                    <td>v{{ a.version }}</td>
+                    <td>
+                        {% if a.kind == 'spatial' %}
+                        🗺️ {{ a.kind }}
+                        {% elif a.kind == 'tabular' %}
+                        📊 {{ a.kind }}
+                        {% elif a.kind == 'joined' %}
+                        🔗 {{ a.kind }}
+                        {% else %}
+                        📦 {{ a.kind }}
+                        {% endif %}
+                    </td>
+                    <td>{{ a.project or '-' }}</td>
+                    <td>{{ a.created_at[:19] if a.created_at else '-' }}</td>
+                    <td>
+                        <a href="/assets/{{ a.dataset_id }}" role="button" class="outline contrast"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</a>
+                        <a href="/assets/{{ a.dataset_id }}/v{{ a.version }}/download" role="button" class="outline"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Download</a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% else %}
+    <p><em>No assets found{% if kind %} with kind "{{ kind }}"{% endif %}.</em></p>
+    {% endif %}
+</article>
+{% endblock %}

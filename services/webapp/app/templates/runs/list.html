@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Runs - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>🔄 Pipeline Runs</h1>
+            <p>Monitor Dagster pipeline runs.</p>
+        </hgroup>
+    </header>
+
+    <!-- Filter -->
+    <form method="get" class="grid">
+        <label>
+            Status
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All</option>
+                <option value="STARTED" {% if status=='STARTED' %}selected{% endif %}>Started</option>
+                <option value="SUCCESS" {% if status=='SUCCESS' %}selected{% endif %}>Success</option>
+                <option value="FAILURE" {% if status=='FAILURE' %}selected{% endif %}>Failure</option>
+                <option value="CANCELED" {% if status=='CANCELED' %}selected{% endif %}>Canceled</option>
+            </select>
+        </label>
+    </form>
+
+    <!-- Run List -->
+    <h2>Runs ({{ runs|length }})</h2>
+
+    {% if runs %}
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Run ID</th>
+                    <th>Job</th>
+                    <th>Status</th>
+                    <th>Batch</th>
+                    <th>Started</th>
+                    <th>Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in runs %}
+                <tr>
+                    <td><a href="/runs/{{ r.run_id }}">{{ r.run_id[:8] }}...</a></td>
+                    <td><code>{{ r.job_name }}</code></td>
+                    <td>
+                        {% if r.status == 'SUCCESS' %}
+                        <span class="badge badge-success">{{ r.status }}</span>
+                        {% elif r.status == 'FAILURE' %}
+                        <span class="badge badge-error">{{ r.status }}</span>
+                        {% elif r.status == 'STARTED' %}
+                        <span class="badge badge-warning">{{ r.status }}</span>
+                        {% else %}
+                        <span class="badge badge-info">{{ r.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ r.batch_id or '-' }}</td>
+                    <td>{{ r.started_at[:19] if r.started_at else '-' }}</td>
+                    <td>
+                        {% if r.started_at and r.ended_at %}
+                        {{ r.ended_at[:19] }}
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% else %}
+    <p><em>No runs found{% if status %} with status "{{ status }}"{% endif %}.</em></p>
+    {% endif %}
+</article>
+{% endblock %}

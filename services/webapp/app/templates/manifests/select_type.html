@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}New Manifest - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📋 Create New Manifest</h1>
+            <p>Select the type of asset you want to create.</p>
+        </hgroup>
+    </header>
+
+    <div class="grid">
+        <article>
+            <header>
+                <h3>🗺️ Spatial Asset</h3>
+            </header>
+            <p>Vector or raster spatial data (GeoJSON, Shapefile, GeoTIFF, etc.)</p>
+            <p><small>Intents: ingest_vector, ingest_raster, ingest_building_footprints, ingest_road_network</small></p>
+            <footer>
+                <a href="/manifests/new/spatial" role="button">Create Spatial →</a>
+            </footer>
+        </article>
+
+        <article>
+            <header>
+                <h3>📊 Tabular Asset</h3>
+            </header>
+            <p>CSV tabular data for joining with spatial assets.</p>
+            <p><small>Intent: ingest_tabular</small></p>
+            <footer>
+                <a href="/manifests/new/tabular" role="button">Create Tabular →</a>
+            </footer>
+        </article>
+
+        <article>
+            <header>
+                <h3>🔗 Joined Asset</h3>
+            </header>
+            <p>Join existing spatial and tabular assets together.</p>
+            <p><small>Intent: join_datasets</small></p>
+            <footer>
+                <a href="/manifests/new/joined" role="button">Create Joined →</a>
+            </footer>
+        </article>
+    </div>
+</article>
+{% endblock %}

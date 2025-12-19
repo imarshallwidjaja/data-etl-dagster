@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}New Tabular Manifest - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📊 New Tabular Manifest</h1>
+            <p>Create a manifest for tabular (CSV) data processing.</p>
+        </hgroup>
+    </header>
+
+    <form id="manifest-form" method="post">
+        <fieldset>
+            <legend>Basic Information</legend>
+
+            <label>
+                Batch ID (optional)
+                <input type="text" name="batch_id" placeholder="{{ suggested_batch_id }}" value="">
+                <small>Leave blank to auto-generate</small>
+            </label>
+
+            <label>
+                Project *
+                <input type="text" name="project" required placeholder="e.g., CENSUS_DATA">
+            </label>
+
+            <label>
+                Description
+                <textarea name="description" rows="2" placeholder="Optional description"></textarea>
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>File</legend>
+
+            <label>
+                Dataset ID (optional)
+                <input type="text" name="dataset_id" placeholder="Auto-generated if blank">
+            </label>
+
+            <label>
+                CSV File Path *
+                <input type="text" name="file_path" required placeholder="s3://landing-zone/batch_001/data.csv">
+            </label>
+
+            <p><small>Tabular ingestion requires exactly one CSV file.</small></p>
+        </fieldset>
+
+        <fieldset>
+            <legend>Tags (Optional)</legend>
+            <div id="tags-container">
+                <div class="tag-entry grid">
+                    <input type="text" name="tag_key" placeholder="Key">
+                    <input type="text" name="tag_value" placeholder="Value">
+                </div>
+            </div>
+            <button type="button" id="add-tag-btn" class="secondary outline">+ Add Tag</button>
+        </fieldset>
+
+        <div id="submit-status"></div>
+        <button type="submit">Create Manifest</button>
+    </form>
+</article>
+
+<script src="/static/js/forms.js"></script>
+<script>
+    document.getElementById('manifest-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const status = document.getElementById('submit-status');
+        status.innerHTML = '<p aria-busy="true">Creating manifest...</p>';
+
+        const formData = new FormData(e.target);
+        const data = {
+            batch_id: formData.get('batch_id') || null,
+            project: formData.get('project'),
+            description: formData.get('description') || null,
+            dataset_id: formData.get('dataset_id') || null,
+            files: [{
+                path: formData.get('file_path'),
+                format: 'CSV'
+            }],
+            tags: {}
+        };
+
+        // Collect tags
+        const tagKeys = formData.getAll('tag_key');
+        const tagValues = formData.getAll('tag_value');
+        tagKeys.forEach((key, i) => {
+            if (key && tagValues[i]) {
+                data.tags[key] = tagValues[i];
+            }
+        });
+
+        try {
+            const response = await fetch('/manifests/new/tabular', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                status.innerHTML = '<p class="success">✅ ' + result.message + '</p>';
+                setTimeout(() => window.location.href = '/manifests/', 1500);
+            } else {
+                const error = await response.json();
+                status.innerHTML = '<p class="error">❌ ' + (error.detail || 'Creation failed') + '</p>';
+            }
+        } catch (err) {
+            status.innerHTML = '<p class="error">❌ ' + err.message + '</p>';
+        }
+    });
+
+    // Add tag button
+    document.getElementById('add-tag-btn').addEventListener('click', function () {
+        const container = document.getElementById('tags-container');
+        const newEntry = document.createElement('div');
+        newEntry.className = 'tag-entry grid';
+        newEntry.innerHTML = '<input type="text" name="tag_key" placeholder="Key"><input type="text" name="tag_value" placeholder="Value">';
+        container.appendChild(newEntry);
+    });
+</script>
+
+<style>
+    .success {
+        color: var(--pico-color-green-550);
+    }
+
+    .error {
+        color: var(--pico-color-red-550);
+    }
+</style>
+{% endblock %}

@@ -4,15 +4,22 @@
 # Endpoints for Dagster run tracking.
 # =============================================================================
 
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
 from app.services.dagster_service import get_dagster_service
 
 router = APIRouter(prefix="/runs", tags=["runs"])
+
+# Templates
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 class RunListResponse(BaseModel):
@@ -29,28 +36,22 @@ class RunDetailResponse(BaseModel):
     events: list[dict]
 
 
-@router.get("/", response_model=RunListResponse)
+@router.get("/", response_model=None)
 async def list_runs(
-    status: Optional[str] = Query(
-        None,
-        description="Filter by status (STARTED, SUCCESS, FAILURE, CANCELED, etc.)",
-    ),
+    request: Request,
+    status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(25, ge=1, le=100, description="Maximum results"),
+    format: str = Query("html", description="Response format: html or json"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> RunListResponse:
-    """
-    List Dagster runs.
-
-    Optionally filter by status.
-    """
+):
+    """List Dagster runs."""
     dagster = get_dagster_service()
 
     try:
         runs = dagster.get_runs(status=status, limit=limit)
     except Exception as exc:
         raise HTTPException(
-            status_code=503,
-            detail=f"Failed to query Dagster: {exc}",
+            status_code=503, detail=f"Failed to query Dagster: {exc}"
         ) from exc
 
     run_dicts = [
@@ -67,28 +68,30 @@ async def list_runs(
         for r in runs
     ]
 
-    return RunListResponse(
-        runs=run_dicts,
-        count=len(run_dicts),
+    if format == "json":
+        return RunListResponse(runs=run_dicts, count=len(run_dicts))
+
+    return templates.TemplateResponse(
+        "runs/list.html",
+        {"request": request, "user": current_user, "runs": run_dicts, "status": status},
     )
 
 
-@router.get("/{run_id}", response_model=RunDetailResponse)
+@router.get("/{run_id}")
 async def get_run_details(
+    request: Request,
     run_id: str,
+    format: str = Query("html", description="Response format"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> RunDetailResponse:
-    """
-    Get detailed run information including events and logs.
-    """
+):
+    """Get detailed run information including events and logs."""
     dagster = get_dagster_service()
 
     try:
         details = dagster.get_run_details(run_id)
     except Exception as exc:
         raise HTTPException(
-            status_code=503,
-            detail=f"Failed to query Dagster: {exc}",
+            status_code=503, detail=f"Failed to query Dagster: {exc}"
         ) from exc
 
     if not details:
@@ -116,7 +119,15 @@ async def get_run_details(
         for e in details.events
     ]
 
-    return RunDetailResponse(
-        run=run_dict,
-        events=event_dicts,
+    if format == "json":
+        return RunDetailResponse(run=run_dict, events=event_dicts)
+
+    return templates.TemplateResponse(
+        "runs/detail.html",
+        {
+            "request": request,
+            "user": current_user,
+            "run": run_dict,
+            "events": event_dicts,
+        },
     )

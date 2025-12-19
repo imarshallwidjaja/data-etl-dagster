@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+
+{% block title %}New Join Manifest - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>🔗 New Join Manifest</h1>
+            <p>Join existing spatial and tabular assets.</p>
+        </hgroup>
+    </header>
+
+    <form id="manifest-form" method="post">
+        <fieldset>
+            <legend>Basic Information</legend>
+
+            <label>
+                Batch ID (optional)
+                <input type="text" name="batch_id" placeholder="{{ suggested_batch_id }}" value="">
+                <small>Leave blank to auto-generate</small>
+            </label>
+
+            <label>
+                Project *
+                <input type="text" name="project" required placeholder="e.g., SPATIAL_CENSUS_JOIN">
+            </label>
+
+            <label>
+                Description
+                <textarea name="description" rows="2" placeholder="Optional description"></textarea>
+            </label>
+
+            <label>
+                Dataset ID (optional)
+                <input type="text" name="dataset_id" placeholder="Auto-generated if blank">
+            </label>
+        </fieldset>
+
+        <fieldset>
+            <legend>Join Configuration</legend>
+
+            <div class="grid">
+                <label>
+                    Spatial Asset *
+                    <select name="spatial_dataset_id" required>
+                        <option value="">Select spatial asset...</option>
+                        {% for asset in spatial_assets %}
+                        <option value="{{ asset.dataset_id }}">{{ asset.dataset_id }} (v{{ asset.version }})</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <label>
+                    Tabular Asset *
+                    <select name="tabular_dataset_id" required>
+                        <option value="">Select tabular asset...</option>
+                        {% for asset in tabular_assets %}
+                        <option value="{{ asset.dataset_id }}">{{ asset.dataset_id }} (v{{ asset.version }})</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+
+            <div class="grid">
+                <label>
+                    Left Key (Tabular) *
+                    <input type="text" name="left_key" required placeholder="e.g., parcel_id">
+                </label>
+
+                <label>
+                    Right Key (Spatial)
+                    <input type="text" name="right_key" placeholder="Defaults to left key">
+                </label>
+
+                <label>
+                    Join Type
+                    <select name="how">
+                        <option value="left" selected>Left</option>
+                        <option value="inner">Inner</option>
+                        <option value="right">Right</option>
+                        <option value="outer">Outer</option>
+                    </select>
+                </label>
+            </div>
+        </fieldset>
+
+        <div id="submit-status"></div>
+        <button type="submit">Create Manifest</button>
+    </form>
+</article>
+
+<script>
+    document.getElementById('manifest-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const status = document.getElementById('submit-status');
+        status.innerHTML = '<p aria-busy="true">Creating manifest...</p>';
+
+        const formData = new FormData(e.target);
+        const data = {
+            batch_id: formData.get('batch_id') || null,
+            project: formData.get('project'),
+            description: formData.get('description') || null,
+            dataset_id: formData.get('dataset_id') || null,
+            join_config: {
+                spatial_dataset_id: formData.get('spatial_dataset_id'),
+                tabular_dataset_id: formData.get('tabular_dataset_id'),
+                left_key: formData.get('left_key'),
+                right_key: formData.get('right_key') || null,
+                how: formData.get('how')
+            }
+        };
+
+        try {
+            const response = await fetch('/manifests/new/joined', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                status.innerHTML = '<p class="success">✅ ' + result.message + '</p>';
+                setTimeout(() => window.location.href = '/manifests/', 1500);
+            } else {
+                const error = await response.json();
+                status.innerHTML = '<p class="error">❌ ' + (error.detail || 'Creation failed') + '</p>';
+            }
+        } catch (err) {
+            status.innerHTML = '<p class="error">❌ ' + err.message + '</p>';
+        }
+    });
+</script>
+
+<style>
+    .success {
+        color: var(--pico-color-green-550);
+    }
+
+    .error {
+        color: var(--pico-color-red-550);
+    }
+</style>
+{% endblock %}

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Manifests - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📋 Manifests</h1>
+            <p>View and manage pipeline manifests.</p>
+        </hgroup>
+        <a href="/manifests/new" role="button">+ New Manifest</a>
+    </header>
+
+    <!-- Filter -->
+    <form method="get" class="grid">
+        <label>
+            Status
+            <select name="status" onchange="this.form.submit()">
+                <option value="">All</option>
+                <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
+                <option value="processing" {% if status=='processing' %}selected{% endif %}>Processing</option>
+                <option value="completed" {% if status=='completed' %}selected{% endif %}>Completed</option>
+                <option value="failed" {% if status=='failed' %}selected{% endif %}>Failed</option>
+            </select>
+        </label>
+    </form>
+
+    <!-- Manifest List -->
+    <h2>Manifests ({{ manifests|length }})</h2>
+
+    {% if manifests %}
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Batch ID</th>
+                    <th>Intent</th>
+                    <th>Status</th>
+                    <th>Project</th>
+                    <th>Files</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for m in manifests %}
+                <tr>
+                    <td><a href="/manifests/{{ m.batch_id }}">{{ m.batch_id }}</a></td>
+                    <td><code>{{ m.intent }}</code></td>
+                    <td>
+                        {% if m.status == 'completed' %}
+                        <span class="badge badge-success">{{ m.status }}</span>
+                        {% elif m.status == 'failed' %}
+                        <span class="badge badge-error">{{ m.status }}</span>
+                        {% elif m.status == 'processing' %}
+                        <span class="badge badge-warning">{{ m.status }}</span>
+                        {% else %}
+                        <span class="badge badge-pending">{{ m.status }}</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ m.project or '-' }}</td>
+                    <td>{{ m.file_count }}</td>
+                    <td>{{ m.created_at[:19] if m.created_at else '-' }}</td>
+                    <td>
+                        <a href="/manifests/{{ m.batch_id }}" role="button" class="outline contrast"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</a>
+                        {% if m.dagster_run_id %}
+                        <a href="/runs/{{ m.dagster_run_id }}" role="button" class="outline"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Run</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+    {% else %}
+    <p><em>No manifests found{% if status %} with status "{{ status }}"{% endif %}.</em></p>
+    <p><a href="/manifests/new" role="button">Create your first manifest →</a></p>
+    {% endif %}
+</article>
+{% endblock %}

@@ -4,10 +4,12 @@
 # Endpoints for asset browsing, download, and lineage.
 # =============================================================================
 
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
@@ -15,6 +17,10 @@ from app.services.minio_service import get_minio_service
 from app.services.mongodb_service import get_mongodb_service
 
 router = APIRouter(prefix="/assets", tags=["assets"])
+
+# Templates
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 class AssetListResponse(BaseModel):
@@ -38,20 +44,15 @@ class LineageResponse(BaseModel):
     parents: list[dict]
 
 
-@router.get("/", response_model=AssetListResponse)
+@router.get("/", response_model=None)
 async def list_assets(
-    kind: Optional[str] = Query(
-        None,
-        description="Filter by kind (spatial, tabular, joined)",
-    ),
+    request: Request,
+    kind: Optional[str] = Query(None, description="Filter by kind"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results"),
+    format: str = Query("html", description="Response format: html or json"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> AssetListResponse:
-    """
-    List assets from MongoDB.
-
-    Optionally filter by kind.
-    """
+):
+    """List assets from MongoDB."""
     mongodb = get_mongodb_service()
     assets = mongodb.list_assets(kind=kind, limit=limit)
 
@@ -68,31 +69,30 @@ async def list_assets(
         for a in assets
     ]
 
-    return AssetListResponse(
-        assets=asset_dicts,
-        count=len(asset_dicts),
+    if format == "json":
+        return AssetListResponse(assets=asset_dicts, count=len(asset_dicts))
+
+    return templates.TemplateResponse(
+        "assets/list.html",
+        {"request": request, "user": current_user, "assets": asset_dicts, "kind": kind},
     )
 
 
-@router.get("/{dataset_id}", response_model=AssetDetailResponse)
+@router.get("/{dataset_id}")
 async def get_asset(
+    request: Request,
     dataset_id: str,
+    format: str = Query("html", description="Response format"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> AssetDetailResponse:
-    """
-    Get asset details and all versions.
-    """
+):
+    """Get asset details and all versions."""
     mongodb = get_mongodb_service()
 
-    # Get latest version
     asset = mongodb.get_asset(dataset_id)
     if not asset:
         raise HTTPException(status_code=404, detail=f"Asset not found: {dataset_id}")
 
-    # Get all versions
     versions = mongodb.get_asset_versions(dataset_id)
-
-    # Format versions for response
     version_dicts = [
         {
             "version": v.get("version"),
@@ -105,9 +105,17 @@ async def get_asset(
         for v in versions
     ]
 
-    return AssetDetailResponse(
-        asset=asset,
-        versions=version_dicts,
+    if format == "json":
+        return AssetDetailResponse(asset=asset, versions=version_dicts)
+
+    return templates.TemplateResponse(
+        "assets/detail.html",
+        {
+            "request": request,
+            "user": current_user,
+            "asset": asset,
+            "versions": version_dicts,
+        },
     )
 
 
@@ -117,25 +125,20 @@ async def download_asset(
     version: int,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> StreamingResponse:
-    """
-    Download an asset file from the data lake.
-    """
+    """Download an asset file from the data lake."""
     mongodb = get_mongodb_service()
     minio = get_minio_service()
 
-    # Get the specific version
     asset = mongodb.get_asset(dataset_id, version=version)
     if not asset:
         raise HTTPException(
-            status_code=404,
-            detail=f"Asset not found: {dataset_id} v{version}",
+            status_code=404, detail=f"Asset not found: {dataset_id} v{version}"
         )
 
     s3_key = asset.get("s3_key")
     if not s3_key:
         raise HTTPException(
-            status_code=404,
-            detail=f"Asset has no s3_key: {dataset_id} v{version}",
+            status_code=404, detail=f"Asset has no s3_key: {dataset_id} v{version}"
         )
 
     try:
@@ -143,10 +146,7 @@ async def download_asset(
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
-    # Determine filename
     filename = s3_key.split("/")[-1]
-
-    # Determine content type
     content_type = "application/octet-stream"
     if filename.endswith(".parquet"):
         content_type = "application/vnd.apache.parquet"
@@ -160,34 +160,26 @@ async def download_asset(
     )
 
 
-@router.get("/{dataset_id}/v{version}/lineage", response_model=LineageResponse)
+@router.get("/{dataset_id}/v{version}/lineage")
 async def get_lineage(
+    request: Request,
     dataset_id: str,
     version: int,
+    format: str = Query("html", description="Response format"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> LineageResponse:
-    """
-    Get lineage (parent assets) for an asset.
-    """
+):
+    """Get lineage (parent assets) for an asset."""
     mongodb = get_mongodb_service()
 
-    # Get the specific version
     asset = mongodb.get_asset(dataset_id, version=version)
     if not asset:
         raise HTTPException(
-            status_code=404,
-            detail=f"Asset not found: {dataset_id} v{version}",
+            status_code=404, detail=f"Asset not found: {dataset_id} v{version}"
         )
 
     asset_id = asset.get("_id")
-    if not asset_id:
-        # If no _id, lineage lookup won't work
-        return LineageResponse(asset=asset, parents=[])
+    parents = mongodb.get_parent_assets(asset_id) if asset_id else []
 
-    # Get parent assets
-    parents = mongodb.get_parent_assets(asset_id)
-
-    # Format parents for response
     parent_dicts = [
         {
             "id": p.get("_id"),
@@ -200,7 +192,15 @@ async def get_lineage(
         for p in parents
     ]
 
-    return LineageResponse(
-        asset=asset,
-        parents=parent_dicts,
+    if format == "json":
+        return LineageResponse(asset=asset, parents=parent_dicts)
+
+    return templates.TemplateResponse(
+        "assets/lineage.html",
+        {
+            "request": request,
+            "user": current_user,
+            "asset": asset,
+            "parents": parent_dicts,
+        },
     )

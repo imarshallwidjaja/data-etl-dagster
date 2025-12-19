@@ -5,10 +5,12 @@
 # =============================================================================
 
 import json
-from typing import Optional
+from pathlib import Path
+from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
@@ -21,6 +23,10 @@ from app.services.manifest_builder import (
 )
 
 router = APIRouter(prefix="/manifests", tags=["manifests"])
+
+# Templates
+BASE_DIR = Path(__file__).resolve().parent.parent
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 
 class ManifestListResponse(BaseModel):
@@ -44,10 +50,8 @@ class ManifestCreateRequest(BaseModel):
     description: Optional[str] = None
     dataset_id: Optional[str] = None
     tags: Optional[dict] = None
-    # Spatial-specific
     intent: Optional[str] = None
     files: Optional[list[dict]] = None
-    # Join-specific
     join_config: Optional[dict] = None
 
 
@@ -75,17 +79,15 @@ class ManifestRerunResponse(BaseModel):
     message: str
 
 
-@router.get("/", response_model=ManifestListResponse)
+@router.get("/", response_model=None)
 async def list_manifests(
+    request: Request,
     status: Optional[str] = Query(None, description="Filter by status"),
     limit: int = Query(50, ge=1, le=100, description="Maximum results"),
+    format: str = Query("html", description="Response format: html or json"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> ManifestListResponse:
-    """
-    List manifests from MongoDB.
-
-    Optionally filter by status (pending, processing, completed, failed).
-    """
+):
+    """List manifests from MongoDB."""
     mongodb = get_mongodb_service()
     manifests = mongodb.list_manifests(status=status, limit=limit)
 
@@ -103,143 +105,79 @@ async def list_manifests(
         for m in manifests
     ]
 
-    return ManifestListResponse(
-        manifests=manifest_dicts,
-        count=len(manifest_dicts),
+    if format == "json":
+        return ManifestListResponse(manifests=manifest_dicts, count=len(manifest_dicts))
+
+    return templates.TemplateResponse(
+        "manifests/list.html",
+        {
+            "request": request,
+            "user": current_user,
+            "manifests": manifest_dicts,
+            "status": status,
+        },
     )
 
 
 @router.get("/new")
 async def select_asset_type(
+    request: Request,
+    format: str = Query("html", description="Response format"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> dict:
-    """
-    Return available asset types for manifest creation.
+):
+    """Select asset type for manifest creation."""
+    asset_types = [
+        {"id": "spatial", "name": "Spatial Asset", "description": "Vector or raster"},
+        {"id": "tabular", "name": "Tabular Asset", "description": "CSV data"},
+        {
+            "id": "joined",
+            "name": "Joined Asset",
+            "description": "Join spatial + tabular",
+        },
+    ]
 
-    In Phase 4, this will render an HTML template.
-    """
-    return {
-        "asset_types": [
-            {
-                "id": "spatial",
-                "name": "Spatial Asset",
-                "description": "Vector or raster spatial data",
-                "intents": [
-                    "ingest_vector",
-                    "ingest_raster",
-                    "ingest_building_footprints",
-                    "ingest_road_network",
-                ],
-            },
-            {
-                "id": "tabular",
-                "name": "Tabular Asset",
-                "description": "CSV tabular data",
-                "intents": ["ingest_tabular"],
-            },
-            {
-                "id": "joined",
-                "name": "Joined Asset",
-                "description": "Join existing spatial and tabular assets",
-                "intents": ["join_datasets"],
-            },
-        ],
-    }
+    if format == "json":
+        return {"asset_types": asset_types}
+
+    return templates.TemplateResponse(
+        "manifests/select_type.html",
+        {"request": request, "user": current_user, "asset_types": asset_types},
+    )
 
 
 @router.get("/new/{asset_type}")
 async def get_asset_form(
+    request: Request,
     asset_type: str,
+    format: str = Query("html", description="Response format"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> dict:
-    """
-    Return form schema for the specified asset type.
-
-    In Phase 4, this will render an HTML form.
-    """
+):
+    """Return form for the specified asset type."""
     if asset_type not in ("spatial", "tabular", "joined"):
         raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")
 
-    # Get existing assets for join dropdowns
     mongodb = get_mongodb_service()
+    suggested_batch_id = generate_batch_id()
 
-    base_form = {
-        "asset_type": asset_type,
-        "suggested_batch_id": generate_batch_id(),
-        "fields": {
-            "batch_id": {"type": "text", "required": False},
-            "project": {"type": "text", "required": True},
-            "description": {"type": "textarea", "required": False},
-            "dataset_id": {"type": "text", "required": False},
+    # Get assets for join form
+    spatial_assets = mongodb.list_assets(kind="spatial", limit=100)
+    tabular_assets = mongodb.list_assets(kind="tabular", limit=100)
+
+    if format == "json":
+        return {"asset_type": asset_type, "suggested_batch_id": suggested_batch_id}
+
+    template_name = f"manifests/new_{asset_type}.html"
+    return templates.TemplateResponse(
+        template_name,
+        {
+            "request": request,
+            "user": current_user,
+            "asset_type": asset_type,
+            "suggested_batch_id": suggested_batch_id,
+            "spatial_assets": spatial_assets,
+            "tabular_assets": tabular_assets,
         },
-    }
-
-    if asset_type == "spatial":
-        base_form["fields"]["intent"] = {
-            "type": "select",
-            "required": True,
-            "options": [
-                "ingest_vector",
-                "ingest_raster",
-                "ingest_building_footprints",
-                "ingest_road_network",
-            ],
-        }
-        base_form["fields"]["files"] = {
-            "type": "file",
-            "required": True,
-            "multiple": True,
-        }
-
-    elif asset_type == "tabular":
-        base_form["fields"]["files"] = {
-            "type": "file",
-            "required": True,
-            "multiple": False,
-        }
-
-    elif asset_type == "joined":
-        # Get available assets for dropdowns
-        spatial_assets = mongodb.list_assets(kind="spatial", limit=100)
-        tabular_assets = mongodb.list_assets(kind="tabular", limit=100)
-
-        base_form["fields"]["join_config"] = {
-            "type": "group",
-            "fields": {
-                "spatial_dataset_id": {
-                    "type": "select",
-                    "required": True,
-                    "options": [
-                        {
-                            "value": a.dataset_id,
-                            "label": f"{a.dataset_id} (v{a.version})",
-                        }
-                        for a in spatial_assets
-                    ],
-                },
-                "tabular_dataset_id": {
-                    "type": "select",
-                    "required": True,
-                    "options": [
-                        {
-                            "value": a.dataset_id,
-                            "label": f"{a.dataset_id} (v{a.version})",
-                        }
-                        for a in tabular_assets
-                    ],
-                },
-                "left_key": {"type": "text", "required": True},
-                "right_key": {"type": "text", "required": False},
-                "how": {
-                    "type": "select",
-                    "required": False,
-                    "options": ["left", "inner", "right", "outer"],
-                    "default": "left",
-                },
-            },
-        }
-
-    return base_form
+    )
 
 
 @router.post("/new/{asset_type}", response_model=ManifestCreateResponse)
@@ -248,16 +186,11 @@ async def create_manifest(
     request: ManifestCreateRequest,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ManifestCreateResponse:
-    """
-    Create a new manifest and upload to landing zone.
-
-    The manifest will be placed in manifests/ prefix to trigger sensors.
-    """
+    """Create a new manifest and upload to landing zone."""
     if asset_type not in ("spatial", "tabular", "joined"):
         raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")
 
     try:
-        # Build manifest from form data
         form_data = request.model_dump(exclude_none=True)
         manifest = build_manifest(
             asset_type=asset_type,
@@ -265,7 +198,6 @@ async def create_manifest(
             uploader=current_user.username,
         )
 
-        # Upload to MinIO
         minio = get_minio_service()
         manifest_key = f"manifests/{manifest.batch_id}.json"
         manifest_json = manifest.model_dump_json(indent=2)
@@ -283,28 +215,31 @@ async def create_manifest(
             manifest_key=manifest_key,
             message=f"Manifest created and uploaded to {manifest_key}",
         )
-
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.get("/{batch_id}", response_model=ManifestDetailResponse)
+@router.get("/{batch_id}")
 async def get_manifest(
+    request: Request,
     batch_id: str,
+    format: str = Query("html", description="Response format"),
     current_user: AuthenticatedUser = Depends(get_current_user),
-) -> ManifestDetailResponse:
-    """
-    Get manifest details by batch_id.
-
-    Queries MongoDB for the manifest record.
-    """
+):
+    """Get manifest details by batch_id."""
     mongodb = get_mongodb_service()
     manifest = mongodb.get_manifest(batch_id)
 
     if not manifest:
         raise HTTPException(status_code=404, detail=f"Manifest not found: {batch_id}")
 
-    return ManifestDetailResponse(manifest=manifest)
+    if format == "json":
+        return ManifestDetailResponse(manifest=manifest)
+
+    return templates.TemplateResponse(
+        "manifests/view.html",
+        {"request": request, "user": current_user, "manifest": manifest},
+    )
 
 
 @router.post("/{batch_id}/delete", response_model=ManifestDeleteResponse)
@@ -312,11 +247,7 @@ async def delete_manifest(
     batch_id: str,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ManifestDeleteResponse:
-    """
-    Delete a manifest from the landing zone.
-
-    Only pending manifests can be deleted.
-    """
+    """Delete a manifest from the landing zone."""
     minio = get_minio_service()
     manifest_key = f"manifests/{batch_id}.json"
 
@@ -330,8 +261,7 @@ async def delete_manifest(
         raise HTTPException(status_code=403, detail=str(exc)) from exc
 
     return ManifestDeleteResponse(
-        batch_id=batch_id,
-        message=f"Manifest deleted: {batch_id}",
+        batch_id=batch_id, message=f"Manifest deleted: {batch_id}"
     )
 
 
@@ -340,36 +270,22 @@ async def rerun_manifest(
     batch_id: str,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ManifestRerunResponse:
-    """
-    Create a new manifest from an archived manifest for re-processing.
-
-    - Loads original manifest from archive
-    - Generates new batch_id with version suffix
-    - Copies original data with new batch_id
-    - Uploads new manifest to trigger sensors
-    """
+    """Create a new manifest from an archived manifest for re-processing."""
     minio = get_minio_service()
-
-    # Try to get manifest from archive
     archive_key = f"archive/manifests/{batch_id}.json"
 
     try:
         original = minio.get_archived_manifest(archive_key)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(
-            status_code=404,
-            detail=f"Archived manifest not found: {batch_id}",
+            status_code=404, detail=f"Archived manifest not found: {batch_id}"
         ) from exc
 
-    # Generate new batch_id
     new_batch_id = create_rerun_batch_id(batch_id)
-
-    # Create new manifest with updated batch_id
     new_manifest = dict(original)
     new_manifest["batch_id"] = new_batch_id
     new_manifest["uploader"] = current_user.username
 
-    # Upload new manifest
     manifest_key = f"manifests/{new_batch_id}.json"
     manifest_json = json.dumps(new_manifest, indent=2, default=str)
 
