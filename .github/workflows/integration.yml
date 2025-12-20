@@ -110,7 +110,7 @@ jobs:
         if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
         run: |
           docker compose -f docker-compose.yaml up -d --build \
-            dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+            dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
       
       - name: Wait for services to be ready
         if: ${{ steps.changes.outputs.integration == 'true' || github.event_name == 'workflow_dispatch' }}
@@ -265,7 +265,7 @@ jobs:
       - name: Start Docker stack
         run: |
           docker compose -f docker-compose.yaml up -d --build \
-            dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+            dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
       
       - name: Wait for services to be ready
         run: |
