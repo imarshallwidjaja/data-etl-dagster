@@ -6,10 +6,9 @@
 
 import re
 import uuid
-from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
-from libs.models import FileEntry, JoinConfig, Manifest, ManifestMetadata
+from libs.models import FileEntry, Manifest, ManifestMetadata
 
 from app.services.mongodb_service import get_mongodb_service
 
@@ -140,7 +139,7 @@ def _build_spatial_manifest(
         raise ValueError(f"Invalid spatial intent: {intent}")
 
     # Build file entries
-    files = _build_file_entries(form_data, "vector")
+    files = _get_file_entries(form_data)
 
     return Manifest(
         batch_id=batch_id,
@@ -162,7 +161,7 @@ def _build_tabular_manifest(
     intent = "ingest_tabular"
 
     # Build file entries (tabular requires exactly one CSV)
-    files = _build_file_entries(form_data, "tabular")
+    files = _get_file_entries(form_data)
 
     if len(files) != 1:
         raise ValueError("Tabular manifest requires exactly one file")
@@ -189,32 +188,10 @@ def _build_joined_manifest(
     # No files for join (uses existing assets)
     files: list[FileEntry] = []
 
-    # Build join config
-    join_config_data = form_data.get("join_config", {})
-    if not join_config_data:
+    # Get join_config - already validated by Pydantic at API boundary
+    join_config = form_data.get("join_config")
+    if not join_config:
         raise ValueError("Join manifest requires join_config")
-
-    spatial_dataset_id = join_config_data.get("spatial_dataset_id")
-    tabular_dataset_id = join_config_data.get("tabular_dataset_id")
-
-    if not spatial_dataset_id or not tabular_dataset_id:
-        raise ValueError(
-            "Join config requires spatial_dataset_id and tabular_dataset_id"
-        )
-
-    # Get optional version fields
-    spatial_version = join_config_data.get("spatial_version")
-    tabular_version = join_config_data.get("tabular_version")
-
-    join_config = JoinConfig(
-        spatial_dataset_id=spatial_dataset_id,
-        spatial_version=int(spatial_version) if spatial_version else None,
-        tabular_dataset_id=tabular_dataset_id,
-        tabular_version=int(tabular_version) if tabular_version else None,
-        left_key=join_config_data.get("left_key", ""),
-        right_key=join_config_data.get("right_key"),
-        how=join_config_data.get("how", "left"),
-    )
 
     # Add join_config to metadata
     metadata_with_join = ManifestMetadata(
@@ -233,13 +210,15 @@ def _build_joined_manifest(
     )
 
 
-def _build_file_entries(form_data: dict[str, Any], file_type: str) -> list[FileEntry]:
+def _get_file_entries(form_data: dict[str, Any]) -> list[FileEntry]:
     """
-    Build FileEntry list from form data.
+    Get FileEntry list from form data.
+
+    If files are already FileEntry objects (from validated API request),
+    returns them directly. Otherwise builds from dict data.
 
     Args:
         form_data: Form data with "files" key
-        file_type: Type of file ("vector", "raster", "tabular")
 
     Returns:
         List of FileEntry
@@ -248,15 +227,21 @@ def _build_file_entries(form_data: dict[str, Any], file_type: str) -> list[FileE
     if not files_data:
         return []
 
+    # If already FileEntry objects (from validated request), return directly
+    if files_data and isinstance(files_data[0], FileEntry):
+        return files_data
+
+    # Otherwise build from dict data (legacy compatibility)
     entries = []
     for file_info in files_data:
         if isinstance(file_info, dict):
             path = file_info.get("path", "")
             file_format = file_info.get("format", _infer_format(path))
+            file_type = file_info.get("type", "vector")
         else:
-            # Simple string path
             path = str(file_info)
             file_format = _infer_format(path)
+            file_type = "vector"
 
         if path:
             entries.append(

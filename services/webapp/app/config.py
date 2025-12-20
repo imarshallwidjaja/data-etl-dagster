@@ -31,9 +31,6 @@ class Settings(BaseSettings):
     webapp_username: str = "admin"
     webapp_password: str = "admin"
 
-    # SQLite Database (ephemeral session data)
-    database_url: str = "sqlite:///./webapp.db"
-
     class Config:
         env_file = ".env"
         extra = "ignore"

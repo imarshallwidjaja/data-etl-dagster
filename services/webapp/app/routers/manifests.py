@@ -6,16 +6,17 @@
 
 import json
 from pathlib import Path
-from typing import Optional, Union
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+from libs.models import FileEntry, JoinConfig, TagValue
+
 from app.auth.dependencies import AuthenticatedUser, get_current_user
 from app.services.minio_service import get_minio_service
-from app.services.mongodb_service import get_mongodb_service, ManifestSummary
+from app.services.mongodb_service import get_mongodb_service
 from app.services.manifest_builder import (
     build_manifest,
     create_rerun_batch_id,
@@ -43,16 +44,19 @@ class ManifestDetailResponse(BaseModel):
 
 
 class ManifestCreateRequest(BaseModel):
-    """Request for creating a manifest."""
+    """Request for creating a manifest.
+
+    Uses validated Pydantic models from libs.models for files, tags, and join_config.
+    """
 
     batch_id: Optional[str] = None
     project: str
     description: Optional[str] = None
     dataset_id: Optional[str] = None
-    tags: Optional[dict] = None
+    tags: Optional[dict[str, TagValue]] = None
     intent: Optional[str] = None
-    files: Optional[list[dict]] = None
-    join_config: Optional[dict] = None
+    files: Optional[list[FileEntry]] = None
+    join_config: Optional[JoinConfig] = None
 
 
 class ManifestCreateResponse(BaseModel):
@@ -291,11 +295,17 @@ async def rerun_manifest(
 
     from io import BytesIO
 
-    minio.upload_to_landing(
-        file=BytesIO(manifest_json.encode("utf-8")),
-        key=manifest_key,
-        content_type="application/json",
-    )
+    try:
+        minio.upload_if_not_exists(
+            file=BytesIO(manifest_json.encode("utf-8")),
+            key=manifest_key,
+            content_type="application/json",
+        )
+    except FileExistsError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Version conflict: {new_batch_id} already exists. Please retry.",
+        )
 
     return ManifestRerunResponse(
         original_batch_id=batch_id,

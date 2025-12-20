@@ -5,7 +5,6 @@
 # =============================================================================
 
 import json
-import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -230,6 +229,27 @@ class MinIOService:
             return True
         except S3Error:
             return False
+
+    def upload_if_not_exists(
+        self, file: BinaryIO, key: str, content_type: str = "application/json"
+    ) -> None:
+        """
+        Upload a file to the landing zone only if the key does not already exist.
+
+        This helps prevent race conditions where concurrent re-run requests
+        could overwrite each other.
+
+        Args:
+            file: File-like object to upload
+            key: Destination object key
+            content_type: MIME type of the file
+
+        Raises:
+            FileExistsError: If the object already exists
+        """
+        if self.object_exists("landing", key):
+            raise FileExistsError(f"Object already exists: {key}")
+        self.upload_to_landing(file, key, content_type)
 
 
 # Singleton instance

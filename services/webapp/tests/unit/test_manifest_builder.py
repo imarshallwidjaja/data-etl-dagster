@@ -3,7 +3,6 @@
 # =============================================================================
 
 import pytest
-from unittest.mock import patch, MagicMock
 
 from app.services.manifest_builder import (
     generate_batch_id,
@@ -35,15 +34,17 @@ class TestGenerateBatchId:
 class TestGenerateDatasetId:
     """Tests for dataset ID generation."""
 
-    def test_generate_dataset_id_with_project(self):
-        """Dataset ID should include project and intent."""
-        dataset_id = generate_dataset_id(project="TEST_PROJECT", intent="ingest_vector")
+    def test_generate_dataset_id_format(self):
+        """Dataset ID should follow expected format."""
+        dataset_id = generate_dataset_id()
 
-        assert "test_project" in dataset_id.lower()
+        assert dataset_id is not None
+        assert isinstance(dataset_id, str)
+        assert dataset_id.startswith("dataset_")
 
     def test_generate_dataset_id_uniqueness(self):
         """Each call should generate a unique ID."""
-        ids = [generate_dataset_id(project="TEST", intent="test") for _ in range(10)]
+        ids = [generate_dataset_id() for _ in range(10)]
 
         assert len(set(ids)) == 10
 
@@ -56,7 +57,13 @@ class TestBuildManifest:
         form_data = {
             "project": "TEST_PROJECT",
             "intent": "ingest_vector",
-            "files": [{"path": "s3://bucket/test.geojson", "format": "GeoJSON"}],
+            "files": [
+                {
+                    "path": "s3://bucket/test.geojson",
+                    "type": "vector",
+                    "format": "GeoJSON",
+                }
+            ],
         }
 
         manifest = build_manifest(
@@ -76,7 +83,9 @@ class TestBuildManifest:
         """Tabular manifest should set correct intent."""
         form_data = {
             "project": "CENSUS_DATA",
-            "files": [{"path": "s3://bucket/data.csv", "format": "CSV"}],
+            "files": [
+                {"path": "s3://bucket/data.csv", "type": "tabular", "format": "CSV"}
+            ],
         }
 
         manifest = build_manifest(
@@ -118,7 +127,13 @@ class TestBuildManifest:
             "batch_id": "custom_batch_123",
             "project": "TEST",
             "intent": "ingest_vector",
-            "files": [{"path": "s3://bucket/test.geojson", "format": "GeoJSON"}],
+            "files": [
+                {
+                    "path": "s3://bucket/test.geojson",
+                    "type": "vector",
+                    "format": "GeoJSON",
+                }
+            ],
         }
 
         manifest = build_manifest(
@@ -134,7 +149,13 @@ class TestBuildManifest:
         form_data = {
             "project": "TEST",
             "intent": "ingest_vector",
-            "files": [{"path": "s3://bucket/test.geojson", "format": "GeoJSON"}],
+            "files": [
+                {
+                    "path": "s3://bucket/test.geojson",
+                    "type": "vector",
+                    "format": "GeoJSON",
+                }
+            ],
             "tags": {"source": "ABS", "year": "2024"},
         }
 
@@ -144,7 +165,10 @@ class TestBuildManifest:
             uploader="testuser",
         )
 
-        assert manifest.metadata.tags == {"source": "ABS", "year": "2024"}
+        # Tags should include custom tags (plus auto-generated dataset_id)
+        assert manifest.metadata.tags["source"] == "ABS"
+        assert manifest.metadata.tags["year"] == "2024"
+        assert "dataset_id" in manifest.metadata.tags
 
     def test_build_manifest_invalid_type(self):
         """Invalid asset type should raise ValueError."""
