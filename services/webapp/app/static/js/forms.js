@@ -26,6 +26,13 @@ document.addEventListener('DOMContentLoaded', function () {
                             <option value="GTiff">GeoTIFF</option>
                         </select>
                     </label>
+                    <label>
+                        Type
+                        <select name="file_type">
+                            <option value="vector">Vector</option>
+                            <option value="raster">Raster</option>
+                        </select>
+                    </label>
                     <button type="button" class="remove-file-btn secondary outline">Remove</button>
                 </div>
             `;
@@ -66,12 +73,14 @@ document.addEventListener('DOMContentLoaded', function () {
 function collectFiles() {
     const paths = document.querySelectorAll('input[name="file_path"]');
     const formats = document.querySelectorAll('select[name="file_format"]');
+    const types = document.querySelectorAll('select[name="file_type"]');
 
     const files = [];
     paths.forEach((pathInput, i) => {
         if (pathInput.value) {
             files.push({
                 path: pathInput.value,
+                type: types[i] ? types[i].value : 'vector',
                 format: formats[i] ? formats[i].value : 'GeoJSON'
             });
         }

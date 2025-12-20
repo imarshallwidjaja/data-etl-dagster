@@ -79,6 +79,7 @@
             dataset_id: formData.get('dataset_id') || null,
             files: [{
                 path: formData.get('file_path'),
+                type: 'tabular',
                 format: 'CSV'
             }],
             tags: {}

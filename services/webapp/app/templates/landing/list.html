@@ -22,12 +22,29 @@
                 </label>
                 <label>
                     Prefix (optional)
-                    <input type="text" name="prefix" placeholder="e.g., batch_001">
+                    <input type="text" name="prefix" placeholder="e.g., batch_001" value="{{ prefix }}">
                 </label>
             </div>
             <button type="submit">Upload</button>
         </form>
         <div id="upload-status"></div>
+    </details>
+
+    <!-- Create Folder Form -->
+    <details>
+        <summary role="button" class="secondary">Create New Folder</summary>
+        <form id="folder-form">
+            <div class="grid">
+                <label>
+                    Folder Name
+                    <input type="text" name="folder_name" id="folder-name-input" required placeholder="e.g., batch_001"
+                        pattern="^[a-zA-Z0-9_-]+$" title="Only letters, numbers, dashes, and underscores allowed">
+                </label>
+            </div>
+            <small>Folder names can only contain letters, numbers, dashes, and underscores.</small>
+            <button type="submit">Create Folder</button>
+        </form>
+        <div id="folder-status"></div>
     </details>
 
     <!-- File Browser -->
@@ -64,7 +81,12 @@
                     <td>{{ file.size|filesizeformat if file.size else '-' }}</td>
                     <td>{{ file.last_modified[:19] if file.last_modified else '-' }}</td>
                     <td>
-                        {% if not file.is_dir %}
+                        {% if file.is_dir %}
+                        {% if not file.key.startswith('archive/') and not file.key.startswith('manifests/') %}
+                        <button class="delete-folder-btn outline secondary" data-key="{{ file.key }}"
+                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Delete</button>
+                        {% endif %}
+                        {% else %}
                         <a href="/landing/download/{{ file.key }}" role="button" class="outline contrast"
                             style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Download</a>
                         {% if not file.key.startswith('archive/') %}
@@ -115,7 +137,45 @@
         }
     });
 
-    // Delete buttons
+    // Folder form handling
+    document.getElementById('folder-form').addEventListener('submit', async function (e) {
+        e.preventDefault();
+        const form = e.target;
+        const status = document.getElementById('folder-status');
+        const folderName = form.folder_name.value;
+
+        // Client-side validation
+        if (!/^[a-zA-Z0-9_-]+$/.test(folderName)) {
+            status.innerHTML = '<p class="error">❌ Folder name can only contain letters, numbers, dashes, and underscores.</p>';
+            return;
+        }
+
+        status.innerHTML = '<p aria-busy="true">Creating folder...</p>';
+
+        try {
+            const response = await fetch('/landing/folder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: folderName,
+                    prefix: '{{ prefix }}'
+                })
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                status.innerHTML = '<p class="success">✅ ' + result.message + '</p>';
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                const error = await response.json();
+                status.innerHTML = '<p class="error">❌ ' + (error.detail || 'Folder creation failed') + '</p>';
+            }
+        } catch (err) {
+            status.innerHTML = '<p class="error">❌ Folder creation failed: ' + err.message + '</p>';
+        }
+    });
+
+    // Delete file buttons
     document.querySelectorAll('.delete-btn').forEach(btn => {
         btn.addEventListener('click', async function () {
             const key = this.dataset.key;
@@ -123,6 +183,29 @@
 
             try {
                 const response = await fetch('/landing/delete/' + encodeURIComponent(key), {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    const error = await response.json();
+                    alert('Delete failed: ' + (error.detail || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Delete failed: ' + err.message);
+            }
+        });
+    });
+
+    // Delete folder buttons
+    document.querySelectorAll('.delete-folder-btn').forEach(btn => {
+        btn.addEventListener('click', async function () {
+            const key = this.dataset.key;
+            if (!confirm('Delete folder ' + key + '?\n\nNote: Only empty folders can be deleted.')) return;
+
+            try {
+                const response = await fetch('/landing/delete-folder/' + encodeURIComponent(key), {
                     method: 'POST'
                 });
 

@@ -72,6 +72,13 @@
                                 <option value="GTiff">GeoTIFF</option>
                             </select>
                         </label>
+                        <label>
+                            Type
+                            <select name="file_type">
+                                <option value="vector">Vector</option>
+                                <option value="raster">Raster</option>
+                            </select>
+                        </label>
                     </div>
                 </div>
             </div>
@@ -111,6 +118,7 @@
             intent: formData.get('intent'),
             files: [{
                 path: formData.get('file_path'),
+                type: formData.get('file_type'),
                 format: formData.get('file_format')
             }],
             tags: {}

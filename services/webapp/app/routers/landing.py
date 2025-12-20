@@ -4,22 +4,25 @@
 # Endpoints for landing zone file management.
 # =============================================================================
 
+import re
 from pathlib import Path
-from typing import Optional, Union
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from fastapi.templating import Jinja2Templates
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
-from app.services.minio_service import get_minio_service, LandingZoneObject
+from app.services.minio_service import get_minio_service
 
 router = APIRouter(prefix="/landing", tags=["landing"])
 
 # Templates
 BASE_DIR = Path(__file__).resolve().parent.parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+
+# Folder name validation pattern: alphanumeric, dashes, underscores
+FOLDER_NAME_PATTERN = re.compile(r"^[a-zA-Z0-9_-]+$")
 
 
 class FileListResponse(BaseModel):
@@ -39,6 +42,33 @@ class UploadResponse(BaseModel):
 
 class DeleteResponse(BaseModel):
     """Response for file deletion."""
+
+    key: str
+    message: str
+
+
+class FolderCreateRequest(BaseModel):
+    """Request for creating a folder."""
+
+    name: str = Field(
+        ..., description="Folder name (alphanumeric, dashes, underscores)"
+    )
+    prefix: str = Field("", description="Parent folder prefix")
+
+    @field_validator("name")
+    @classmethod
+    def validate_folder_name(cls, v: str) -> str:
+        if not v:
+            raise ValueError("Folder name cannot be empty")
+        if not FOLDER_NAME_PATTERN.match(v):
+            raise ValueError(
+                "Folder name must contain only letters, numbers, dashes, and underscores"
+            )
+        return v
+
+
+class FolderResponse(BaseModel):
+    """Response for folder operations."""
 
     key: str
     message: str
@@ -215,4 +245,61 @@ async def delete_file(
     return DeleteResponse(
         key=path,
         message=f"File deleted successfully: {path}",
+    )
+
+
+@router.post("/folder", response_model=FolderResponse)
+async def create_folder(
+    request: FolderCreateRequest,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> FolderResponse:
+    """
+    Create a folder in the landing zone.
+
+    Folder names must contain only letters, numbers, dashes, and underscores.
+    """
+    minio = get_minio_service()
+
+    # Build full path
+    if request.prefix:
+        folder_path = f"{request.prefix.rstrip('/')}/{request.name}"
+    else:
+        folder_path = request.name
+
+    try:
+        key = minio.create_folder(folder_path)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    return FolderResponse(
+        key=key,
+        message=f"Folder created successfully: {key}",
+    )
+
+
+@router.post("/delete-folder/{path:path}", response_model=FolderResponse)
+async def delete_folder(
+    path: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+) -> FolderResponse:
+    """
+    Delete an empty folder from the landing zone.
+
+    Only empty folders can be deleted.
+    Protected folders (archive/, manifests/) cannot be deleted.
+    """
+    minio = get_minio_service()
+
+    try:
+        minio.delete_folder(path)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return FolderResponse(
+        key=path,
+        message=f"Folder deleted successfully: {path}",
     )

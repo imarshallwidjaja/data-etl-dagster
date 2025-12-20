@@ -26,6 +26,10 @@ class LandingZoneObject:
     is_dir: bool = False
 
 
+# Protected prefixes that cannot be deleted
+PROTECTED_PREFIXES = ("archive/", "manifests/")
+
+
 class MinIOService:
     """Service for MinIO operations."""
 
@@ -56,10 +60,12 @@ class MinIOService:
         objects = []
 
         try:
+            # Use recursive=False to only list immediate children
+            # This provides proper hierarchical browsing
             items = self._client.list_objects(
                 self._landing_bucket,
                 prefix=prefix,
-                recursive=True,
+                recursive=False,
             )
 
             for item in items:
@@ -167,6 +173,95 @@ class MinIOService:
         except S3Error as exc:
             if exc.code == "NoSuchKey":
                 raise FileNotFoundError(f"Object not found: {key}") from exc
+            raise
+
+    def create_folder(self, prefix: str) -> str:
+        """
+        Create a folder (prefix) in the landing zone.
+
+        In S3/MinIO, folders are represented as zero-byte objects ending with '/'.
+
+        Args:
+            prefix: Folder path to create (e.g., "my_folder/" or "parent/child/")
+
+        Returns:
+            The created folder key
+        """
+        # Ensure prefix ends with /
+        if not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+
+        # Create empty object to represent folder
+        self._client.put_object(
+            self._landing_bucket,
+            prefix,
+            data=BytesIO(b""),
+            length=0,
+        )
+        return prefix
+
+    def folder_is_empty(self, prefix: str) -> bool:
+        """
+        Check if a folder is empty.
+
+        Args:
+            prefix: Folder path to check
+
+        Returns:
+            True if folder has no children (besides the folder marker itself)
+        """
+        # Ensure prefix ends with /
+        if not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+
+        # List objects in the folder
+        items = list(
+            self._client.list_objects(
+                self._landing_bucket,
+                prefix=prefix,
+                recursive=False,
+            )
+        )
+
+        # A folder is empty if it only contains itself (the folder marker)
+        # or has no items
+        if len(items) == 0:
+            return True
+        if len(items) == 1 and items[0].object_name == prefix:
+            return True
+        return False
+
+    def delete_folder(self, prefix: str) -> None:
+        """
+        Delete an empty folder from the landing zone.
+
+        Args:
+            prefix: Folder path to delete
+
+        Raises:
+            PermissionError: If folder is protected (archive/, manifests/)
+            ValueError: If folder is not empty
+            FileNotFoundError: If folder doesn't exist
+        """
+        # Ensure prefix ends with /
+        if not prefix.endswith("/"):
+            prefix = f"{prefix}/"
+
+        # Check for protected prefixes
+        for protected in PROTECTED_PREFIXES:
+            if prefix == protected or prefix.startswith(protected):
+                raise PermissionError(f"Cannot delete protected folder: {prefix}")
+
+        # Check if folder is empty
+        if not self.folder_is_empty(prefix):
+            raise ValueError(f"Cannot delete folder '{prefix}': folder is not empty")
+
+        # Delete the folder marker
+        try:
+            self._client.remove_object(self._landing_bucket, prefix)
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                raise FileNotFoundError(f"Folder not found: {prefix}") from exc
             raise
 
     def get_archived_manifest(self, key: str) -> dict:
