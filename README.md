@@ -222,13 +222,18 @@ Once a manifest is uploaded, the following sequence occurs:
 1. **Sensor Polling**: The manifest sensor checks for new manifests every 30 seconds
 2. **Validation**: The manifest is validated against the Pydantic schema
 3. **Job Trigger**: If valid, a Dagster run is created with the manifest data passed as an op input
-4. **Processing**: The ingestion job executes the full ETL pipeline:
+4. **Run Initialization**: A run document is created in MongoDB with `status=running`
+5. **Processing**: The ingestion job executes the full ETL pipeline:
    - Loads spatial data from landing zone to PostGIS ephemeral schema
    - Transforms data using recipe-based transformations (based on manifest `intent`)
    - Exports processed GeoParquet to data lake
-   - Registers asset in MongoDB ledger
+   - Registers asset in MongoDB ledger (linked to run via `run_id`)
    - Cleans up PostGIS ephemeral schema
-5. **Tracking**: The manifest is marked as processed in the sensor cursor (prevents duplicate runs)
+6. **Status Update**: Run status sensors update MongoDB:
+   - On success: manifest and run status → `success`, `completed_at` timestamp set
+   - On failure: manifest and run status → `failure`, error message recorded
+   - On cancel: manifest and run status → `canceled`
+7. **Tracking**: The manifest is marked as processed in the sensor cursor (prevents duplicate runs)
 
 **Important Notes:**
 - Each manifest is processed **only once** (even if invalid)

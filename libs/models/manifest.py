@@ -123,12 +123,12 @@ TagValue = str | int | float | bool
 
 
 class ManifestStatus(str, Enum):
-    """Processing status for manifests in MongoDB."""
+    """Processing status for manifests in MongoDB. Matches RunStatus semantics."""
 
-    PENDING = "pending"
-    PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    RUNNING = "running"
+    SUCCESS = "success"
+    FAILURE = "failure"
+    CANCELED = "canceled"
 
 
 # =============================================================================
@@ -435,38 +435,38 @@ class ManifestRecord(Manifest):
     Persisted manifest record - what gets stored in MongoDB.
 
     Extends the input Manifest with runtime tracking fields:
-    - Processing status
-    - Dagster run ID (if processing has started)
+    - Processing status (running/success/failure/canceled)
     - Error messages (if processing failed)
     - Timestamps for ingestion and completion
 
+    Note: Runs are tracked in a separate collection and linked via batch_id.
+    Query the runs collection by batch_id to find all runs for a manifest.
+
     Attributes:
-        status: Current processing status
-        dagster_run_id: Dagster run ID that processed this manifest (if any)
-        error_message: Error message if processing failed (if any)
+        status: Current status (reflects latest run outcome)
+        error_message: Error message if latest run failed (if any)
         ingested_at: Timestamp when manifest was ingested
-        completed_at: Timestamp when processing completed (if completed)
+        completed_at: Timestamp when latest run completed (if completed)
     """
 
-    status: ManifestStatus = Field(..., description="Current processing status")
-    dagster_run_id: str | None = Field(
-        None, description="Dagster run ID that processed this manifest"
+    status: ManifestStatus = Field(
+        ..., description="Current status (reflects latest run outcome)"
     )
     error_message: str | None = Field(
-        None, description="Error message if processing failed"
+        None, description="Error message if latest run failed"
     )
     ingested_at: datetime = Field(
         ..., description="Timestamp when manifest was ingested"
     )
     completed_at: datetime | None = Field(
-        None, description="Timestamp when processing completed"
+        None, description="Timestamp when latest run completed"
     )
 
     @classmethod
     def from_manifest(
         cls,
         manifest: Manifest,
-        status: ManifestStatus = ManifestStatus.PENDING,
+        status: ManifestStatus = ManifestStatus.RUNNING,
         ingested_at: datetime | None = None,
     ) -> "ManifestRecord":
         """
@@ -477,7 +477,7 @@ class ManifestRecord(Manifest):
 
         Args:
             manifest: Input manifest to convert
-            status: Initial processing status (default: PENDING)
+            status: Initial processing status (default: RUNNING)
             ingested_at: Ingestion timestamp (default: current UTC time)
 
         Returns:
@@ -512,8 +512,7 @@ class ManifestRecord(Manifest):
                         "how": "left",
                     },
                 },
-                "status": "completed",
-                "dagster_run_id": "run_12345",
+                "status": "success",
                 "error_message": None,
                 "ingested_at": "2024-01-01T00:00:00Z",
                 "completed_at": "2024-01-01T00:05:00Z",

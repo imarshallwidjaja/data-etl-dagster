@@ -22,6 +22,7 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 
 - `migrations/001_baseline_schema.py`: Baseline schema (collections, indexes, validation for spatial/tabular/joined)
 - `migrations/002_add_tabular_contracts.py`: Tabular contracts migration (no-op for fresh installs)
+- `migrations/003_add_runs_collection.py`: Adds runs collection, unifies status values (running/success/failure/canceled), updates asset/lineage to use run_id ObjectId
 - `migrations/README.md`: Migration system documentation
 
 ## How to work here
@@ -41,10 +42,19 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 
 | Collection | Purpose |
 |------------|---------|
-| `manifests` | Ingestion manifest records |
-| `assets` | Asset registry (spatial, tabular, joined) |
-| `lineage` | Parent→child asset relationships |
+| `manifests` | Ingestion manifest records (status: running/success/failure/canceled) |
+| `runs` | Dagster run tracking (links manifests to assets) |
+| `assets` | Asset registry (spatial, tabular, joined) - uses `run_id` ObjectId |
+| `lineage` | Parent→child asset relationships - uses `run_id` ObjectId |
 | `schema_migrations` | Applied migration tracking |
+
+### Status Values (Unified)
+
+Manifests and runs use the same status enum:
+- `running` - Processing in progress
+- `success` - Completed successfully
+- `failure` - Failed with error
+- `canceled` - Canceled by user or system
 
 ## Schema Migrations
 

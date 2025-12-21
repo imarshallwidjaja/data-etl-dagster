@@ -67,7 +67,6 @@ class MongoDBResource(ConfigurableResource):
         batch_id: str,
         status: ManifestStatus,
         *,
-        dagster_run_id: str | None = None,
         error_message: str | None = None,
     ) -> None:
         """
@@ -79,10 +78,8 @@ class MongoDBResource(ConfigurableResource):
             "status": status.value,
             "updated_at": now,
         }
-        if status == ManifestStatus.COMPLETED:
+        if status == ManifestStatus.SUCCESS:
             update_doc["completed_at"] = now
-        if dagster_run_id:
-            update_doc["dagster_run_id"] = dagster_run_id
         if error_message:
             update_doc["error_message"] = error_message
 
@@ -234,20 +231,20 @@ class MongoDBResource(ConfigurableResource):
         *,
         source_asset_id: str,
         target_asset_id: str,
-        dagster_run_id: str,
+        run_id: str,
         transformation: str,
         parameters: dict[str, Any] | None = None,
     ) -> str:
         """
         Record a lineage edge between two assets.
 
-        Stores ObjectId references to source/target asset documents.
+        Stores ObjectId references to source/target asset documents and run.
         """
         collection = self._get_collection(self.LINEAGE)
         document = {
             "source_asset_id": ObjectId(source_asset_id),
             "target_asset_id": ObjectId(target_asset_id),
-            "dagster_run_id": dagster_run_id,
+            "run_id": ObjectId(run_id),
             "transformation": transformation,
             "parameters": parameters or {},
             "created_at": datetime.now(timezone.utc),

@@ -10,9 +10,11 @@ It is the application-level validation layer and the contract between ingestion,
 - **Pydantic v2 only**: use `model_config`, `model_dump`, `@field_validator` (no v1 patterns like `class Config` / `.dict()` / `@validator`).
 - **Strict, explicit typing**: prefer clear types over implicit coercions.
 - **Ledger alignment**: models that represent MongoDB documents must match Mongo init/schema expectations.
-- **Manifest contract is disciplined**: `FileEntry` forbids extras (no uploader CRS); `ManifestMetadata` only allows `project`, `description`, `tags` (primitive scalars), and structured `join_config`.
+- **Unified status semantics**: `ManifestStatus` and `RunStatus` use the same values: `running`, `success`, `failure`, `canceled`.
+- **Manifest contract is disciplined**: `FileEntry` forbids extras (no uploader CRS); `ManifestMetadata` only allows `project`, `description`, `tags` (primitive scalars), and structured `join_config`. `ManifestRecord` does NOT store `dagster_run_id` (runs are tracked separately).
 - **Intent/type coherence**: `Manifest` enforces that `intent="ingest_tabular"` requires all files to be `type="tabular"`, `intent="join_datasets"` requires `files=[]` with both `spatial_asset_id` and `tabular_asset_id` in join_config, and spatial intents forbid tabular files.
 - **Asset kind discrimination**: `Asset` uses `kind` field (spatial/tabular/joined) to determine CRS/bounds requirements. Tabular assets have `crs=None` and `bounds=None`.
+- **Run linking via ObjectId**: `Asset.run_id` and lineage records use MongoDB ObjectId strings to reference the `runs` collection, NOT the raw Dagster run ID string.
 - **Stable env var aliases**: settings fields must map to the env vars used in `docker-compose.yaml`.
 
 ## Entry points / key files

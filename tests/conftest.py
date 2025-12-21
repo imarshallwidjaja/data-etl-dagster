@@ -26,13 +26,14 @@ from libs.models import (
 # File Entry Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def valid_file_entry_dict():
     """Single valid file entry dictionary."""
     return {
         "path": "s3://landing-zone/batch_001/image.tif",
         "type": "raster",
-        "format": "GTiff"
+        "format": "GTiff",
     }
 
 
@@ -48,7 +49,7 @@ def valid_tabular_file_entry_dict():
     return {
         "path": "s3://landing-zone/batch_001/data.csv",
         "type": "tabular",
-        "format": "CSV"
+        "format": "CSV",
     }
 
 
@@ -83,6 +84,7 @@ def valid_tabular_manifest(valid_tabular_manifest_dict):
 # =============================================================================
 # Join Manifest Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def valid_join_manifest_dict(valid_tabular_file_entry_dict):
@@ -120,7 +122,7 @@ def valid_spatial_asset(valid_bounds_dict):
         dataset_id="spatial_001",
         version=1,
         content_hash="sha256:" + "a" * 64,
-        dagster_run_id="run_spatial_123",
+        run_id="507f1f77bcf86cd799439011",
         kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
@@ -133,6 +135,7 @@ def valid_spatial_asset(valid_bounds_dict):
 # =============================================================================
 # Manifest Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def valid_manifest_dict(valid_file_entry_dict):
@@ -161,11 +164,10 @@ def valid_manifest_record_dict(valid_manifest_dict):
     """Persisted manifest with status/timestamps."""
     return {
         **valid_manifest_dict,
-        "status": "pending",
-        "dagster_run_id": None,
+        "status": "running",
         "error_message": None,
         "ingested_at": datetime(2024, 1, 1, 12, 0, 0),
-        "completed_at": None
+        "completed_at": None,
     }
 
 
@@ -179,15 +181,11 @@ def valid_manifest_record(valid_manifest_record_dict):
 # Asset Fixtures
 # =============================================================================
 
+
 @pytest.fixture
 def valid_bounds_dict():
     """Valid bounds object dictionary."""
-    return {
-        "minx": -180.0,
-        "miny": -90.0,
-        "maxx": 180.0,
-        "maxy": 90.0
-    }
+    return {"minx": -180.0, "miny": -90.0, "maxx": 180.0, "maxy": 90.0}
 
 
 @pytest.fixture
@@ -204,7 +202,7 @@ def valid_asset_dict(valid_bounds_dict):
         "dataset_id": "dataset_001",
         "version": 1,
         "content_hash": "sha256:" + "a" * 64,  # 64 hex chars
-        "dagster_run_id": "run_12345",
+        "run_id": "507f1f77bcf86cd799439011",
         "kind": "spatial",
         "format": "geoparquet",
         "crs": "EPSG:4326",
@@ -214,10 +212,10 @@ def valid_asset_dict(valid_bounds_dict):
             "description": "A test dataset for validation",
             "source": "Test Source",
             "license": "CC-BY-4.0",
-            "tags": {}
+            "tags": {},
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
-        "updated_at": None
+        "updated_at": None,
     }
 
 
@@ -229,7 +227,7 @@ def valid_tabular_asset_dict():
         "dataset_id": "dataset_tabular_001",
         "version": 1,
         "content_hash": "sha256:" + "b" * 64,  # 64 hex chars
-        "dagster_run_id": "run_12345",
+        "run_id": "507f1f77bcf86cd799439012",
         "kind": "tabular",
         "format": "parquet",
         "crs": None,
@@ -240,10 +238,13 @@ def valid_tabular_asset_dict():
             "source": "Test Source",
             "license": "CC-BY-4.0",
             "tags": {"project": "ALPHA"},
-            "header_mapping": {"Original Name": "original_name", "Age (years)": "age_years"}
+            "header_mapping": {
+                "Original Name": "original_name",
+                "Age (years)": "age_years",
+            },
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
-        "updated_at": None
+        "updated_at": None,
     }
 
 
@@ -266,7 +267,7 @@ def valid_asset_metadata_dict():
         "title": "Test Dataset",
         "description": "A test dataset",
         "source": "Test Source",
-        "license": "CC-BY-4.0"
+        "license": "CC-BY-4.0",
     }
 
 
@@ -279,6 +280,7 @@ def valid_asset_metadata(valid_asset_metadata_dict):
 # =============================================================================
 # CRS Test Data Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def sample_wkt_crs():
@@ -305,4 +307,3 @@ def sample_wkt_crs():
 def sample_proj_crs():
     """Example PROJ string for CRS tests."""
     return "+proj=utm +zone=55 +south +ellps=GRS80 +datum=GDA94 +units=m +no_defs"
-

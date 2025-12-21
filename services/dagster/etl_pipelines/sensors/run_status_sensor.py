@@ -6,6 +6,7 @@
 
 """Run status sensor for manifest and run lifecycle tracking."""
 
+from datetime import datetime, timezone
 from dagster import (
     DagsterRunStatus,
     RunFailureSensorContext,
@@ -48,7 +49,7 @@ def _get_mongodb_client():
 
 @run_failure_sensor(
     name="manifest_run_failure_sensor",
-    description="Updates manifest status to FAILED when runs fail or are canceled",
+    description="Updates manifest status to FAILURE when runs fail or are canceled",
 )
 def manifest_run_failure_sensor(context: RunFailureSensorContext):
     """
@@ -89,6 +90,14 @@ def manifest_run_failure_sensor(context: RunFailureSensorContext):
     client, db_name = _get_mongodb_client()
     db = client[db_name]
 
+    # Get accurate end time from Dagster run storage
+    run_stats = context.instance.get_run_stats(dagster_run_id)
+    end_time = (
+        datetime.fromtimestamp(run_stats.end_time, tz=timezone.utc)
+        if run_stats and run_stats.end_time
+        else datetime.now(timezone.utc)
+    )
+
     # Update run document
     db["runs"].update_one(
         {"dagster_run_id": dagster_run_id},
@@ -96,31 +105,36 @@ def manifest_run_failure_sensor(context: RunFailureSensorContext):
             "$set": {
                 "status": run_status.value,
                 "error_message": error_message,
-                "completed_at": dagster_run.end_time,
+                "completed_at": end_time,
             }
         },
     )
 
     # Update manifest document
+    manifest_status = (
+        ManifestStatus.CANCELED
+        if dagster_run.status == DagsterRunStatus.CANCELED
+        else ManifestStatus.FAILURE
+    )
     db["manifests"].update_one(
         {"batch_id": batch_id},
         {
             "$set": {
-                "status": ManifestStatus.FAILED.value,
+                "status": manifest_status.value,
                 "error_message": error_message,
-                "dagster_run_id": dagster_run_id,
+                "completed_at": end_time,
             }
         },
     )
 
-    context.log.info(f"Updated manifest {batch_id} to FAILED")
+    context.log.info(f"Updated manifest {batch_id} to {manifest_status.value}")
     client.close()
 
 
 @run_status_sensor(
     run_status=DagsterRunStatus.SUCCESS,
     name="manifest_run_success_sensor",
-    description="Updates manifest status to COMPLETED when runs succeed",
+    description="Updates manifest status to SUCCESS when runs succeed",
 )
 def manifest_run_success_sensor(context: RunStatusSensorContext):
     """
@@ -153,13 +167,21 @@ def manifest_run_success_sensor(context: RunStatusSensorContext):
     client, db_name = _get_mongodb_client()
     db = client[db_name]
 
+    # Get accurate end time from Dagster run storage
+    run_stats = context.instance.get_run_stats(dagster_run_id)
+    end_time = (
+        datetime.fromtimestamp(run_stats.end_time, tz=timezone.utc)
+        if run_stats and run_stats.end_time
+        else datetime.now(timezone.utc)
+    )
+
     # Update run document
     db["runs"].update_one(
         {"dagster_run_id": dagster_run_id},
         {
             "$set": {
                 "status": RunStatus.SUCCESS.value,
-                "completed_at": dagster_run.end_time,
+                "completed_at": end_time,
             }
         },
     )
@@ -169,11 +191,11 @@ def manifest_run_success_sensor(context: RunStatusSensorContext):
         {"batch_id": batch_id},
         {
             "$set": {
-                "status": ManifestStatus.COMPLETED.value,
-                "dagster_run_id": dagster_run_id,
+                "status": ManifestStatus.SUCCESS.value,
+                "completed_at": end_time,
             }
         },
     )
 
-    context.log.info(f"Updated manifest {batch_id} to COMPLETED")
+    context.log.info(f"Updated manifest {batch_id} to SUCCESS")
     client.close()

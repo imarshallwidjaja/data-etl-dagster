@@ -76,7 +76,7 @@ def asset():
         dataset_id="batch_001",
         version=1,
         content_hash=f"sha256:{'a' * 64}",
-        dagster_run_id="run_123",
+        run_id="507f1f77bcf86cd799439011",
         kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
@@ -106,16 +106,14 @@ def test_update_manifest_status(mongo_resource, manifest_record, mongomock_clien
 
     mongo_resource.update_manifest_status(
         manifest_record.batch_id,
-        ManifestStatus.COMPLETED,
-        dagster_run_id="run_123",
+        ManifestStatus.SUCCESS,
         error_message="All good",
     )
 
     stored = mongomock_client[mongo_resource.database][
         MongoDBResource.MANIFESTS
     ].find_one({"batch_id": manifest_record.batch_id})
-    assert stored["status"] == ManifestStatus.COMPLETED.value
-    assert stored["dagster_run_id"] == "run_123"
+    assert stored["status"] == ManifestStatus.SUCCESS.value
     assert stored.get("completed_at") is not None
 
 
@@ -154,7 +152,7 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
         dataset_id="test_dataset_none_bounds",
         version=1,
         content_hash="sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
-        dagster_run_id="test_run_id",
+        run_id="507f1f77bcf86cd799439011",
         kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
@@ -197,6 +195,13 @@ def test_get_asset_by_id_returns_none_for_invalid_id(mongo_resource):
 
 
 def test_insert_lineage_stores_object_ids(mongo_resource, mongomock_client, asset):
+    # First create a run to get a run_id
+    run_id = mongo_resource.insert_run(
+        dagster_run_id="dagster_run_lineage_test",
+        batch_id="batch_lineage",
+        job_name="test_job",
+    )
+
     source_id = mongo_resource.insert_asset(asset)
     target_id = mongo_resource.insert_asset(
         asset.model_copy(update={"dataset_id": "child_dataset"})
@@ -205,7 +210,7 @@ def test_insert_lineage_stores_object_ids(mongo_resource, mongomock_client, asse
     lineage_id = mongo_resource.insert_lineage(
         source_asset_id=source_id,
         target_asset_id=target_id,
-        dagster_run_id="run_456",
+        run_id=run_id,
         transformation="spatial_join",
         parameters={"how": "left"},
     )
@@ -218,7 +223,7 @@ def test_insert_lineage_stores_object_ids(mongo_resource, mongomock_client, asse
     assert stored is not None
     assert str(stored["source_asset_id"]) == source_id
     assert str(stored["target_asset_id"]) == target_id
-    assert stored["dagster_run_id"] == "run_456"
+    assert str(stored["run_id"]) == run_id
     assert stored["transformation"] == "spatial_join"
 
 

@@ -100,7 +100,29 @@ The platform uses **dedicated sensors** to ensure manifests trigger the correct 
 - Migrates automatically from legacy comma-separated format
 - Bounded to `MAX_CURSOR_KEYS` (500) to prevent unbounded growth
 - `max_keys` is informational only; implementation ignores any persisted value
-- "Most recent" refers to **most recently processed by the sensor** (preserves processing order)
+- \"Most recent\" refers to **most recently processed by the sensor** (preserves processing order)
+
+### Run Status Tracking
+
+Run lifecycle is tracked in MongoDB via dedicated sensors:
+
+**Run Status Sensors:**
+- `manifest_run_failure_sensor` - Updates manifest status to `failure`/`canceled` when runs fail or are canceled
+- `manifest_run_success_sensor` - Updates manifest status to `success` when runs complete successfully
+
+**Run Document Lifecycle:**
+1. `init_mongo_run_op` creates the run document with `status=running` at job start
+2. Assets link to the run via `run_id` (MongoDB ObjectId)
+3. Run status sensors update both `runs` and `manifests` collections on completion
+
+**Key Fields:**
+- `runs.dagster_run_id` - Links to Dagster run
+- `runs.batch_id` - Links to manifest
+- `runs.asset_ids` - ObjectIds of assets produced by this run
+- `assets.run_id` - ObjectId reference to run document (NOT the Dagster run ID string)
+
+**Status Values (Unified):**
+Both manifests and runs use: `running`, `success`, `failure`, `canceled`
 
 ### Retry semantics
 

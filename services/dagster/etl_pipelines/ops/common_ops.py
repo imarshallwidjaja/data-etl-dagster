@@ -21,11 +21,11 @@ def init_mongo_run_op(context: OpExecutionContext, manifest_json: dict) -> dict:
 
     This op MUST be the first step in every job to ensure the run document
     exists before any assets attempt to link to it. It also ensures the
-    manifest is persisted with status=PROCESSING.
+    manifest is persisted with status=RUNNING.
 
     Flow:
     1. Extract batch_id, job_name, partition_key from run tags
-    2. Upsert manifest with status=PROCESSING (if not already persisted)
+    2. Upsert manifest with status=RUNNING (if not already persisted)
     3. Create run document with status=RUNNING
 
     Args:
@@ -52,24 +52,21 @@ def init_mongo_run_op(context: OpExecutionContext, manifest_json: dict) -> dict:
         f"batch_id={batch_id}, job={job_name}"
     )
 
-    # Step 1: Ensure manifest exists in MongoDB with status=PROCESSING
+    # Step 1: Ensure manifest exists in MongoDB with status=RUNNING
     existing_manifest = mongodb.get_manifest(batch_id)
     if existing_manifest is None:
         # Create manifest from the manifest_json if it wasn't persisted by sensor
         manifest = Manifest(**manifest_json)
-        record = ManifestRecord.from_manifest(
-            manifest, status=ManifestStatus.PROCESSING
-        )
+        record = ManifestRecord.from_manifest(manifest, status=ManifestStatus.RUNNING)
         mongodb.insert_manifest(record)
         context.log.info(f"Created manifest document for batch_id={batch_id}")
     else:
-        # Update status to PROCESSING if not already
+        # Update status to RUNNING if not already
         mongodb.update_manifest_status(
             batch_id=batch_id,
-            status=ManifestStatus.PROCESSING,
-            dagster_run_id=dagster_run_id,
+            status=ManifestStatus.RUNNING,
         )
-        context.log.info(f"Updated manifest {batch_id} to PROCESSING")
+        context.log.info(f"Updated manifest {batch_id} to RUNNING")
 
     # Step 2: Create run document
     run_id = mongodb.insert_run(

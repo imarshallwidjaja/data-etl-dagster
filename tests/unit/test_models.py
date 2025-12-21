@@ -334,13 +334,13 @@ class TestManifestRecord:
         """Test that ManifestRecord can be created from Manifest."""
         record = ManifestRecord.from_manifest(valid_manifest)
         assert record.batch_id == valid_manifest.batch_id
-        assert record.status == ManifestStatus.PENDING
+        assert record.status == ManifestStatus.RUNNING
         assert isinstance(record.ingested_at, datetime)
 
     def test_status_enum_validation(self, valid_manifest_record_dict):
         """Test that status enum validation works."""
         # Valid statuses
-        for status in ["pending", "processing", "completed", "failed"]:
+        for status in ["running", "success", "failure", "canceled"]:
             data = valid_manifest_record_dict.copy()
             data["status"] = status
             record = ManifestRecord(**data)
@@ -356,10 +356,10 @@ class TestManifestRecord:
         """Test from_manifest with custom status."""
         record = ManifestRecord.from_manifest(
             valid_manifest,
-            status=ManifestStatus.PROCESSING,
+            status=ManifestStatus.RUNNING,
             ingested_at=datetime(2024, 1, 1, 10, 0, 0),
         )
-        assert record.status == ManifestStatus.PROCESSING
+        assert record.status == ManifestStatus.RUNNING
         assert record.ingested_at == datetime(2024, 1, 1, 10, 0, 0)
 
 
@@ -524,7 +524,7 @@ class TestContentHashValidation:
             dataset_id="test",
             version=1,
             content_hash=hash_str,
-            dagster_run_id="run_123",
+            run_id="507f1f77bcf86cd799439011",
             kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
@@ -686,7 +686,7 @@ class TestS3KeyValidation:
             dataset_id="test",
             version=1,
             content_hash="sha256:" + "a" * 64,
-            dagster_run_id="run_123",
+            run_id="507f1f77bcf86cd799439011",
             kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",

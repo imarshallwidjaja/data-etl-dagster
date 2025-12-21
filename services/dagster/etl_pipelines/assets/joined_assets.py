@@ -109,6 +109,11 @@ def joined_spatial_asset(
             log=context.log,
         )
 
+        # Get MongoDB run ObjectId for asset linking
+        run_id = context.resources.mongodb.get_run_object_id(context.run_id)
+        if not run_id:
+            raise RuntimeError(f"Run document not found for {context.run_id}")
+
         dataset_id = _choose_dataset_id(validated_manifest)
         asset_info = _export_joined_to_datalake(
             gdal=context.resources.gdal,
@@ -121,17 +126,19 @@ def joined_spatial_asset(
             crs=str(spatial_asset.crs),
             bounds_dict=join_result["bounds"],
             dataset_id=dataset_id,
-            run_id=context.run_id,
+            dagster_run_id=context.run_id,
+            run_id=run_id,
             log=context.log,
         )
 
     joined_asset_id = asset_info["asset_id"]
+    run_id = asset_info["run_id"]  # MongoDB ObjectId string
 
     # spatial_object_id and tabular_object_id are MongoDB ObjectId strings from _resolve_join_assets
     spatial_lineage_id = context.resources.mongodb.insert_lineage(
         source_asset_id=spatial_object_id,
         target_asset_id=joined_asset_id,
-        dagster_run_id=context.run_id,
+        run_id=run_id,
         transformation="spatial_join",
         parameters={
             "role": "spatial_parent",
@@ -144,7 +151,7 @@ def joined_spatial_asset(
     tabular_lineage_id = context.resources.mongodb.insert_lineage(
         source_asset_id=tabular_object_id,
         target_asset_id=joined_asset_id,
-        dagster_run_id=context.run_id,
+        run_id=run_id,
         transformation="spatial_join",
         parameters={
             "role": "tabular_parent",

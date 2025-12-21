@@ -137,6 +137,26 @@ The asset graph is **partitioned by `dataset_id`** using Dagster dynamic partiti
 - `metadata.tags` accepts primitive scalars only (str/int/float/bool); all other metadata keys are rejected.
 - Intent/type coherence: `intent="ingest_tabular"` requires all files to have `type="tabular"`; other intents forbid tabular files.
 
+### Run tracking
+
+Dagster runs are tracked in MongoDB's `runs` collection:
+
+**Run document lifecycle:**
+1. `init_mongo_run_op` creates the run document at job start (`status=running`)
+2. Assets link to the run via `run_id` (MongoDB ObjectId)
+3. Run status sensors update status on completion:
+   - `manifest_run_success_sensor` → `status=success`
+   - `manifest_run_failure_sensor` → `status=failure` or `status=canceled`
+
+**Key data model relationships:**
+- **Manifest → Runs**: One manifest can trigger multiple runs (1:N via `batch_id`)
+- **Run → Assets**: Each run produces one or more assets (assets stored in `runs.asset_ids`)
+- **Asset.run_id**: ObjectId string referencing the run document (NOT the raw Dagster run ID)
+- **Lineage.run_id**: ObjectId string referencing the run that created the lineage
+
+**Unified status values:**
+Both `ManifestStatus` and `RunStatus` use: `running`, `success`, `failure`, `canceled`
+
 ## How to work here
 
 - **Where to change orchestration**: `services/dagster/etl_pipelines/`

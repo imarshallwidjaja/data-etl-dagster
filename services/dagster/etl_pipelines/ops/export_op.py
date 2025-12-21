@@ -25,26 +25,28 @@ def _export_to_datalake(
     minio,
     mongodb,
     transform_result: Dict[str, Any],
+    dagster_run_id: str,
     run_id: str,
     log,
 ) -> Dict[str, Any]:
     """
     Core logic for exporting to data lake and registering in MongoDB.
-    
+
     This function is extracted for easier unit testing without Dagster context.
-    
+
     Args:
         gdal: GDALResource instance
         postgis: PostGISResource instance (needed for connection string)
         minio: MinIOResource instance
         mongodb: MongoDBResource instance
         transform_result: Transform result dict from spatial_transform op
-        run_id: Dagster run ID
+        dagster_run_id: Dagster run ID (for asset linking)
+        run_id: MongoDB run document ObjectId
         log: Logger instance (context.log)
-    
+
     Returns:
         Asset info dict with asset_id, s3_key, dataset_id, version, content_hash, run_id
-    
+
     Raises:
         RuntimeError: If GDAL export, hash calculation, upload, or MongoDB insert fails
     """
@@ -53,24 +55,24 @@ def _export_to_datalake(
     manifest = transform_result["manifest"]
     bounds_dict = transform_result["bounds"]
     crs = transform_result["crs"]
-    
+
     # Generate dataset_id
     dataset_id = f"dataset_{uuid.uuid4().hex[:12]}"
     log.info(f"Generated dataset_id: {dataset_id}")
-    
+
     # Get next version number
     version = mongodb.get_next_version(dataset_id)
     log.info(f"Dataset version: {version}")
-    
+
     # Generate S3 key
     s3_key = f"{dataset_id}/v{version}/data.parquet"
     log.info(f"Target S3 key: {s3_key}")
-    
+
     # Create temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".parquet")
     temp_file_path = temp_file.name
     temp_file.close()
-    
+
     try:
         # Build PostgreSQL connection string for ogr2ogr input
         # Format: PG:host={host} dbname={database} schemas={schema} user={user} password={password} tables={table}
@@ -82,9 +84,9 @@ def _export_to_datalake(
             f"password={postgis.password} "
             f"tables={table}"
         )
-        
+
         log.info(f"Exporting from PostGIS: {schema}.{table} -> {temp_file_path}")
-        
+
         # Execute ogr2ogr to export PostGIS -> GeoParquet
         result: GDALResult = gdal.ogr2ogr(
             input_path=pg_conn_str,
@@ -92,15 +94,13 @@ def _export_to_datalake(
             output_format="Parquet",
             target_crs=crs,
         )
-        
+
         # Check for failure
         if not result.success:
-            raise RuntimeError(
-                f"ogr2ogr export failed: {result.stderr}"
-            )
-        
+            raise RuntimeError(f"ogr2ogr export failed: {result.stderr}")
+
         log.info(f"Successfully exported to temporary file: {temp_file_path}")
-        
+
         # Calculate SHA256 content hash
         sha256_hash = hashlib.sha256()
         with open(temp_file_path, "rb") as f:
@@ -108,11 +108,11 @@ def _export_to_datalake(
                 sha256_hash.update(chunk)
         content_hash = f"sha256:{sha256_hash.hexdigest()}"
         log.info(f"Calculated content hash: {content_hash[:20]}...")
-        
+
         # Upload to MinIO data lake
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded to MinIO data lake: {s3_key}")
-        
+
         # Create Asset model
         # Populate tags from manifest metadata.tags
         manifest_tags = manifest["metadata"].get("tags", {})
@@ -139,7 +139,7 @@ def _export_to_datalake(
             dataset_id=dataset_id,
             version=version,
             content_hash=content_hash,
-            dagster_run_id=run_id,
+            run_id=run_id,
             kind=AssetKind.SPATIAL,
             format=OutputFormat.GEOPARQUET,
             crs=CRS(crs),
@@ -148,11 +148,15 @@ def _export_to_datalake(
             created_at=datetime.now(timezone.utc),
             updated_at=None,
         )
-        
+
         # Register in MongoDB
         inserted_id = mongodb.insert_asset(asset)
         log.info(f"Registered asset in MongoDB: {inserted_id}")
-        
+
+        # Link asset to run document
+        mongodb.add_asset_to_run(dagster_run_id, inserted_id)
+        log.info(f"Linked asset to run: {dagster_run_id}")
+
         # Return asset info
         return {
             "asset_id": inserted_id,
@@ -162,7 +166,7 @@ def _export_to_datalake(
             "content_hash": content_hash,
             "run_id": run_id,
         }
-        
+
     finally:
         # Clean up temporary file
         try:
@@ -180,18 +184,18 @@ def _export_to_datalake(
 def export_to_datalake(context: OpExecutionContext, transform_result: dict) -> dict:
     """
     Export processed data from PostGIS to MinIO data lake and register in MongoDB.
-    
+
     Exports data from PostGIS to GeoParquet format, uploads to MinIO data lake,
     calculates content hash, and registers the asset in MongoDB.
-    
+
     After export completes (success or failure), automatically cleans up the
     ephemeral PostGIS schema to maintain architectural law that PostGIS is
     transient compute only.
-    
+
     Args:
         context: Dagster op execution context
         transform_result: Transform result dict from spatial_transform op
-    
+
     Returns:
         Asset info dict containing:
         - asset_id: MongoDB ObjectId as string
@@ -200,18 +204,24 @@ def export_to_datalake(context: OpExecutionContext, transform_result: dict) -> d
         - version: Asset version number
         - content_hash: SHA256 content hash
         - run_id: Dagster run ID
-    
+
     Raises:
         RuntimeError: If GDAL export, hash calculation, upload, or MongoDB insert fails
     """
     try:
+        # Get MongoDB run ObjectId
+        run_id = context.resources.mongodb.get_run_object_id(context.run_id)
+        if not run_id:
+            raise RuntimeError(f"Run document not found for {context.run_id}")
+
         return _export_to_datalake(
             gdal=context.resources.gdal,
             postgis=context.resources.postgis,
             minio=context.resources.minio,
             mongodb=context.resources.mongodb,
             transform_result=transform_result,
-            run_id=context.run_id,
+            dagster_run_id=context.run_id,
+            run_id=run_id,
             log=context.log,
         )
     finally:
@@ -221,7 +231,7 @@ def export_to_datalake(context: OpExecutionContext, transform_result: dict) -> d
             run_id = context.run_id
             mapping = RunIdSchemaMapping.from_run_id(run_id)
             schema = mapping.schema_name
-            
+
             postgis = context.resources.postgis
             context.log.info(f"Cleaning up ephemeral schema: {schema}")
             postgis._drop_schema(schema)

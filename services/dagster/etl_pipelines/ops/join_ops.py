@@ -361,6 +361,7 @@ def _export_joined_to_datalake(
     crs: str,
     bounds_dict: dict[str, float] | None,
     dataset_id: str,
+    dagster_run_id: str,
     run_id: str,
     log,
 ) -> Dict[str, Any]:
@@ -433,7 +434,7 @@ def _export_joined_to_datalake(
             dataset_id=dataset_id,
             version=version,
             content_hash=content_hash,
-            dagster_run_id=run_id,
+            run_id=run_id,
             kind=AssetKind.JOINED,
             format=OutputFormat.GEOPARQUET,
             crs=CRS(crs),
@@ -445,6 +446,10 @@ def _export_joined_to_datalake(
 
         inserted_id = mongodb.insert_asset(asset)
         log.info(f"Registered joined asset in MongoDB: {inserted_id}")
+
+        # Link asset to run document
+        mongodb.add_asset_to_run(dagster_run_id, inserted_id)
+        log.info(f"Linked asset to run: {dagster_run_id}")
 
         return {
             "asset_id": inserted_id,
