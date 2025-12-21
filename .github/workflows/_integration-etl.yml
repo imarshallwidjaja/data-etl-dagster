@@ -8,142 +8,146 @@
 name: Integration - ETL
 
 on:
-    workflow_call:
+  workflow_call:
 
 jobs:
-    etl:
-        name: ETL Pipeline Tests
-        runs-on: ubuntu-latest
+  etl:
+    name: ETL Pipeline Tests
+    runs-on: ubuntu-latest
 
-        env:
-            ENVIRONMENT: ci
-            COMPOSE_PROJECT_NAME: spatial-etl-ci
+    env:
+      ENVIRONMENT: ci
+      COMPOSE_PROJECT_NAME: spatial-etl-ci
 
-            # MinIO Configuration
-            MINIO_ROOT_USER: minio
-            MINIO_ROOT_PASSWORD: minio_password
-            MINIO_ENDPOINT: localhost:9000
-            MINIO_USE_SSL: "false"
-            MINIO_LANDING_BUCKET: landing-zone
-            MINIO_LAKE_BUCKET: data-lake
+      # MinIO Configuration
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio_password
+      MINIO_ENDPOINT: localhost:9000
+      MINIO_USE_SSL: "false"
+      MINIO_LANDING_BUCKET: landing-zone
+      MINIO_LAKE_BUCKET: data-lake
 
-            # MongoDB Configuration
-            MONGO_INITDB_ROOT_USERNAME: mongo
-            MONGO_INITDB_ROOT_PASSWORD: mongo_password
-            MONGO_HOST: localhost
-            MONGO_PORT: "27017"
-            MONGO_DATABASE: spatial_etl
+      # MongoDB Configuration
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo_password
+      MONGO_HOST: localhost
+      MONGO_PORT: "27017"
+      MONGO_DATABASE: spatial_etl
 
-            # PostGIS Configuration
-            POSTGRES_USER: postgis
-            POSTGRES_PASSWORD: postgis_password
-            POSTGRES_DB: spatial_compute
-            POSTGRES_HOST: localhost
-            POSTGRES_PORT: "5432"
+      # PostGIS Configuration
+      POSTGRES_USER: postgis
+      POSTGRES_PASSWORD: postgis_password
+      POSTGRES_DB: spatial_compute
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
 
-            # Dagster Configuration
-            DAGSTER_HOME: /opt/dagster/dagster_home
-            DAGSTER_POSTGRES_USER: dagster
-            DAGSTER_POSTGRES_PASSWORD: dagster_password
-            DAGSTER_POSTGRES_DB: dagster
-            DAGSTER_POSTGRES_HOST: localhost
-            DAGSTER_POSTGRES_PORT: "5433"
-            DAGSTER_WEBSERVER_HOST: 0.0.0.0
-            DAGSTER_WEBSERVER_PORT: "3000"
+      # Dagster Configuration
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      DAGSTER_POSTGRES_USER: dagster
+      DAGSTER_POSTGRES_PASSWORD: dagster_password
+      DAGSTER_POSTGRES_DB: dagster
+      DAGSTER_POSTGRES_HOST: localhost
+      DAGSTER_POSTGRES_PORT: "5433"
+      DAGSTER_WEBSERVER_HOST: 0.0.0.0
+      DAGSTER_WEBSERVER_PORT: "3000"
 
-            # Service wait timeout
-            SERVICE_WAIT_TIMEOUT: "120"
+      # Service wait timeout
+      SERVICE_WAIT_TIMEOUT: "120"
 
-            # Logging
-            LOG_LEVEL: INFO
+      # Logging
+      LOG_LEVEL: INFO
 
-        steps:
-            - name: Checkout code
-              uses: actions/checkout@v4
+      # Service check configuration (exclude webapp for ETL tests)
+      WAIT_FOR_SERVICES: minio,mongodb,postgis,dagster,user-code
+      CHECK_CONTAINERS: minio,mongodb,postgis,dagster-webserver,dagster-daemon,dagster-user-code
 
-            - name: Set up Python
-              uses: actions/setup-python@v5
-              with:
-                  python-version: "3.11"
-                  cache: "pip"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-            - name: Install dependencies
-              run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements-test.txt
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
 
-            - name: Start Docker stack
-              run: |
-                  docker compose -f docker-compose.yaml up -d --build \
-                    dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-test.txt
 
-            - name: Wait for services
-              run: |
-                  python scripts/wait_for_services.py
-              timeout-minutes: 5
+      - name: Start Docker stack
+        run: |
+          docker compose -f docker-compose.yaml up -d --build \
+            dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
 
-            - name: Check container stability
-              id: stability_check
-              run: |
-                  python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
-                  if [ ${STABILITY_EXIT:-0} -ne 0 ]; then
-                    echo "stability_failed=true" >> $GITHUB_OUTPUT
-                    cat unstable_containers.txt
-                    exit 1
-                  else
-                    echo "stability_failed=false" >> $GITHUB_OUTPUT
-                  fi
-              continue-on-error: true
-              timeout-minutes: 2
+      - name: Wait for services
+        run: |
+          python scripts/wait_for_services.py
+        timeout-minutes: 5
 
-            - name: Dump logs for unstable containers
-              if: ${{ steps.stability_check.outcome == 'failure' || steps.stability_check.outputs.stability_failed == 'true' }}
-              run: |
-                  echo "=== Unstable Container Logs ==="
-                  if [ -f unstable_containers.txt ]; then
-                    in_section=false
-                    while IFS= read -r line; do
-                      if [[ "$line" == *"Unstable containers"* ]]; then
-                        in_section=true
-                        continue
-                      fi
-                      if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
-                        echo ""
-                        echo "=== Logs for $line ==="
-                        docker compose -f docker-compose.yaml logs "$line" || true
-                      fi
-                    done < unstable_containers.txt
-                  fi
+      - name: Check container stability
+        id: stability_check
+        run: |
+          python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
+          if [ ${STABILITY_EXIT:-0} -ne 0 ]; then
+            echo "stability_failed=true" >> $GITHUB_OUTPUT
+            cat unstable_containers.txt
+            exit 1
+          else
+            echo "stability_failed=false" >> $GITHUB_OUTPUT
+          fi
+        continue-on-error: true
+        timeout-minutes: 2
 
-            - name: Run ETL integration tests
-              uses: nick-fields/retry@v2
-              with:
-                  max_attempts: 2
-                  timeout_minutes: 15
-                  command: |
-                      pytest -m "integration and not e2e" \
-                             tests/integration/test_dagster*.py \
-                             tests/integration/test_sensor*.py \
-                             tests/integration/test_schema*.py \
-                             tests/integration/test_gdal*.py \
-                             -v --tb=short
+      - name: Dump logs for unstable containers
+        if: ${{ steps.stability_check.outcome == 'failure' || steps.stability_check.outputs.stability_failed == 'true' }}
+        run: |
+          echo "=== Unstable Container Logs ==="
+          if [ -f unstable_containers.txt ]; then
+            in_section=false
+            while IFS= read -r line; do
+              if [[ "$line" == *"Unstable containers"* ]]; then
+                in_section=true
+                continue
+              fi
+              if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
+                echo ""
+                echo "=== Logs for $line ==="
+                docker compose -f docker-compose.yaml logs "$line" || true
+              fi
+            done < unstable_containers.txt
+          fi
 
-            - name: Dump service logs on failure
-              if: failure()
-              run: |
-                  echo "=== Dagster Webserver Logs ==="
-                  docker compose -f docker-compose.yaml logs dagster-webserver || true
-                  echo ""
-                  echo "=== Dagster Daemon Logs ==="
-                  docker compose -f docker-compose.yaml logs dagster-daemon || true
-                  echo ""
-                  echo "=== User Code Logs ==="
-                  docker compose -f docker-compose.yaml logs user-code || true
-                  echo ""
-                  echo "=== All Container Status ==="
-                  docker compose -f docker-compose.yaml ps || true
+      - name: Run ETL integration tests
+        uses: nick-fields/retry@v2
+        with:
+          max_attempts: 2
+          timeout_minutes: 15
+          command: |
+            pytest -m "integration and not e2e" \
+                   tests/integration/test_dagster*.py \
+                   tests/integration/test_sensor*.py \
+                   tests/integration/test_schema*.py \
+                   tests/integration/test_gdal*.py \
+                   -v --tb=short
 
-            - name: Cleanup
-              if: always()
-              run: |
-                  docker compose -f docker-compose.yaml down -v
+      - name: Dump service logs on failure
+        if: failure()
+        run: |
+          echo "=== Dagster Webserver Logs ==="
+          docker compose -f docker-compose.yaml logs dagster-webserver || true
+          echo ""
+          echo "=== Dagster Daemon Logs ==="
+          docker compose -f docker-compose.yaml logs dagster-daemon || true
+          echo ""
+          echo "=== User Code Logs ==="
+          docker compose -f docker-compose.yaml logs user-code || true
+          echo ""
+          echo "=== All Container Status ==="
+          docker compose -f docker-compose.yaml ps || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose -f docker-compose.yaml down -v

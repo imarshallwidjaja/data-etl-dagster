@@ -272,7 +272,15 @@ def wait_for_service(
 
 
 def main():
-    """Wait for all services to become ready."""
+    """
+    Wait for services to become ready.
+
+    Services can be configured via WAIT_FOR_SERVICES environment variable.
+    Comma-separated list of: minio, mongodb, postgis, dagster, user-code, webapp
+
+    Default: all services
+    Example: WAIT_FOR_SERVICES=minio,mongodb,postgis (infrastructure only)
+    """
     print("=" * 60)
     print("Service Health Check")
     print("=" * 60)
@@ -293,18 +301,37 @@ def main():
     # Timeout per service (in seconds)
     timeout = int(os.getenv("SERVICE_WAIT_TIMEOUT", "60"))
 
-    # Check all services
-    services = [
-        ("MinIO", lambda: check_minio(minio_settings, timeout)),
-        ("MongoDB", lambda: check_mongodb(mongo_settings, timeout)),
-        ("PostGIS", lambda: check_postgis(postgis_settings, timeout)),
-        ("Dagster", lambda: check_dagster(dagster_port, timeout)),
-        (
+    # Define all available services
+    all_services = {
+        "minio": ("MinIO", lambda: check_minio(minio_settings, timeout)),
+        "mongodb": ("MongoDB", lambda: check_mongodb(mongo_settings, timeout)),
+        "postgis": ("PostGIS", lambda: check_postgis(postgis_settings, timeout)),
+        "dagster": ("Dagster", lambda: check_dagster(dagster_port, timeout)),
+        "user-code": (
             "User-code (Dagster)",
             lambda: verify_user_code_dagster(dagster_port, timeout),
         ),
-        ("Webapp", lambda: check_webapp(8080, timeout)),
-    ]
+        "webapp": ("Webapp", lambda: check_webapp(8080, timeout)),
+    }
+
+    # Get which services to check (default: all)
+    services_env = os.getenv("WAIT_FOR_SERVICES", "").strip()
+    if services_env:
+        # Parse comma-separated list
+        requested_services = [s.strip().lower() for s in services_env.split(",")]
+        # Validate service names
+        invalid = [s for s in requested_services if s not in all_services]
+        if invalid:
+            print(f"ERROR: Unknown services: {', '.join(invalid)}")
+            print(f"Valid services: {', '.join(all_services.keys())}")
+            sys.exit(1)
+        services = [
+            (all_services[s][0], all_services[s][1]) for s in requested_services
+        ]
+        print(f"Checking selected services: {', '.join(requested_services)}")
+    else:
+        # Default: check all services
+        services = [(name, check_fn) for name, check_fn in all_services.values()]
 
     failed = []
     for name, check_fn in services:

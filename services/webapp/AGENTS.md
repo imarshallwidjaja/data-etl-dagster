@@ -82,10 +82,13 @@ Environment variables (via `app/config.py`):
 
 ## Testing
 
-### Unit tests (in `tests/unit/`):
+### Unit tests (in `../../tests/unit/webapp/`):
 - `test_auth.py` - Auth provider tests
 - `test_manifest_builder.py` - Form → model tests
 - `test_rerun_versioning.py` - Batch ID versioning
+- `test_folder_router.py` - Folder CRUD tests
+- `test_minio_service.py` - MinIO service mocking
+- `test_manifest_router.py` - Manifest router tests
 
 ### Integration tests (in `../../tests/integration/`):
 - `test_webapp_health.py` - Health endpoint tests
@@ -95,7 +98,7 @@ Environment variables (via `app/config.py`):
 ### Run tests:
 ```powershell
 # Unit tests
-pytest services/webapp/tests/unit -v
+pytest tests/unit/webapp -v
 
 # Integration tests (Docker stack must be running)
 pytest -m integration tests/integration/test_webapp*.py -v

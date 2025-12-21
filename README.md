@@ -576,36 +576,37 @@ Integration tests include:
 
 #### Continuous Integration
 
-The project uses GitHub Actions with **smart path-based test execution**:
+The project uses GitHub Actions with an **orchestrator pattern** for optimized test execution:
 
 ```
-Trigger: Pull request or push to main/develop
-         ↓
-Detect changed files
-         ↓
-         ├─ Code changes? → Run unit + integration tests
-         ├─ Infrastructure/Docker changes? → Run integration tests
-         ├─ Docs-only changes? → Skip all tests
-         └─ Manual dispatch? → Run all tests (escape hatch)
+.github/workflows/
+├── ci.yml                    # Orchestrator (main entry point)
+├── _unit-tests.yml           # Reusable unit tests
+├── _integration-infra.yml    # MinIO, MongoDB, PostGIS tests
+├── _integration-etl.yml      # Dagster pipeline tests
+├── _integration-webapp.yml   # Webapp tests
+└── _e2e-tests.yml            # Full E2E tests
 ```
 
-**Workflow file:** `.github/workflows/integration.yml`
+**How it works:**
 
-This workflow runs two jobs:
-- `test`: unit tests + integration tests excluding E2E (`-m "integration and not e2e"`)
-  - After services start, runs container stability check (`scripts/check_container_stability.py`)
-  - Runs initialization verification tests early for fast failure (`test_mongodb_init.py`, `test_postgis_init.py`)
-  - Dumps logs for unstable containers if stability check fails
-- `e2e`: runs after `test` succeeds and executes E2E tests (`-m "integration and e2e"`)
-  - Also includes stability checks and init verification before E2E tests
+```
+PR/Push → ci.yml (detect changes)
+              ├─ libs/services/** → unit-tests
+              ├─ services/minio|mongodb|postgis/** → integration-infra
+              ├─ services/dagster/** → integration-etl
+              ├─ services/webapp/** → integration-webapp
+              └─ All pass? → e2e-tests
+```
 
-**Benefits:**
-- ⚡ Fast feedback: Unit tests run in ~5 seconds
-- 💰 Resource efficient: Skip expensive Docker for model changes
-- 🎯 Targeted: Only run tests relevant to changed files
-- 🔄 Safe: Manual dispatch option runs full suite
+**Key features:**
+- **Path-based filtering**: Only runs tests relevant to changed files
+- **E2E dependency**: E2E tests only run if all unit + integration tests pass
+- **Retry logic**: Integration tests retry once on failure
+- **Concurrency control**: Stale runs cancelled automatically
+- **Configurable service checks**: `WAIT_FOR_SERVICES` and `CHECK_CONTAINERS` env vars
 
-See the workflow file for detailed path filter configuration.
+See `.github/workflows/AGENTS.md` for detailed documentation.
 
 ## License
 

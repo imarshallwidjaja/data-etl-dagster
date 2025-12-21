@@ -70,20 +70,19 @@ services/webapp/
 ├── requirements.txt
 ├── AGENTS.md              # AI agent context
 ├── README.md              # This file
-├── tests/                 # Unit tests
-│   ├── conftest.py
-│   └── unit/
-│       ├── test_auth.py
-│       ├── test_manifest_builder.py
-│       └── test_rerun_versioning.py
 └── app/
     ├── main.py            # FastAPI entry point
     ├── config.py          # Pydantic Settings
     ├── auth/              # Authentication module
     ├── routers/           # API endpoints
     ├── services/          # Service wrappers (MinIO, MongoDB, Dagster)
-    ├── templates/         # Jinja2 templates (landing, manifests, runs, assets)
+    ├── templates/         # Jinja2 templates
     └── static/            # CSS, JS
+
+# Tests are in the root tests/ directory:
+tests/
+├── unit/webapp/           # Webapp unit tests
+└── integration/test_webapp*.py  # Webapp integration tests
 ```
 
 ## API Endpoints
@@ -146,8 +145,8 @@ docker compose logs -f webapp
 # Activate conda environment
 conda activate data-etl-dagster
 
-# Unit tests
-pytest services/webapp/tests/unit -v
+# Unit tests (in root tests/unit/webapp/)
+pytest tests/unit/webapp -v
 
 # Integration tests (Docker stack must be running)
 pytest -m integration tests/integration/test_webapp*.py -v
