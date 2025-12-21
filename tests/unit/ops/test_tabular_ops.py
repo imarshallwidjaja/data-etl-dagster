@@ -357,6 +357,7 @@ def test_export_tabular_parquet_to_datalake_success():
         minio=mock_minio,
         mongodb=mock_mongodb,
         table_info=table_info,
+        dagster_run_id="dagster_run_12345",
         run_id="run_12345",
         log=mock_log,
     )
@@ -423,6 +424,7 @@ def test_export_tabular_parquet_with_custom_dataset_id():
         minio=mock_minio,
         mongodb=mock_mongodb,
         table_info=table_info,
+        dagster_run_id="dagster_run_12345",
         run_id="run_12345",
         log=mock_log,
     )
@@ -456,6 +458,7 @@ def test_export_tabular_parquet_cleanup_on_error():
             minio=mock_minio,
             mongodb=mock_mongodb,
             table_info=table_info,
+            dagster_run_id="dagster_run_12345",
             run_id="run_12345",
             log=mock_log,
         )
