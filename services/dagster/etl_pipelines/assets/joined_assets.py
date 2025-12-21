@@ -17,7 +17,6 @@ from ..ops.join_ops import (
     _execute_spatial_join,
     _export_joined_to_datalake,
     _load_geoparquet_to_postgis,
-    _load_tabular_arrow_to_postgis,
     _load_tabular_parquet_to_postgis,
     _resolve_join_assets,
 )
@@ -56,7 +55,12 @@ def joined_spatial_asset(
             partition_keys=[partition_key],
         )
 
-    validated_manifest = Manifest(**raw_manifest_json)
+    # Extract manifest and run info from upstream asset
+    manifest_dict = raw_manifest_json["manifest"]
+    run_id = raw_manifest_json["run_id"]
+    dagster_run_id = raw_manifest_json["dagster_run_id"]
+
+    validated_manifest = Manifest(**manifest_dict)
     join_resolution = _resolve_join_assets(
         mongodb=context.resources.mongodb,
         manifest=validated_manifest.model_dump(mode="json"),
@@ -109,10 +113,7 @@ def joined_spatial_asset(
             log=context.log,
         )
 
-        # Get MongoDB run ObjectId for asset linking
-        run_id = context.resources.mongodb.get_run_object_id(context.run_id)
-        if not run_id:
-            raise RuntimeError(f"Run document not found for {context.run_id}")
+        # run_id already extracted from raw_manifest_json upstream
 
         dataset_id = _choose_dataset_id(validated_manifest)
         asset_info = _export_joined_to_datalake(
@@ -126,7 +127,7 @@ def joined_spatial_asset(
             crs=str(spatial_asset.crs),
             bounds_dict=join_result["bounds"],
             dataset_id=dataset_id,
-            dagster_run_id=context.run_id,
+            dagster_run_id=dagster_run_id,
             run_id=run_id,
             log=context.log,
         )
