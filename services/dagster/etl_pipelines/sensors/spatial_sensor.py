@@ -51,7 +51,9 @@ def _parse_cursor(cursor: str | None) -> list[str]:
 
 def _build_cursor(processed_keys: list[str]) -> str:
     keys_list = processed_keys[-MAX_CURSOR_KEYS:]
-    return json.dumps({"v": CURSOR_VERSION, "processed_keys": keys_list, "max_keys": MAX_CURSOR_KEYS})
+    return json.dumps(
+        {"v": CURSOR_VERSION, "processed_keys": keys_list, "max_keys": MAX_CURSOR_KEYS}
+    )
 
 
 def _is_spatial_asset_intent(intent: str) -> bool:
@@ -61,7 +63,7 @@ def _is_spatial_asset_intent(intent: str) -> bool:
 @sensor(
     job_name="spatial_asset_job",
     minimum_interval_seconds=30,
-    default_status=DefaultSensorStatus.STOPPED,  # safe rollout; enable via UI when ready
+    default_status=DefaultSensorStatus.RUNNING,
     name="spatial_sensor",
     description="Polls for spatial manifests (ingest_vector/ingest_raster) and materializes raw_spatial_asset",
 )
@@ -97,7 +99,9 @@ def spatial_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 try:
                     minio.move_to_archive(manifest_key)
                 except Exception as archive_error:
-                    context.log.warning(f"Failed to archive invalid manifest '{manifest_key}': {archive_error}")
+                    context.log.warning(
+                        f"Failed to archive invalid manifest '{manifest_key}': {archive_error}"
+                    )
                 continue
 
             if not _is_spatial_asset_intent(manifest.intent):
@@ -114,7 +118,9 @@ def spatial_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 run_key=f"spatial_asset:{manifest.batch_id}:{partition_key}",
                 run_config={
                     "ops": {
-                        "raw_manifest_json": {"config": {"manifest": manifest.model_dump(mode="json")}},
+                        "raw_manifest_json": {
+                            "config": {"manifest": manifest.model_dump(mode="json")}
+                        },
                     }
                 },
                 partition_key=partition_key,
@@ -133,22 +139,28 @@ def spatial_sensor(context: SensorEvaluationContext, minio: MinIOResource):
             try:
                 minio.move_to_archive(manifest_key)
             except Exception as archive_error:
-                context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
+                context.log.warning(
+                    f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                )
 
             context.log.info(
                 f"Triggered spatial_asset_job for manifest '{manifest_key}' "
                 f"(batch_id={manifest.batch_id}, partition={partition_key})"
             )
         except Exception as e:
-            context.log.error(f"Error processing manifest '{manifest_key}': {e}. Marking as processed to prevent retry.")
+            context.log.error(
+                f"Error processing manifest '{manifest_key}': {e}. Marking as processed to prevent retry."
+            )
             processed_this_run.append(manifest_key)
             try:
                 minio.move_to_archive(manifest_key)
             except Exception as archive_error:
-                context.log.warning(f"Failed to archive manifest '{manifest_key}': {archive_error}")
+                context.log.warning(
+                    f"Failed to archive manifest '{manifest_key}': {archive_error}"
+                )
 
     if processed_this_run:
-        all_processed = processed_order + [k for k in processed_this_run if k not in processed_set]
+        all_processed = processed_order + [
+            k for k in processed_this_run if k not in processed_set
+        ]
         context.update_cursor(_build_cursor(all_processed))
-
-

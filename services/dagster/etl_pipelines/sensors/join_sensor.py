@@ -58,7 +58,7 @@ def _build_cursor(processed_keys: list[str]) -> str:
 @sensor(
     job_name="join_asset_job",
     minimum_interval_seconds=30,
-    default_status=DefaultSensorStatus.STOPPED,  # safe rollout; enable via UI when ready
+    default_status=DefaultSensorStatus.RUNNING,
     name="join_sensor",
     description="Polls for join manifests (join_datasets) and materializes joined_spatial_asset",
 )

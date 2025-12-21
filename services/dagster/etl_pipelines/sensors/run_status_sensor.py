@@ -9,6 +9,7 @@
 from datetime import datetime, timezone
 from dagster import (
     DagsterRunStatus,
+    DefaultSensorStatus,
     RunFailureSensorContext,
     RunStatusSensorContext,
     run_failure_sensor,
@@ -50,6 +51,7 @@ def _get_mongodb_client():
 @run_failure_sensor(
     name="manifest_run_failure_sensor",
     description="Updates manifest status to FAILURE when runs fail or are canceled",
+    default_status=DefaultSensorStatus.RUNNING,
 )
 def manifest_run_failure_sensor(context: RunFailureSensorContext):
     """
@@ -135,6 +137,7 @@ def manifest_run_failure_sensor(context: RunFailureSensorContext):
     run_status=DagsterRunStatus.SUCCESS,
     name="manifest_run_success_sensor",
     description="Updates manifest status to SUCCESS when runs succeed",
+    default_status=DefaultSensorStatus.RUNNING,
 )
 def manifest_run_success_sensor(context: RunStatusSensorContext):
     """

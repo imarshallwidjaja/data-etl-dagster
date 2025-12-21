@@ -78,7 +78,7 @@ class FolderResponse(BaseModel):
 async def list_landing_zone(
     request: Request,
     prefix: str = Query("", description="Optional prefix to filter files"),
-    include_archive: bool = Query(False, description="Include archived files"),
+    include_archive: bool = Query(True, description="Include archived files"),
     format: str = Query("html", description="Response format: html or json"),
     current_user: AuthenticatedUser = Depends(get_current_user),
 ):
