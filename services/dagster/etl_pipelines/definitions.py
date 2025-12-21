@@ -15,7 +15,14 @@ from .assets import (
 from .jobs import ingest_job  # Only legacy op-based job
 from .partitions import dataset_partitions
 from .resources import GDALResource, MinIOResource, MongoDBResource, PostGISResource
-from .sensors import join_sensor, manifest_sensor, spatial_sensor, tabular_sensor
+from .sensors import (
+    join_sensor,
+    manifest_sensor,
+    spatial_sensor,
+    tabular_sensor,
+    manifest_run_failure_sensor,
+    manifest_run_success_sensor,
+)
 
 
 # =============================================================================
@@ -101,5 +108,7 @@ defs = Definitions(
         spatial_sensor,  # Asset-based: routes to spatial_asset_job
         tabular_sensor,  # Asset-based: routes to tabular_asset_job
         join_sensor,  # Asset-based: routes to join_asset_job
+        manifest_run_failure_sensor,  # Lifecycle: updates manifest on failure
+        manifest_run_success_sensor,  # Lifecycle: updates manifest on success
     ],
 )

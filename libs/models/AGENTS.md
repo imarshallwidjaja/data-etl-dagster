@@ -19,6 +19,7 @@ It is the application-level validation layer and the contract between ingestion,
 
 - `manifest.py`: ingestion manifest schema + runtime tracking variants
 - `asset.py`: asset registry models (content hash, s3 keys, bounds, kind, etc.)
+- `run.py`: run tracking models (dagster_run_id, batch_id, status, asset_ids)
 - `spatial.py`: CRS / bounds / enums (FileType, OutputFormat) and validators
 - `config.py`: `pydantic-settings` models (env var aliases + computed connection strings)
 - `__init__.py`: public exports

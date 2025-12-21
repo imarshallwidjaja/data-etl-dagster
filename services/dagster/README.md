@@ -57,7 +57,8 @@ services/dagster/
 │   │   ├── manifest_sensor.py  # Legacy (ingest_job)
 │   │   ├── spatial_sensor.py   # → spatial_asset_job
 │   │   ├── tabular_sensor.py   # → tabular_asset_job
-│   │   └── join_sensor.py      # → join_asset_job
+│   │   ├── join_sensor.py      # → join_asset_job
+│   │   └── run_status_sensor.py # Run lifecycle → MongoDB updates
 │   ├── resources/           # External service wrappers
 │   │   ├── minio_resource.py
 │   │   ├── mongodb_resource.py

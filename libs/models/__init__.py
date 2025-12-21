@@ -47,6 +47,12 @@ from .asset import (
     Asset,
 )
 
+# Run models
+from .run import (
+    Run,
+    RunStatus,
+)
+
 # Configuration models
 from .config import (
     MinIOSettings,
@@ -78,6 +84,9 @@ __all__ = [
     "AssetKind",
     "AssetMetadata",
     "Asset",
+    # Run models
+    "Run",
+    "RunStatus",
     # Configuration models
     "MinIOSettings",
     "MongoSettings",
@@ -85,4 +94,3 @@ __all__ = [
     "DagsterPostgresSettings",
     "GDALSettings",
 ]
-

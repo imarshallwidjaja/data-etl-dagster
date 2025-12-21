@@ -13,7 +13,7 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 from bson import ObjectId
 
-from libs.models import Asset, ManifestRecord, ManifestStatus
+from libs.models import Asset, ManifestRecord, ManifestStatus, Run, RunStatus
 
 __all__ = ["MongoDBResource"]
 
@@ -32,6 +32,7 @@ class MongoDBResource(ConfigurableResource):
     MANIFESTS: ClassVar[str] = "manifests"
     ASSETS: ClassVar[str] = "assets"
     LINEAGE: ClassVar[str] = "lineage"
+    RUNS: ClassVar[str] = "runs"
 
     @cached_property
     def _client(self) -> MongoClient:
@@ -96,6 +97,106 @@ class MongoDBResource(ConfigurableResource):
         if not document:
             return None
         return ManifestRecord(**self._strip_object_id(document))
+
+    # ------------------------------------------------------------------
+    # Run operations
+    # ------------------------------------------------------------------
+
+    def insert_run(
+        self,
+        dagster_run_id: str,
+        batch_id: str,
+        job_name: str,
+        partition_key: str | None = None,
+        status: RunStatus = RunStatus.RUNNING,
+    ) -> str:
+        """
+        Create or update a run document (upsert by dagster_run_id).
+
+        Returns the ObjectId of the run document as a string.
+        Upsert ensures idempotency if called multiple times for the same run.
+        """
+        collection = self._get_collection(self.RUNS)
+        now = datetime.now(timezone.utc)
+        run_doc = {
+            "dagster_run_id": dagster_run_id,
+            "batch_id": batch_id,
+            "job_name": job_name,
+            "partition_key": partition_key,
+            "status": status.value,
+            "asset_ids": [],
+            "started_at": now,
+            "completed_at": None,
+            "error_message": None,
+        }
+        result = collection.update_one(
+            {"dagster_run_id": dagster_run_id},
+            {"$setOnInsert": run_doc},
+            upsert=True,
+        )
+        if result.upserted_id:
+            return str(result.upserted_id)
+        # Document existed, return its ObjectId
+        existing = collection.find_one(
+            {"dagster_run_id": dagster_run_id}, projection={"_id": 1}
+        )
+        return str(existing["_id"]) if existing else ""
+
+    def update_run_status(
+        self,
+        dagster_run_id: str,
+        status: RunStatus,
+        *,
+        error_message: str | None = None,
+    ) -> None:
+        """
+        Update the status of an existing run document.
+        """
+        collection = self._get_collection(self.RUNS)
+        now = datetime.now(timezone.utc)
+        update_doc: Dict[str, Any] = {
+            "status": status.value,
+        }
+        if status in (RunStatus.SUCCESS, RunStatus.FAILURE, RunStatus.CANCELED):
+            update_doc["completed_at"] = now
+        if error_message:
+            update_doc["error_message"] = error_message
+
+        collection.update_one({"dagster_run_id": dagster_run_id}, {"$set": update_doc})
+
+    def get_run(self, dagster_run_id: str) -> Run | None:
+        """
+        Load a run document by dagster_run_id.
+        """
+        collection = self._get_collection(self.RUNS)
+        document = collection.find_one({"dagster_run_id": dagster_run_id})
+        if not document:
+            return None
+        return Run(**self._strip_object_id(document))
+
+    def get_run_object_id(self, dagster_run_id: str) -> str | None:
+        """
+        Return the MongoDB ObjectId (as string) for a run by dagster_run_id.
+
+        Useful for linking assets to their run document.
+        """
+        collection = self._get_collection(self.RUNS)
+        document = collection.find_one(
+            {"dagster_run_id": dagster_run_id}, projection={"_id": 1}
+        )
+        if not document:
+            return None
+        return str(document["_id"])
+
+    def add_asset_to_run(self, dagster_run_id: str, asset_id: str) -> None:
+        """
+        Add an asset ObjectId to the run's asset_ids list.
+        """
+        collection = self._get_collection(self.RUNS)
+        collection.update_one(
+            {"dagster_run_id": dagster_run_id},
+            {"$addToSet": {"asset_ids": ObjectId(asset_id)}},
+        )
 
     # ------------------------------------------------------------------
     # Asset operations

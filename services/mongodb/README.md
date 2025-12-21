@@ -21,8 +21,9 @@ MongoDB stores:
 
 | Collection | Purpose |
 |------------|---------|
-| `manifests` | Ingestion manifest records (batch_id, intent, files, metadata) |
+| `manifests` | Ingestion manifest records (batch_id, intent, files, metadata, status) |
 | `assets` | Asset registry with versioning (s3_key, dataset_id, version, kind) |
+| `runs` | Dagster run tracking (dagster_run_id, batch_id, status, asset_ids) |
 | `lineage` | Parent → child asset relationships (for join provenance) |
 | `schema_migrations` | Applied migration tracking |
 

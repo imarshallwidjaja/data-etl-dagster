@@ -9,6 +9,7 @@ from .tabular_ops import (
     load_and_clean_tabular,
     export_tabular_parquet_to_datalake,
 )
+from .common_ops import init_mongo_run_op
 
 __all__ = [
     "load_to_postgis",
@@ -18,5 +19,5 @@ __all__ = [
     "download_tabular_from_landing",
     "load_and_clean_tabular",
     "export_tabular_parquet_to_datalake",
+    "init_mongo_run_op",
 ]
-

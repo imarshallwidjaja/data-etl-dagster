@@ -22,6 +22,8 @@ from libs.models import (
     ManifestRecord,
     ManifestStatus,
     OutputFormat,
+    Run,
+    RunStatus,
 )
 
 from services.dagster.etl_pipelines.resources import MongoDBResource
@@ -109,9 +111,9 @@ def test_update_manifest_status(mongo_resource, manifest_record, mongomock_clien
         error_message="All good",
     )
 
-    stored = mongomock_client[mongo_resource.database][MongoDBResource.MANIFESTS].find_one(
-        {"batch_id": manifest_record.batch_id}
-    )
+    stored = mongomock_client[mongo_resource.database][
+        MongoDBResource.MANIFESTS
+    ].find_one({"batch_id": manifest_record.batch_id})
     assert stored["status"] == ManifestStatus.COMPLETED.value
     assert stored["dagster_run_id"] == "run_123"
     assert stored.get("completed_at") is not None
@@ -175,7 +177,9 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
 
     # Verify the underlying document doesn't contain the bounds field
     collection = mongo_resource._get_collection(mongo_resource.ASSETS)
-    document = collection.find_one({"dataset_id": "test_dataset_none_bounds", "version": 1})
+    document = collection.find_one(
+        {"dataset_id": "test_dataset_none_bounds", "version": 1}
+    )
     assert document is not None
     assert "bounds" not in document  # bounds field should be excluded when None
 
@@ -194,7 +198,9 @@ def test_get_asset_by_id_returns_none_for_invalid_id(mongo_resource):
 
 def test_insert_lineage_stores_object_ids(mongo_resource, mongomock_client, asset):
     source_id = mongo_resource.insert_asset(asset)
-    target_id = mongo_resource.insert_asset(asset.model_copy(update={"dataset_id": "child_dataset"}))
+    target_id = mongo_resource.insert_asset(
+        asset.model_copy(update={"dataset_id": "child_dataset"})
+    )
 
     lineage_id = mongo_resource.insert_lineage(
         source_asset_id=source_id,
@@ -205,12 +211,152 @@ def test_insert_lineage_stores_object_ids(mongo_resource, mongomock_client, asse
     )
     assert lineage_id is not None
 
-    stored = mongomock_client[mongo_resource.database][MongoDBResource.LINEAGE].find_one(
-        {"_id": ObjectId(lineage_id)}
-    )
+    stored = mongomock_client[mongo_resource.database][
+        MongoDBResource.LINEAGE
+    ].find_one({"_id": ObjectId(lineage_id)})
     # mongomock uses bson ObjectId; verify key fields exist
     assert stored is not None
     assert str(stored["source_asset_id"]) == source_id
     assert str(stored["target_asset_id"]) == target_id
     assert stored["dagster_run_id"] == "run_456"
     assert stored["transformation"] == "spatial_join"
+
+
+# =============================================================================
+# Run Operation Tests
+# =============================================================================
+
+
+def test_insert_run_creates_document(mongo_resource, mongomock_client):
+    """Test that insert_run creates a run document with correct fields."""
+    run_id = mongo_resource.insert_run(
+        dagster_run_id="dagster_run_abc123",
+        batch_id="batch_001",
+        job_name="spatial_asset_job",
+        partition_key="test_dataset",
+    )
+    assert run_id is not None
+
+    stored = mongomock_client[mongo_resource.database][MongoDBResource.RUNS].find_one(
+        {"dagster_run_id": "dagster_run_abc123"}
+    )
+    assert stored is not None
+    assert stored["batch_id"] == "batch_001"
+    assert stored["job_name"] == "spatial_asset_job"
+    assert stored["partition_key"] == "test_dataset"
+    assert stored["status"] == RunStatus.RUNNING.value
+    assert stored["asset_ids"] == []
+    assert stored["started_at"] is not None
+    assert stored["completed_at"] is None
+
+
+def test_insert_run_upsert_is_idempotent(mongo_resource, mongomock_client):
+    """Test that insert_run is idempotent (calling twice returns same ObjectId)."""
+    run_id_1 = mongo_resource.insert_run(
+        dagster_run_id="dagster_run_xyz789",
+        batch_id="batch_002",
+        job_name="tabular_asset_job",
+    )
+    run_id_2 = mongo_resource.insert_run(
+        dagster_run_id="dagster_run_xyz789",
+        batch_id="batch_002",
+        job_name="tabular_asset_job",
+    )
+    assert run_id_1 == run_id_2
+
+    # Should only have one document
+    count = mongomock_client[mongo_resource.database][
+        MongoDBResource.RUNS
+    ].count_documents({"dagster_run_id": "dagster_run_xyz789"})
+    assert count == 1
+
+
+def test_update_run_status_success(mongo_resource, mongomock_client):
+    """Test that update_run_status updates status and sets completed_at."""
+    mongo_resource.insert_run(
+        dagster_run_id="dagster_run_status_test",
+        batch_id="batch_003",
+        job_name="join_asset_job",
+    )
+
+    mongo_resource.update_run_status(
+        dagster_run_id="dagster_run_status_test",
+        status=RunStatus.SUCCESS,
+    )
+
+    stored = mongomock_client[mongo_resource.database][MongoDBResource.RUNS].find_one(
+        {"dagster_run_id": "dagster_run_status_test"}
+    )
+    assert stored["status"] == RunStatus.SUCCESS.value
+    assert stored["completed_at"] is not None
+
+
+def test_update_run_status_failure_with_error(mongo_resource, mongomock_client):
+    """Test that update_run_status stores error message on failure."""
+    mongo_resource.insert_run(
+        dagster_run_id="dagster_run_failure_test",
+        batch_id="batch_004",
+        job_name="spatial_asset_job",
+    )
+
+    mongo_resource.update_run_status(
+        dagster_run_id="dagster_run_failure_test",
+        status=RunStatus.FAILURE,
+        error_message="Something went wrong",
+    )
+
+    stored = mongomock_client[mongo_resource.database][MongoDBResource.RUNS].find_one(
+        {"dagster_run_id": "dagster_run_failure_test"}
+    )
+    assert stored["status"] == RunStatus.FAILURE.value
+    assert stored["error_message"] == "Something went wrong"
+    assert stored["completed_at"] is not None
+
+
+def test_get_run_returns_run_model(mongo_resource):
+    """Test that get_run returns a Run model instance."""
+    mongo_resource.insert_run(
+        dagster_run_id="dagster_run_gettest",
+        batch_id="batch_005",
+        job_name="tabular_asset_job",
+        partition_key="my_dataset",
+    )
+
+    run = mongo_resource.get_run("dagster_run_gettest")
+    assert run is not None
+    assert isinstance(run, Run)
+    assert run.dagster_run_id == "dagster_run_gettest"
+    assert run.batch_id == "batch_005"
+    assert run.job_name == "tabular_asset_job"
+    assert run.partition_key == "my_dataset"
+    assert run.status == RunStatus.RUNNING
+
+
+def test_get_run_object_id(mongo_resource):
+    """Test that get_run_object_id returns ObjectId string."""
+    inserted_id = mongo_resource.insert_run(
+        dagster_run_id="dagster_run_oid_test",
+        batch_id="batch_006",
+        job_name="join_asset_job",
+    )
+
+    retrieved_id = mongo_resource.get_run_object_id("dagster_run_oid_test")
+    assert retrieved_id == inserted_id
+
+
+def test_add_asset_to_run(mongo_resource, asset, mongomock_client):
+    """Test that add_asset_to_run appends asset ObjectId to run document."""
+    mongo_resource.insert_run(
+        dagster_run_id="dagster_run_asset_link",
+        batch_id="batch_007",
+        job_name="spatial_asset_job",
+    )
+
+    asset_id = mongo_resource.insert_asset(asset)
+    mongo_resource.add_asset_to_run("dagster_run_asset_link", asset_id)
+
+    stored = mongomock_client[mongo_resource.database][MongoDBResource.RUNS].find_one(
+        {"dagster_run_id": "dagster_run_asset_link"}
+    )
+    assert len(stored["asset_ids"]) == 1
+    assert str(stored["asset_ids"][0]) == asset_id
