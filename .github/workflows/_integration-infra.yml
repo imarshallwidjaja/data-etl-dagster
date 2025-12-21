@@ -1,0 +1,102 @@
+# =============================================================================
+# Reusable Infrastructure Integration Tests Workflow
+# =============================================================================
+# Tests for MinIO, MongoDB, and PostGIS services.
+# Uses minimal Docker stack for faster execution.
+# =============================================================================
+
+name: Integration - Infrastructure
+
+on:
+    workflow_call:
+
+jobs:
+    infra:
+        name: Infrastructure Tests
+        runs-on: ubuntu-latest
+
+        env:
+            ENVIRONMENT: ci
+            COMPOSE_PROJECT_NAME: spatial-etl-ci
+
+            # MinIO Configuration
+            MINIO_ROOT_USER: minio
+            MINIO_ROOT_PASSWORD: minio_password
+            MINIO_ENDPOINT: localhost:9000
+            MINIO_USE_SSL: "false"
+            MINIO_LANDING_BUCKET: landing-zone
+            MINIO_LAKE_BUCKET: data-lake
+
+            # MongoDB Configuration
+            MONGO_INITDB_ROOT_USERNAME: mongo
+            MONGO_INITDB_ROOT_PASSWORD: mongo_password
+            MONGO_HOST: localhost
+            MONGO_PORT: "27017"
+            MONGO_DATABASE: spatial_etl
+
+            # PostGIS Configuration
+            POSTGRES_USER: postgis
+            POSTGRES_PASSWORD: postgis_password
+            POSTGRES_DB: spatial_compute
+            POSTGRES_HOST: localhost
+            POSTGRES_PORT: "5432"
+
+            # Logging
+            LOG_LEVEL: INFO
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+                  cache: "pip"
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements-test.txt
+
+            - name: Start infrastructure services
+              run: |
+                  docker compose -f docker-compose.yaml up -d --build \
+                    minio minio-init mongodb postgis
+
+            - name: Wait for services
+              run: |
+                  # Wait for MinIO
+                  timeout 60 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 2; done' || true
+                  # Wait for MongoDB
+                  timeout 60 bash -c 'until docker compose exec -T mongodb mongosh --eval "db.runCommand({ping:1})" -u mongo -p mongo_password --authenticationDatabase admin; do sleep 2; done' || true
+                  # Wait for PostGIS
+                  timeout 60 bash -c 'until docker compose exec -T postgis pg_isready -U postgis; do sleep 2; done' || true
+
+            - name: Run infrastructure tests
+              uses: nick-fields/retry@v2
+              with:
+                  max_attempts: 2
+                  timeout_minutes: 10
+                  command: |
+                      pytest tests/integration/test_minio*.py \
+                             tests/integration/test_mongodb*.py \
+                             tests/integration/test_postgis*.py \
+                             -v --tb=short
+
+            - name: Dump logs on failure
+              if: failure()
+              run: |
+                  echo "=== MinIO Logs ==="
+                  docker compose -f docker-compose.yaml logs minio || true
+                  echo ""
+                  echo "=== MongoDB Logs ==="
+                  docker compose -f docker-compose.yaml logs mongodb || true
+                  echo ""
+                  echo "=== PostGIS Logs ==="
+                  docker compose -f docker-compose.yaml logs postgis || true
+
+            - name: Cleanup
+              if: always()
+              run: |
+                  docker compose -f docker-compose.yaml down -v

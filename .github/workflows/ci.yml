@@ -1,0 +1,144 @@
+# =============================================================================
+# CI Orchestrator Workflow
+# =============================================================================
+# Main entry point that calls reusable workflows based on file changes.
+# E2E tests only run if all unit and integration tests pass.
+# =============================================================================
+
+name: CI
+
+on:
+    pull_request:
+        branches: [main, develop]
+    push:
+        branches: [main, develop]
+    workflow_dispatch:
+
+# Cancel in-progress runs for the same branch
+concurrency:
+    group: ci-${{ github.ref }}
+    cancel-in-progress: true
+
+jobs:
+    # ==========================================================================
+    # Detect which areas of code have changed
+    # ==========================================================================
+    detect-changes:
+        name: Detect Changes
+        runs-on: ubuntu-latest
+        outputs:
+            unit: ${{ steps.filter.outputs.unit }}
+            infra: ${{ steps.filter.outputs.infra }}
+            etl: ${{ steps.filter.outputs.etl }}
+            webapp: ${{ steps.filter.outputs.webapp }}
+            force-all: ${{ steps.filter.outputs.force-all }}
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Detect changed paths
+              id: filter
+              uses: dorny/paths-filter@v3
+              with:
+                  token: ${{ github.token }}
+                  filters: |
+                      # Force all tests when critical shared files change
+                      force-all:
+                        - 'docker-compose.yaml'
+                        - 'requirements*.txt'
+                        - 'tests/conftest.py'
+                        - '.github/workflows/**'
+
+                      # Unit tests: libs, services code, unit test files
+                      unit:
+                        - 'libs/**'
+                        - 'services/**'
+                        - 'tests/unit/**'
+
+                      # Infrastructure tests: MinIO, MongoDB, PostGIS
+                      infra:
+                        - 'services/minio/**'
+                        - 'services/mongodb/**'
+                        - 'services/postgis/**'
+                        - 'libs/models/**'
+                        - 'tests/integration/test_minio*.py'
+                        - 'tests/integration/test_mongodb*.py'
+                        - 'tests/integration/test_postgis*.py'
+
+                      # ETL tests: Dagster pipelines, transformations
+                      etl:
+                        - 'services/dagster/**'
+                        - 'libs/transformations/**'
+                        - 'libs/spatial_utils/**'
+                        - 'tests/integration/test_dagster*.py'
+                        - 'tests/integration/test_sensor*.py'
+                        - 'tests/integration/test_schema*.py'
+                        - 'tests/integration/test_*_e2e.py'
+                        - 'tests/integration/test_gdal*.py'
+
+                      # Webapp tests
+                      webapp:
+                        - 'services/webapp/**'
+                        - 'tests/integration/test_webapp*.py'
+                        - 'tests/unit/webapp/**'
+
+    # ==========================================================================
+    # Unit Tests (no Docker required)
+    # ==========================================================================
+    unit-tests:
+        name: Unit Tests
+        needs: detect-changes
+        if: ${{ needs.detect-changes.outputs.unit == 'true' || needs.detect-changes.outputs.force-all == 'true' || github.event_name == 'workflow_dispatch' }}
+        uses: ./.github/workflows/_unit-tests.yml
+
+    # ==========================================================================
+    # Infrastructure Integration Tests
+    # ==========================================================================
+    integration-infra:
+        name: Integration - Infrastructure
+        needs: detect-changes
+        if: ${{ needs.detect-changes.outputs.infra == 'true' || needs.detect-changes.outputs.force-all == 'true' || github.event_name == 'workflow_dispatch' }}
+        uses: ./.github/workflows/_integration-infra.yml
+
+    # ==========================================================================
+    # ETL Integration Tests
+    # ==========================================================================
+    integration-etl:
+        name: Integration - ETL
+        needs: detect-changes
+        if: ${{ needs.detect-changes.outputs.etl == 'true' || needs.detect-changes.outputs.force-all == 'true' || github.event_name == 'workflow_dispatch' }}
+        uses: ./.github/workflows/_integration-etl.yml
+
+    # ==========================================================================
+    # Webapp Integration Tests
+    # ==========================================================================
+    integration-webapp:
+        name: Integration - Webapp
+        needs: detect-changes
+        if: ${{ needs.detect-changes.outputs.webapp == 'true' || needs.detect-changes.outputs.force-all == 'true' || github.event_name == 'workflow_dispatch' }}
+        uses: ./.github/workflows/_integration-webapp.yml
+
+    # ==========================================================================
+    # E2E Tests (only runs if all other tests pass)
+    # ==========================================================================
+    e2e-tests:
+        name: E2E Tests
+        needs:
+            [
+                detect-changes,
+                unit-tests,
+                integration-infra,
+                integration-etl,
+                integration-webapp,
+            ]
+        # Run E2E only if:
+        # 1. ETL changes detected (or force-all or manual dispatch)
+        # 2. All previous jobs succeeded (automatically handled by needs)
+        if: |
+            always() &&
+            (needs.detect-changes.outputs.etl == 'true' || needs.detect-changes.outputs.force-all == 'true' || github.event_name == 'workflow_dispatch') &&
+            (needs.unit-tests.result == 'success' || needs.unit-tests.result == 'skipped') &&
+            (needs.integration-infra.result == 'success' || needs.integration-infra.result == 'skipped') &&
+            (needs.integration-etl.result == 'success' || needs.integration-etl.result == 'skipped') &&
+            (needs.integration-webapp.result == 'success' || needs.integration-webapp.result == 'skipped')
+        uses: ./.github/workflows/_e2e-tests.yml

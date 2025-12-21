@@ -1,0 +1,92 @@
+# =============================================================================
+# Reusable Webapp Integration Tests Workflow
+# =============================================================================
+# Tests for the web application.
+# Requires webapp plus MinIO and MongoDB services.
+# =============================================================================
+
+name: Integration - Webapp
+
+on:
+    workflow_call:
+
+jobs:
+    webapp:
+        name: Webapp Tests
+        runs-on: ubuntu-latest
+
+        env:
+            ENVIRONMENT: ci
+            COMPOSE_PROJECT_NAME: spatial-etl-ci
+
+            # MinIO Configuration
+            MINIO_ROOT_USER: minio
+            MINIO_ROOT_PASSWORD: minio_password
+            MINIO_ENDPOINT: localhost:9000
+            MINIO_USE_SSL: "false"
+            MINIO_LANDING_BUCKET: landing-zone
+            MINIO_LAKE_BUCKET: data-lake
+
+            # MongoDB Configuration
+            MONGO_INITDB_ROOT_USERNAME: mongo
+            MONGO_INITDB_ROOT_PASSWORD: mongo_password
+            MONGO_HOST: localhost
+            MONGO_PORT: "27017"
+            MONGO_DATABASE: spatial_etl
+
+            # Logging
+            LOG_LEVEL: INFO
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Set up Python
+              uses: actions/setup-python@v5
+              with:
+                  python-version: "3.11"
+                  cache: "pip"
+
+            - name: Install dependencies
+              run: |
+                  python -m pip install --upgrade pip
+                  pip install -r requirements-test.txt
+
+            - name: Start webapp services
+              run: |
+                  docker compose -f docker-compose.yaml up -d --build \
+                    webapp minio minio-init mongodb
+
+            - name: Wait for services
+              run: |
+                  # Wait for MinIO
+                  timeout 60 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 2; done' || true
+                  # Wait for MongoDB
+                  timeout 60 bash -c 'until docker compose exec -T mongodb mongosh --eval "db.runCommand({ping:1})" -u mongo -p mongo_password --authenticationDatabase admin; do sleep 2; done' || true
+                  # Wait for Webapp
+                  timeout 60 bash -c 'until curl -sf http://localhost:8080/health; do sleep 2; done' || true
+
+            - name: Run webapp integration tests
+              uses: nick-fields/retry@v2
+              with:
+                  max_attempts: 2
+                  timeout_minutes: 10
+                  command: |
+                      pytest tests/integration/test_webapp*.py -v --tb=short
+
+            - name: Dump logs on failure
+              if: failure()
+              run: |
+                  echo "=== Webapp Logs ==="
+                  docker compose -f docker-compose.yaml logs webapp || true
+                  echo ""
+                  echo "=== MinIO Logs ==="
+                  docker compose -f docker-compose.yaml logs minio || true
+                  echo ""
+                  echo "=== MongoDB Logs ==="
+                  docker compose -f docker-compose.yaml logs mongodb || true
+
+            - name: Cleanup
+              if: always()
+              run: |
+                  docker compose -f docker-compose.yaml down -v
