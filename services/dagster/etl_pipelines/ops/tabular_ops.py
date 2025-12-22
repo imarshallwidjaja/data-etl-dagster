@@ -253,19 +253,19 @@ def _export_tabular_parquet_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded to MinIO data lake: {s3_key}")
 
-        # Create Asset model
+        # Create Asset model using factory method for consistent metadata propagation
         manifest_tags = validated_manifest.metadata.tags.copy()
         if join_key_clean:
             manifest_tags["join_key_clean"] = join_key_clean
 
-        asset_metadata = AssetMetadata(
-            title=validated_manifest.metadata.project or dataset_id,
-            description=validated_manifest.metadata.description,
-            source=None,
-            license=None,
-            tags=manifest_tags,
+        asset_metadata = AssetMetadata.from_manifest_metadata(
+            validated_manifest.metadata,
             header_mapping=header_mapping,
+            column_schema=None,  # TODO: Populate in Milestone 3
         )
+        # Add the join_key_clean to tags if present (post-factory adjustment)
+        if join_key_clean:
+            asset_metadata.tags["join_key_clean"] = join_key_clean
 
         asset = Asset(
             s3_key=s3_key,

@@ -411,13 +411,12 @@ def _export_joined_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded joined output to data lake: {s3_key}")
 
-        manifest_tags = manifest["metadata"].get("tags", {})
-        asset_metadata = AssetMetadata(
-            title=manifest["metadata"].get("project", dataset_id),
-            description=manifest["metadata"].get("description"),
-            source=None,
-            license=None,
-            tags=manifest_tags,
+        # Create Asset model using factory method for consistent metadata propagation
+        validated_manifest = Manifest(**manifest)
+        asset_metadata = AssetMetadata.from_manifest_metadata(
+            validated_manifest.metadata,
+            geometry_type=None,  # TODO: Populate in Milestone 2
+            column_schema=None,  # TODO: Populate in Milestone 3
         )
 
         bounds = None

@@ -11,16 +11,20 @@ It is the application-level validation layer and the contract between ingestion,
 - **Strict, explicit typing**: prefer clear types over implicit coercions.
 - **Ledger alignment**: models that represent MongoDB documents must match Mongo init/schema expectations.
 - **Unified status semantics**: `ManifestStatus` and `RunStatus` use the same values: `running`, `success`, `failure`, `canceled`.
-- **Manifest contract is disciplined**: `FileEntry` forbids extras (no uploader CRS); `ManifestMetadata` only allows `project`, `description`, `tags` (primitive scalars), and structured `join_config`. `ManifestRecord` does NOT store `dagster_run_id` (runs are tracked separately).
+- **HumanMetadataMixin contract**: Both `ManifestMetadata` and `AssetMetadata` inherit from `HumanMetadataMixin` which enforces 6 required fields: `title`, `description`, `keywords`, `source`, `license`, `attribution`. Empty strings are allowed.
+- **Factory method for metadata propagation**: Always use `AssetMetadata.from_manifest_metadata()` in ops to ensure consistent field copying with defensive copies of mutable fields.
+- **Manifest contract is disciplined**: `FileEntry` forbids extras (no uploader CRS); `ManifestMetadata` inherits human fields from mixin, plus allows `project` (now optional), `tags` (primitive scalars), and structured `join_config`. `ManifestRecord` does NOT store `dagster_run_id` (runs are tracked separately).
 - **Intent/type coherence**: `Manifest` enforces that `intent="ingest_tabular"` requires all files to be `type="tabular"`, `intent="join_datasets"` requires `files=[]` with both `spatial_asset_id` and `tabular_asset_id` in join_config, and spatial intents forbid tabular files.
 - **Asset kind discrimination**: `Asset` uses `kind` field (spatial/tabular/joined) to determine CRS/bounds requirements. Tabular assets have `crs=None` and `bounds=None`.
+- **Kind-specific metadata (deferred enforcement)**: Spatial/joined assets should have `metadata.geometry_type`, tabular/joined assets should have `metadata.column_schema`. Currently warnings, will become errors in M2/M3.
 - **Run linking via ObjectId**: `Asset.run_id` and lineage records use MongoDB ObjectId strings to reference the `runs` collection, NOT the raw Dagster run ID string.
 - **Stable env var aliases**: settings fields must map to the env vars used in `docker-compose.yaml`.
 
 ## Entry points / key files
 
+- `base.py`: `HumanMetadataMixin` - shared human-readable metadata fields
 - `manifest.py`: ingestion manifest schema + runtime tracking variants
-- `asset.py`: asset registry models (content hash, s3 keys, bounds, kind, etc.)
+- `asset.py`: asset registry models (content hash, s3 keys, bounds, kind, `ColumnInfo`, etc.)
 - `run.py`: run tracking models (dagster_run_id, batch_id, status, asset_ids)
 - `spatial.py`: CRS / bounds / enums (FileType, OutputFormat) and validators
 - `config.py`: `pydantic-settings` models (env var aliases + computed connection strings)

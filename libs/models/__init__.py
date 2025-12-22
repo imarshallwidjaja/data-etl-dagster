@@ -38,11 +38,15 @@ from .manifest import (
     TagValue,
 )
 
+# Base models
+from .base import HumanMetadataMixin
+
 # Asset models
 from .asset import (
     S3Key,
     ContentHash,
     AssetKind,
+    ColumnInfo,
     AssetMetadata,
     Asset,
 )
@@ -78,10 +82,13 @@ __all__ = [
     "ManifestRecord",
     "S3Path",
     "TagValue",
+    # Base models
+    "HumanMetadataMixin",
     # Asset models
     "S3Key",
     "ContentHash",
     "AssetKind",
+    "ColumnInfo",
     "AssetMetadata",
     "Asset",
     # Run models

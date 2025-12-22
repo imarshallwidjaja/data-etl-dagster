@@ -14,7 +14,15 @@ from typing import Dict, Any
 
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Asset, AssetKind, AssetMetadata, Bounds, OutputFormat, CRS
+from libs.models import (
+    Asset,
+    AssetKind,
+    AssetMetadata,
+    Bounds,
+    OutputFormat,
+    CRS,
+    Manifest,
+)
 from libs.spatial_utils import RunIdSchemaMapping
 from ..resources.gdal_resource import GDALResult
 
@@ -113,15 +121,11 @@ def _export_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded to MinIO data lake: {s3_key}")
 
-        # Create Asset model
-        # Populate tags from manifest metadata.tags
-        manifest_tags = manifest["metadata"].get("tags", {})
-        asset_metadata = AssetMetadata(
-            title=manifest["metadata"].get("project", dataset_id),
-            description=manifest["metadata"].get("description"),
-            source=None,
-            license=None,
-            tags=manifest_tags,
+        # Create Asset model using factory method for consistent metadata propagation
+        validated_manifest = Manifest(**manifest)
+        asset_metadata = AssetMetadata.from_manifest_metadata(
+            validated_manifest.metadata,
+            geometry_type=None,  # TODO: Populate in Milestone 2
         )
 
         # Handle optional bounds

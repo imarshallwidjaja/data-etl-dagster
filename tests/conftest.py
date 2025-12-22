@@ -68,8 +68,13 @@ def valid_tabular_manifest_dict(valid_tabular_file_entry_dict):
         "intent": "ingest_tabular",
         "files": [valid_tabular_file_entry_dict],
         "metadata": {
+            "title": "Test Tabular Dataset",
+            "description": "Test tabular data for validation",
+            "keywords": ["tabular", "test"],
+            "source": "Unit Test Suite",
+            "license": "MIT",
+            "attribution": "Test Contributors",
             "project": "ALPHA",
-            "description": "Test tabular data",
             "tags": {"priority": 1, "source": "unit-test", "published": False},
         },
     }
@@ -127,7 +132,15 @@ def valid_spatial_asset(valid_bounds_dict):
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=Bounds(**valid_bounds_dict),
-        metadata=AssetMetadata(title="Test Spatial Dataset"),
+        metadata=AssetMetadata(
+            title="Test Spatial Dataset",
+            description="Spatial dataset for testing",
+            keywords=["spatial", "test"],
+            source="Test Source",
+            license="MIT",
+            attribution="Test Team",
+            geometry_type="MULTIPOLYGON",
+        ),
         created_at=datetime(2024, 1, 1, 12, 0, 0),
     )
 
@@ -146,8 +159,13 @@ def valid_manifest_dict(valid_file_entry_dict):
         "intent": "ingest_satellite_raster",
         "files": [valid_file_entry_dict],
         "metadata": {
+            "title": "Test Satellite Dataset",
+            "description": "Test satellite imagery for validation",
+            "keywords": ["satellite", "test"],
+            "source": "Unit Test Suite",
+            "license": "MIT",
+            "attribution": "Test Contributors",
             "project": "ALPHA",
-            "description": "Test satellite imagery",
             "tags": {"priority": 1, "source": "unit-test", "published": False},
         },
     }
@@ -210,9 +228,12 @@ def valid_asset_dict(valid_bounds_dict):
         "metadata": {
             "title": "Test Dataset",
             "description": "A test dataset for validation",
+            "keywords": ["test", "spatial"],
             "source": "Test Source",
             "license": "CC-BY-4.0",
+            "attribution": "Test Team",
             "tags": {},
+            "geometry_type": "MULTIPOLYGON",
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
         "updated_at": None,
@@ -235,8 +256,10 @@ def valid_tabular_asset_dict():
         "metadata": {
             "title": "Test Tabular Dataset",
             "description": "A test tabular dataset",
+            "keywords": ["tabular", "test"],
             "source": "Test Source",
             "license": "CC-BY-4.0",
+            "attribution": "Test Team",
             "tags": {"project": "ALPHA"},
             "header_mapping": {
                 "Original Name": "original_name",
@@ -266,8 +289,10 @@ def valid_asset_metadata_dict():
     return {
         "title": "Test Dataset",
         "description": "A test dataset",
+        "keywords": ["test"],
         "source": "Test Source",
         "license": "CC-BY-4.0",
+        "attribution": "Test Team",
     }
 
 
