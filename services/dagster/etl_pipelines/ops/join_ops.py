@@ -318,6 +318,14 @@ def _execute_spatial_join(
     }
     join_clause = join_type_map[how]
 
+    # Warn about potential column name collision
+    # The join SELECT uses t.* and adds s.geom. If tabular already has a 'geom' column,
+    # PostgreSQL will not raise an error but the output will have ambiguous meaning.
+    log.warning(
+        "Join output uses 't.*' from tabular + 's.geom' from spatial. "
+        "If the tabular asset already contains a 'geom' column, consider renaming it before joining."
+    )
+
     sql = f"""
     CREATE TABLE "{schema}"."{output_table}" AS
     SELECT

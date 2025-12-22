@@ -13,6 +13,7 @@ from pydantic import Field
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 import logging
+import re
 
 from libs.models import Bounds
 from libs.spatial_utils import RunIdSchemaMapping
@@ -393,9 +394,21 @@ class PostGISResource(ConfigurableResource):
         if not self.table_exists(schema, table):
             raise ValueError(f"Table does not exist: {schema}.{table}")
 
-        # Validate geometry column identifier
-        import re
+        # Validate schema identifier
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", schema):
+            raise ValueError(
+                f"Invalid schema name: {schema}. "
+                f"Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$"
+            )
 
+        # Validate table identifier
+        if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", table):
+            raise ValueError(
+                f"Invalid table name: {table}. "
+                f"Must match pattern: ^[A-Za-z_][A-Za-z0-9_]*$"
+            )
+
+        # Validate geometry column identifier
         if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", geom_column):
             raise ValueError(
                 f"Invalid geometry column name: {geom_column}. "
@@ -426,13 +439,17 @@ class PostGISResource(ConfigurableResource):
                     return catalog_type
 
             # Tier 2: Sample-based detection (for generic or missing catalog entry)
+            # Use a subquery to limit row scan before DISTINCT to prevent
+            # expensive full-table scans on large datasets.
             logger.debug(f"Catalog returned generic type, sampling {schema}.{table}")
             sample_result = conn.execute(
                 text(f"""
-                    SELECT DISTINCT ST_GeometryType("{geom_column}") as gtype
-                    FROM "{schema}"."{table}"
-                    WHERE "{geom_column}" IS NOT NULL
-                    LIMIT 100
+                    SELECT DISTINCT gtype FROM (
+                        SELECT ST_GeometryType("{geom_column}") as gtype
+                        FROM "{schema}"."{table}"
+                        WHERE "{geom_column}" IS NOT NULL
+                        LIMIT 100
+                    ) AS sample
                 """)
             )
             types = [r[0] for r in sample_result.fetchall()]
