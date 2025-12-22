@@ -14,22 +14,22 @@ import re
 import tempfile
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, Literal
 
-import pandas as pd
 import pyarrow as pa
 
+import pyarrow.parquet as pq
 from libs.models import (
     Asset,
     AssetKind,
     AssetMetadata,
     Bounds,
     CRS,
-    JoinConfig,
     Manifest,
     OutputFormat,
+    ColumnInfo,
 )
+from libs.normalization import normalize_arrow_schema
 from libs.s3_utils import s3_to_vsis3
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -411,12 +411,27 @@ def _export_joined_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded joined output to data lake: {s3_key}")
 
+        # Extract column schema from joined GeoParquet
+        log.info("Extracting column schema from joined GeoParquet")
+        parquet_schema = pq.read_schema(temp_file_path)
+        normalized_schema = normalize_arrow_schema(parquet_schema)
+        column_schema = {}
+        for field_name, normalized in normalized_schema.items():
+            column_schema[field_name] = ColumnInfo(
+                title=field_name,
+                description="",
+                type_name=normalized["type_name"],
+                logical_type=normalized["logical_type"],
+                nullable=normalized["nullable"],
+            )
+        log.info(f"Captured column schema with {len(column_schema)} columns")
+
         # Create Asset model using factory method for consistent metadata propagation
         validated_manifest = Manifest(**manifest)
         asset_metadata = AssetMetadata.from_manifest_metadata(
             validated_manifest.metadata,
             geometry_type=None,  # TODO: Populate in Milestone 2
-            column_schema=None,  # TODO: Populate in Milestone 3
+            column_schema=column_schema,
         )
 
         bounds = None

@@ -377,11 +377,19 @@ def _assert_mongodb_asset_exists(
     run_id: str,
 ) -> dict:
     db = mongo_client[mongo_settings.database]
-    collection = db["assets"]
 
-    asset_doc = collection.find_one({"dagster_run_id": run_id})
+    # First, find the run document to get the MongoDB ObjectId
+    run_doc = db["runs"].find_one({"dagster_run_id": run_id})
+    assert run_doc is not None, (
+        f"No run document found in MongoDB for dagster_run_id: {run_id}"
+    )
+    mongodb_run_id = str(run_doc["_id"])
+
+    collection = db["assets"]
+    # Assets now use run_id (string representation of MongoDB ObjectId)
+    asset_doc = collection.find_one({"run_id": mongodb_run_id})
     assert asset_doc is not None, (
-        f"No asset record found in MongoDB for run_id: {run_id}"
+        f"No asset record found in MongoDB for run_id: {mongodb_run_id} (Dagster run: {run_id})"
     )
     return asset_doc
 
@@ -500,6 +508,13 @@ class TestTabularAssetJobE2E:
             # Fixture CSV (`e2e_sample_table_data.csv`) already uses snake_case headers.
             assert header_mapping.get("ogc_fid") == "ogc_fid"
             assert header_mapping.get("sa1_code21") == "sa1_code21"
+
+            column_schema = metadata.get("column_schema")
+            assert isinstance(column_schema, dict)
+            assert "ogc_fid" in column_schema
+            assert column_schema["ogc_fid"]["type_name"] == "INTEGER"
+            assert "sa1_code21" in column_schema
+            assert column_schema["sa1_code21"]["type_name"] == "INTEGER"
 
             s3_key = asset_doc.get("s3_key")
             assert s3_key, "Asset document missing s3_key"

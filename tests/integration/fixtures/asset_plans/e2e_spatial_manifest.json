@@ -10,11 +10,21 @@
         }
     ],
     "metadata": {
-        "project": "E2E_SPATIAL_ASSET_TEST",
+        "title": "E2E Spatial Asset Test",
         "description": "End-to-end test for spatial asset ingestion - NSW SA1 boundaries sample with 42 features",
+        "keywords": [
+            "spatial",
+            "e2e",
+            "test",
+            "nsw",
+            "sa1"
+        ],
+        "source": "hhvi_nsw_sample",
+        "license": "CC-BY-4.0",
+        "attribution": "Australian Bureau of Statistics (ABS)",
         "tags": {
             "dataset_id": "sa1_spatial_${UUID}",
-            "source": "ausurbhi_hhvi_nsw_sample",
+            "source": "hhvi_nsw_sample",
             "geometry_type": "MultiPolygon",
             "feature_count": "42",
             "crs": "EPSG:4283"

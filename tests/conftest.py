@@ -140,6 +140,14 @@ def valid_spatial_asset(valid_bounds_dict):
             license="MIT",
             attribution="Test Team",
             geometry_type="MULTIPOLYGON",
+            column_schema={
+                "geom": {
+                    "title": "geom",
+                    "type_name": "GEOMETRY",
+                    "logical_type": "geometry",
+                    "nullable": False,
+                }
+            },
         ),
         created_at=datetime(2024, 1, 1, 12, 0, 0),
     )
@@ -234,6 +242,14 @@ def valid_asset_dict(valid_bounds_dict):
             "attribution": "Test Team",
             "tags": {},
             "geometry_type": "MULTIPOLYGON",
+            "column_schema": {
+                "geom": {
+                    "title": "geom",
+                    "type_name": "GEOMETRY",
+                    "logical_type": "geometry",
+                    "nullable": False,
+                }
+            },
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
         "updated_at": None,
@@ -264,6 +280,18 @@ def valid_tabular_asset_dict():
             "header_mapping": {
                 "Original Name": "original_name",
                 "Age (years)": "age_years",
+            },
+            "column_schema": {
+                "original_name": {
+                    "title": "Original Name",
+                    "type_name": "STRING",
+                    "logical_type": "string",
+                },
+                "age_years": {
+                    "title": "Age (years)",
+                    "type_name": "INTEGER",
+                    "logical_type": "int64",
+                },
             },
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),

@@ -10,11 +10,19 @@
         }
     ],
     "metadata": {
-        "project": "E2E_TABULAR_ASSET_TEST",
+        "title": "E2E Tabular Asset Test",
         "description": "End-to-end test for tabular asset ingestion - Heat vulnerability indices for SA1 regions",
+        "keywords": [
+            "tabular",
+            "e2e",
+            "test"
+        ],
+        "source": "hhvi_nsw_sample",
+        "license": "CC-BY-4.0",
+        "attribution": "Australian Bureau of Statistics (ABS)",
         "tags": {
             "dataset_id": "sa1_tabular_${UUID}",
-            "source": "ausurbhi_hhvi_nsw_sample",
+            "source": "hhvi_nsw_sample",
             "row_count": "42",
             "join_key": "sa1_code21"
         }

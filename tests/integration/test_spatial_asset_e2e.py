@@ -381,8 +381,20 @@ def _assert_mongodb_asset_exists(
     mongo_client: MongoClient, mongo_settings: MongoSettings, run_id: str
 ) -> dict:
     db = mongo_client[mongo_settings.database]
-    asset_doc = db["assets"].find_one({"dagster_run_id": run_id})
-    assert asset_doc is not None, f"No asset record found for run_id: {run_id}"
+
+    # First, find the run document to get the MongoDB ObjectId
+    run_doc = db["runs"].find_one({"dagster_run_id": run_id})
+    assert run_doc is not None, (
+        f"No run document found in MongoDB for dagster_run_id: {run_id}"
+    )
+    mongodb_run_id = str(run_doc["_id"])
+
+    collection = db["assets"]
+    # Assets now use run_id (string representation of MongoDB ObjectId)
+    asset_doc = collection.find_one({"run_id": mongodb_run_id})
+    assert asset_doc is not None, (
+        f"No asset record found in MongoDB for run_id: {mongodb_run_id} (Dagster run: {run_id})"
+    )
     return asset_doc
 
 
@@ -493,6 +505,15 @@ class TestSpatialAssetE2E:
             assert asset_doc.get("kind") == "spatial", (
                 f"Expected kind=spatial, got {asset_doc.get('kind')}"
             )
+
+            metadata = asset_doc.get("metadata") or {}
+            column_schema = metadata.get("column_schema")
+            assert isinstance(column_schema, dict)
+            # The sample sa1 data has many columns, let's check a few
+            assert "sa1_code21" in column_schema
+            assert column_schema["sa1_code21"]["type_name"] == "INTEGER"
+            assert "geom" in column_schema
+            assert column_schema["geom"]["type_name"] == "GEOMETRY"
 
             _assert_datalake_object_exists(
                 minio_client, minio_settings.lake_bucket, asset_doc["s3_key"]

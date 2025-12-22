@@ -12,7 +12,8 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 - **Persistence**: PostGIS is transient compute only. Never store permanent data there.
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
-- **Tabular processing**: Tabular data (CSV) is processed directly to Parquet without PostGIS. Headers are cleaned to valid Postgres identifiers for reliable joins.
+- **Tabular & Columnar Registry**: Tabular (CSV) and Spatial (GeoParquet) data automatically capture column schemas (names, types, nullability) during export to the data-lake. Types are normalized to a canonical vocabulary (STRING, INTEGER, GEOMETRY, etc.) and stored in MongoDB for UI/API introspection.
+- **Header Cleaning**: Headers in tabular CSVs are cleaned to valid Postgres identifiers for reliable downstream joins.
 
 ## Entry points / key files
 

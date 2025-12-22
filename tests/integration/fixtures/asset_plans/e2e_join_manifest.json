@@ -4,11 +4,19 @@
   "intent": "join_datasets",
   "files": [],
   "metadata": {
-    "project": "E2E_JOIN_ASSET_TEST",
+    "title": "E2E Join Asset Test",
     "description": "End-to-end test for join asset - Joins tabular with spatial assets",
+    "keywords": [
+      "join",
+      "e2e",
+      "test"
+    ],
+    "source": "hhvi_nsw_sample",
+    "license": "CC-BY-4.0",
+    "attribution": "Australian Bureau of Statistics (ABS)",
     "tags": {
       "dataset_id": "sa1_joined_${UUID}",
-      "source": "ausurbhi_hhvi_nsw_sample"
+      "source": "hhvi_nsw_sample"
     },
     "join_config": {
       "spatial_dataset_id": "${SPATIAL_DATASET_ID}",

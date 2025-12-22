@@ -20,13 +20,8 @@ from libs.models import (
     AssetKind,
     AssetMetadata,
     ColumnInfo,
-    ContentHash,
-    HumanMetadataMixin,
-    S3Path,
-    S3Key,
     FileType,
     OutputFormat,
-    MinIOSettings,
     MongoSettings,
     PostGISSettings,
     DagsterPostgresSettings,
@@ -455,6 +450,13 @@ class TestAssetValidation:
             "license": "MIT",
             "attribution": "Test team",
             "geometry_type": "MULTIPOLYGON",
+            "column_schema": {
+                "geom": {
+                    "title": "geom",
+                    "type_name": "GEOMETRY",
+                    "logical_type": "geometry",
+                }
+            },
         }
         asset = Asset(**data)
         assert asset.metadata.tags == {}
@@ -483,6 +485,13 @@ class TestAssetValidation:
         data["bounds"] = None
         data["metadata"]["tags"] = {"project": "ALPHA"}
         data["metadata"]["header_mapping"] = {"Original Name": "original_name"}
+        data["metadata"]["column_schema"] = {
+            "original_name": {
+                "title": "Original Name",
+                "type_name": "STRING",
+                "logical_type": "string",
+            }
+        }
 
         asset = Asset(**data)
         assert asset.kind == AssetKind.TABULAR
@@ -535,6 +544,13 @@ class TestAssetValidation:
             header_mapping={
                 "Original Name": "original_name",
                 "Age (years)": "age_years",
+            },
+            column_schema={
+                "original_name": {
+                    "title": "Original Name",
+                    "type_name": "STRING",
+                    "logical_type": "string",
+                }
             },
         )
         assert metadata.tags == {"project": "ALPHA", "period": "2021-01-01/2021-12-31"}
@@ -961,3 +977,82 @@ class TestAssetMetadataFactory:
         assert asset_meta.geometry_type == "MULTIPOLYGON"
         assert asset_meta.column_schema == {"col1": col_info}
         assert asset_meta.header_mapping == {"Original": "cleaned"}
+
+
+# =============================================================================
+# Milestone 3 - Tabular Schema Capture Enforcement tests
+# =============================================================================
+
+
+class TestTabularAssetSchemaEnforcement:
+    """Test that tabular assets require column_schema after M3."""
+
+    def test_tabular_asset_requires_column_schema(self):
+        """Test that tabular assets raise error without column_schema."""
+        from datetime import datetime, timezone
+        from libs.models import Asset, AssetKind, AssetMetadata, OutputFormat
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema=None,  # Missing!
+        )
+
+        with pytest.raises(ValueError, match="requires metadata.column_schema"):
+            Asset(
+                s3_key="dataset_001/v1/data.parquet",
+                dataset_id="dataset_001",
+                version=1,
+                content_hash="sha256:" + "a" * 64,
+                run_id="507f1f77bcf86cd799439011",
+                kind=AssetKind.TABULAR,
+                format=OutputFormat.PARQUET,
+                crs=None,
+                bounds=None,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_tabular_asset_with_column_schema_valid(self):
+        """Test that tabular assets with column_schema are valid."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "col1": ColumnInfo(
+                    title="col1", type_name="STRING", logical_type="string"
+                )
+            },
+        )
+
+        asset = Asset(
+            s3_key="dataset_001/v1/data.parquet",
+            dataset_id="dataset_001",
+            version=1,
+            content_hash="sha256:" + "a" * 64,
+            run_id="507f1f77bcf86cd799439011",
+            kind=AssetKind.TABULAR,
+            format=OutputFormat.PARQUET,
+            crs=None,
+            bounds=None,
+            metadata=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert asset.metadata.column_schema is not None

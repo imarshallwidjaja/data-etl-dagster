@@ -10,9 +10,12 @@
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, TYPE_CHECKING
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 import warnings
+
+if TYPE_CHECKING:
+    from .manifest import ManifestMetadata
 
 from .spatial import CRS, Bounds, OutputFormat
 from .manifest import TagValue
@@ -388,13 +391,13 @@ class Asset(BaseModel):
         """
         Validate kind-specific metadata requirements.
 
-        Rules (currently warnings, will become errors in Milestone 2/3):
-        - kind == SPATIAL or JOINED → metadata.geometry_type should be set
-        - kind == TABULAR or JOINED → metadata.column_schema should be set
+        Rules:
+        - kind == SPATIAL or JOINED → metadata.geometry_type should be set (WARNING until M2)
+        - kind in {TABULAR, SPATIAL, JOINED} → metadata.column_schema MUST be set (ERROR)
 
         This enforces that system-derived metadata is populated based on asset kind.
         """
-        # Spatial and joined assets should have geometry_type
+        # Spatial and joined assets should have geometry_type (warning until M2)
         if self.kind in {AssetKind.SPATIAL, AssetKind.JOINED}:
             if self.metadata.geometry_type is None:
                 warnings.warn(
@@ -404,14 +407,11 @@ class Asset(BaseModel):
                     stacklevel=2,
                 )
 
-        # Tabular and joined assets should have column_schema
-        if self.kind in {AssetKind.TABULAR, AssetKind.JOINED}:
+        # ALL columnar assets MUST have column_schema (enforced in M3)
+        if self.kind in {AssetKind.TABULAR, AssetKind.SPATIAL, AssetKind.JOINED}:
             if self.metadata.column_schema is None:
-                warnings.warn(
-                    f"Asset with kind '{self.kind.value}' should have metadata.column_schema set. "
-                    f"This will become a required field in Milestone 3.",
-                    UserWarning,
-                    stacklevel=2,
+                raise ValueError(
+                    f"Asset with kind '{self.kind.value}' requires metadata.column_schema"
                 )
 
         return self

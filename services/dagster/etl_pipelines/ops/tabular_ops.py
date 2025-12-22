@@ -19,9 +19,17 @@ import pyarrow.parquet as pq
 
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Asset, AssetKind, AssetMetadata, OutputFormat, Manifest
+from libs.models import (
+    Asset,
+    AssetKind,
+    AssetMetadata,
+    OutputFormat,
+    Manifest,
+    ColumnInfo,
+)
 from libs.s3_utils import extract_s3_key
 from libs.spatial_utils import normalize_headers
+from libs.normalization import normalize_arrow_schema
 
 
 def _download_tabular_from_landing(
@@ -239,7 +247,7 @@ def _export_tabular_parquet_to_datalake(
         # Write Arrow Table to Parquet
         log.info(f"Writing Parquet file: {temp_file_path}")
         pq.write_table(table, temp_file_path)
-        log.info(f"Successfully wrote Parquet file")
+        log.info("Successfully wrote Parquet file")
 
         # Calculate SHA256 content hash
         sha256_hash = hashlib.sha256()
@@ -258,10 +266,23 @@ def _export_tabular_parquet_to_datalake(
         if join_key_clean:
             manifest_tags["join_key_clean"] = join_key_clean
 
+        # Build column_schema from Arrow table schema
+        normalized_schema = normalize_arrow_schema(table.schema)
+        column_schema = {}
+        for field_name, normalized in normalized_schema.items():
+            column_schema[field_name] = ColumnInfo(
+                title=field_name,
+                description="",  # Empty for now
+                type_name=normalized["type_name"],
+                logical_type=normalized["logical_type"],
+                nullable=normalized["nullable"],
+            )
+        log.info(f"Captured column schema with {len(column_schema)} columns")
+
         asset_metadata = AssetMetadata.from_manifest_metadata(
             validated_manifest.metadata,
             header_mapping=header_mapping,
-            column_schema=None,  # TODO: Populate in Milestone 3
+            column_schema=column_schema,
         )
         # Add the join_key_clean to tags if present (post-factory adjustment)
         if join_key_clean:
