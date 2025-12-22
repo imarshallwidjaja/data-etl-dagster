@@ -198,11 +198,140 @@ def up(db: Database) -> None:
 
 def down(db: Database) -> None:
     """
-    Rollback migration.
+    Rollback migration - reverts validators to migration 003 state.
 
-    Reverts validators to state in migration 003.
+    Note: This rollback removes column_schema and enhanced metadata requirements.
+    Documents created with M4 schema may fail validation after rollback.
     """
-    # Simply running migration 003 'up' logic would work if we wanted to revert,
-    # but technically we should define the 003 state here if we want a clean 'down'.
-    # For now, we follow idempotent patterns.
-    pass
+    # 1. Revert Manifests Validator to 003 state
+    manifests_validator_003 = {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+                "batch_id",
+                "uploader",
+                "intent",
+                "files",
+                "metadata",
+                "status",
+                "ingested_at",
+            ],
+            "properties": {
+                "batch_id": {"bsonType": "string"},
+                "uploader": {"bsonType": "string"},
+                "intent": {"bsonType": "string"},
+                "files": {
+                    "bsonType": "array",
+                    "items": {
+                        "bsonType": "object",
+                        "required": ["path", "type", "format"],
+                        "properties": {
+                            "path": {"bsonType": "string"},
+                            "type": {"enum": ["raster", "vector", "tabular"]},
+                            "format": {"bsonType": "string"},
+                        },
+                        "additionalProperties": False,
+                    },
+                },
+                "metadata": {
+                    "bsonType": "object",
+                    "required": ["project"],
+                    "properties": {
+                        "project": {"bsonType": "string"},
+                        "description": {"bsonType": ["string", "null"]},
+                        "tags": {
+                            "bsonType": ["object", "null"],
+                            "additionalProperties": {
+                                "bsonType": ["string", "int", "long", "double", "bool"]
+                            },
+                        },
+                        "join_config": {
+                            "bsonType": ["object", "null"],
+                            "additionalProperties": True,
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "status": {"enum": ["running", "success", "failure", "canceled"]},
+                "error_message": {"bsonType": ["string", "null"]},
+                "ingested_at": {"bsonType": "date"},
+                "completed_at": {"bsonType": ["date", "null"]},
+                "updated_at": {"bsonType": ["date", "null"]},
+            },
+        }
+    }
+    db.command(
+        "collMod",
+        "manifests",
+        validator=manifests_validator_003,
+        validationLevel="strict",
+        validationAction="error",
+    )
+
+    # 2. Revert Assets Validator to 003 state (without column_schema and enhanced metadata)
+    assets_validator_003 = {
+        "$jsonSchema": {
+            "bsonType": "object",
+            "required": [
+                "s3_key",
+                "dataset_id",
+                "version",
+                "content_hash",
+                "run_id",
+                "kind",
+                "format",
+                "created_at",
+            ],
+            "properties": {
+                "s3_key": {"bsonType": "string"},
+                "dataset_id": {"bsonType": "string"},
+                "version": {"bsonType": "int", "minimum": 1},
+                "content_hash": {
+                    "bsonType": "string",
+                    "pattern": "^sha256:[a-f0-9]{64}$",
+                },
+                "run_id": {"bsonType": "string"},
+                "kind": {"enum": ["spatial", "tabular", "joined"]},
+                "format": {"enum": ["geoparquet", "cog", "geojson", "parquet"]},
+                "crs": {"bsonType": ["string", "null"]},
+                "bounds": {
+                    "bsonType": ["object", "null"],
+                    "properties": {
+                        "minx": {"bsonType": "double"},
+                        "miny": {"bsonType": "double"},
+                        "maxx": {"bsonType": "double"},
+                        "maxy": {"bsonType": "double"},
+                    },
+                },
+                "metadata": {
+                    "bsonType": "object",
+                    "required": ["title"],
+                    "properties": {
+                        "title": {"bsonType": "string"},
+                        "description": {"bsonType": ["string", "null"]},
+                        "source": {"bsonType": ["string", "null"]},
+                        "license": {"bsonType": ["string", "null"]},
+                        "tags": {
+                            "bsonType": "object",
+                            "additionalProperties": {
+                                "bsonType": ["string", "int", "long", "double", "bool"]
+                            },
+                        },
+                        "header_mapping": {
+                            "bsonType": ["object", "null"],
+                            "additionalProperties": {"bsonType": "string"},
+                        },
+                    },
+                },
+                "created_at": {"bsonType": "date"},
+                "updated_at": {"bsonType": ["date", "null"]},
+            },
+        }
+    }
+    db.command(
+        "collMod",
+        "assets",
+        validator=assets_validator_003,
+        validationLevel="strict",
+        validationAction="error",
+    )

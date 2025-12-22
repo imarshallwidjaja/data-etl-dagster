@@ -27,9 +27,8 @@ from libs.models import (
     CRS,
     Manifest,
     OutputFormat,
-    ColumnInfo,
 )
-from libs.normalization import normalize_arrow_schema
+from libs.normalization import extract_column_schema
 from libs.s3_utils import s3_to_vsis3
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -414,16 +413,7 @@ def _export_joined_to_datalake(
         # Extract column schema from joined GeoParquet
         log.info("Extracting column schema from joined GeoParquet")
         parquet_schema = pq.read_schema(temp_file_path)
-        normalized_schema = normalize_arrow_schema(parquet_schema)
-        column_schema = {}
-        for field_name, normalized in normalized_schema.items():
-            column_schema[field_name] = ColumnInfo(
-                title=field_name,
-                description="",
-                type_name=normalized["type_name"],
-                logical_type=normalized["logical_type"],
-                nullable=normalized["nullable"],
-            )
+        column_schema = extract_column_schema(parquet_schema)
         log.info(f"Captured column schema with {len(column_schema)} columns")
 
         # Create Asset model using factory method for consistent metadata propagation

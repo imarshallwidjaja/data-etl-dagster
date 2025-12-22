@@ -25,11 +25,10 @@ from libs.models import (
     AssetMetadata,
     OutputFormat,
     Manifest,
-    ColumnInfo,
 )
 from libs.s3_utils import extract_s3_key
 from libs.spatial_utils import normalize_headers
-from libs.normalization import normalize_arrow_schema
+from libs.normalization import extract_column_schema
 
 
 def _download_tabular_from_landing(
@@ -267,16 +266,7 @@ def _export_tabular_parquet_to_datalake(
             manifest_tags["join_key_clean"] = join_key_clean
 
         # Build column_schema from Arrow table schema
-        normalized_schema = normalize_arrow_schema(table.schema)
-        column_schema = {}
-        for field_name, normalized in normalized_schema.items():
-            column_schema[field_name] = ColumnInfo(
-                title=field_name,
-                description="",  # Empty for now
-                type_name=normalized["type_name"],
-                logical_type=normalized["logical_type"],
-                nullable=normalized["nullable"],
-            )
+        column_schema = extract_column_schema(table.schema)
         log.info(f"Captured column schema with {len(column_schema)} columns")
 
         asset_metadata = AssetMetadata.from_manifest_metadata(

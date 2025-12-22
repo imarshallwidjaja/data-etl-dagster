@@ -23,10 +23,9 @@ from libs.models import (
     OutputFormat,
     CRS,
     Manifest,
-    ColumnInfo,
 )
 from libs.spatial_utils import RunIdSchemaMapping
-from libs.normalization import normalize_arrow_schema
+from libs.normalization import extract_column_schema
 from ..resources.gdal_resource import GDALResult
 
 
@@ -127,16 +126,7 @@ def _export_to_datalake(
         # Extract column schema from exported GeoParquet
         log.info("Extracting column schema from exported GeoParquet")
         parquet_schema = pq.read_schema(temp_file_path)
-        normalized_schema = normalize_arrow_schema(parquet_schema)
-        column_schema = {}
-        for field_name, normalized in normalized_schema.items():
-            column_schema[field_name] = ColumnInfo(
-                title=field_name,
-                description="",
-                type_name=normalized["type_name"],
-                logical_type=normalized["logical_type"],
-                nullable=normalized["nullable"],
-            )
+        column_schema = extract_column_schema(parquet_schema)
         log.info(f"Captured column schema with {len(column_schema)} columns")
 
         # Create Asset model using factory method for consistent metadata propagation

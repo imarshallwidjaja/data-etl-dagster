@@ -1,6 +1,5 @@
 """Unit tests for Arrow type normalization."""
 
-import pytest
 import pyarrow as pa
 
 from libs.normalization import normalize_arrow_dtype
@@ -99,3 +98,129 @@ class TestNormalizeArrowDtype:
         field = pa.field("null_col", pa.null())
         result = normalize_arrow_dtype(field)
         assert result["type_name"] == "UNKNOWN"
+
+    def test_duration_type_is_unknown(self):
+        """Test that duration type falls back to UNKNOWN."""
+        field = pa.field("elapsed", pa.duration("ns"))
+        result = normalize_arrow_dtype(field)
+        assert result["type_name"] == "UNKNOWN"
+
+    def test_decimal_type(self):
+        """Test decimal type normalization."""
+        field = pa.field("price", pa.decimal128(10, 2))
+        result = normalize_arrow_dtype(field)
+        assert result["type_name"] == "DECIMAL"
+
+    def test_time_type(self):
+        """Test time type normalization."""
+        field = pa.field("time_col", pa.time64("ns"))
+        result = normalize_arrow_dtype(field)
+        assert result["type_name"] == "TIME"
+
+    def test_map_type(self):
+        """Test map type normalization."""
+        field = pa.field("mapping", pa.map_(pa.string(), pa.int32()))
+        result = normalize_arrow_dtype(field)
+        assert result["type_name"] == "MAP"
+
+
+class TestNormalizeArrowSchema:
+    """Test normalize_arrow_schema function with full schemas."""
+
+    def test_empty_schema(self):
+        """Test normalization of empty schema."""
+        from libs.normalization import normalize_arrow_schema
+
+        result = normalize_arrow_schema(pa.schema([]))
+        assert result == {}
+
+    def test_basic_schema(self):
+        """Test normalization of basic schema without geo metadata."""
+        from libs.normalization import normalize_arrow_schema
+
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("name", pa.string()),
+                pa.field("active", pa.bool_()),
+            ]
+        )
+        result = normalize_arrow_schema(schema)
+        assert len(result) == 3
+        assert result["id"]["type_name"] == "INTEGER"
+        assert result["name"]["type_name"] == "STRING"
+        assert result["active"]["type_name"] == "BOOLEAN"
+
+    def test_geoparquet_metadata_marks_geometry(self):
+        """Test that GeoParquet 'geo' metadata correctly marks geometry columns."""
+        from libs.normalization import normalize_arrow_schema
+        import json
+
+        geo_metadata = {
+            "version": "1.0.0",
+            "primary_column": "geometry",
+            "columns": {"geometry": {"encoding": "WKB", "geometry_types": ["Point"]}},
+        }
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("geometry", pa.binary()),  # No field-level indicator
+            ],
+            metadata={b"geo": json.dumps(geo_metadata).encode()},
+        )
+        result = normalize_arrow_schema(schema)
+        assert result["geometry"]["type_name"] == "GEOMETRY"
+        assert result["id"]["type_name"] == "INTEGER"
+
+    def test_geoparquet_with_malformed_json(self):
+        """Test that malformed GeoParquet metadata doesn't crash."""
+        from libs.normalization import normalize_arrow_schema
+
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("geom", pa.binary()),
+            ],
+            metadata={b"geo": b"not valid json {"},
+        )
+        # Should not raise, geometry column should be typed as BINARY
+        result = normalize_arrow_schema(schema)
+        assert result["geom"]["type_name"] == "BINARY"
+        assert result["id"]["type_name"] == "INTEGER"
+
+
+class TestExtractColumnSchema:
+    """Test extract_column_schema helper function."""
+
+    def test_returns_column_info_models(self):
+        """Test that extract_column_schema returns ColumnInfo Pydantic models."""
+        from libs.normalization import extract_column_schema
+        from libs.models import ColumnInfo
+
+        schema = pa.schema(
+            [
+                pa.field("id", pa.int64()),
+                pa.field("name", pa.string()),
+            ]
+        )
+        result = extract_column_schema(schema)
+        assert len(result) == 2
+        assert isinstance(result["id"], ColumnInfo)
+        assert isinstance(result["name"], ColumnInfo)
+        assert result["id"].type_name == "INTEGER"
+        assert result["id"].title == "id"
+        assert result["name"].type_name == "STRING"
+
+    def test_preserves_nullability(self):
+        """Test that nullability is correctly propagated."""
+        from libs.normalization import extract_column_schema
+
+        schema = pa.schema(
+            [
+                pa.field("required", pa.int64(), nullable=False),
+                pa.field("optional", pa.int64(), nullable=True),
+            ]
+        )
+        result = extract_column_schema(schema)
+        assert result["required"].nullable is False
+        assert result["optional"].nullable is True
