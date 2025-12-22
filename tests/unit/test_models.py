@@ -605,6 +605,11 @@ class TestContentHashValidation:
                 license="MIT",
                 attribution="Test",
                 geometry_type="POINT",
+                column_schema={
+                    "geom": ColumnInfo(
+                        title="geom", type_name="GEOMETRY", logical_type="binary"
+                    )
+                },
             ),
             created_at=datetime.now(),
         )
@@ -775,6 +780,11 @@ class TestS3KeyValidation:
                 license="MIT",
                 attribution="Test",
                 geometry_type="POINT",
+                column_schema={
+                    "geom": ColumnInfo(
+                        title="geom", type_name="GEOMETRY", logical_type="binary"
+                    )
+                },
             ),
             created_at=datetime.now(),
         )
@@ -1056,3 +1066,177 @@ class TestTabularAssetSchemaEnforcement:
             created_at=datetime.now(timezone.utc),
         )
         assert asset.metadata.column_schema is not None
+
+
+# =============================================================================
+# Milestone 2 - Spatial Geometry Type Enforcement tests
+# =============================================================================
+
+
+class TestSpatialGeometryTypeEnforcement:
+    """Test that spatial/joined assets require geometry_type after M2."""
+
+    def test_spatial_asset_requires_geometry_type(self):
+        """Test that spatial assets raise error without geometry_type."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+            CRS,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "geom": ColumnInfo(
+                    title="geom", type_name="GEOMETRY", logical_type="binary"
+                )
+            },
+            geometry_type=None,  # Missing!
+        )
+
+        with pytest.raises(ValueError, match="requires metadata.geometry_type"):
+            Asset(
+                s3_key="dataset_001/v1/data.parquet",
+                dataset_id="dataset_001",
+                version=1,
+                content_hash="sha256:" + "a" * 64,
+                run_id="507f1f77bcf86cd799439011",
+                kind=AssetKind.SPATIAL,
+                format=OutputFormat.GEOPARQUET,
+                crs=CRS("EPSG:4326"),
+                bounds=None,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_spatial_asset_with_geometry_type_valid(self):
+        """Test that spatial assets with geometry_type are valid."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+            CRS,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "geom": ColumnInfo(
+                    title="geom", type_name="GEOMETRY", logical_type="binary"
+                )
+            },
+            geometry_type="MULTIPOLYGON",  # Provided
+        )
+
+        asset = Asset(
+            s3_key="dataset_001/v1/data.parquet",
+            dataset_id="dataset_001",
+            version=1,
+            content_hash="sha256:" + "a" * 64,
+            run_id="507f1f77bcf86cd799439011",
+            kind=AssetKind.SPATIAL,
+            format=OutputFormat.GEOPARQUET,
+            crs=CRS("EPSG:4326"),
+            bounds=None,
+            metadata=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert asset.metadata.geometry_type == "MULTIPOLYGON"
+
+    def test_joined_asset_requires_geometry_type(self):
+        """Test that joined assets raise error without geometry_type."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+            CRS,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "id": ColumnInfo(title="id", type_name="INTEGER", logical_type="int64")
+            },
+            geometry_type=None,  # Missing!
+        )
+
+        with pytest.raises(ValueError, match="requires metadata.geometry_type"):
+            Asset(
+                s3_key="dataset_001/v1/data.parquet",
+                dataset_id="dataset_001",
+                version=1,
+                content_hash="sha256:" + "a" * 64,
+                run_id="507f1f77bcf86cd799439011",
+                kind=AssetKind.JOINED,
+                format=OutputFormat.GEOPARQUET,
+                crs=CRS("EPSG:4326"),
+                bounds=None,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_tabular_asset_does_not_require_geometry_type(self):
+        """Test that tabular assets don't require geometry_type."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "col1": ColumnInfo(
+                    title="col1", type_name="STRING", logical_type="string"
+                )
+            },
+            geometry_type=None,  # OK for tabular
+        )
+
+        asset = Asset(
+            s3_key="dataset_001/v1/data.parquet",
+            dataset_id="dataset_001",
+            version=1,
+            content_hash="sha256:" + "a" * 64,
+            run_id="507f1f77bcf86cd799439011",
+            kind=AssetKind.TABULAR,
+            format=OutputFormat.PARQUET,
+            crs=None,
+            bounds=None,
+            metadata=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert asset.metadata.geometry_type is None  # OK for tabular

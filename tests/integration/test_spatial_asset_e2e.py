@@ -515,6 +515,15 @@ class TestSpatialAssetE2E:
             assert "geom" in column_schema
             assert column_schema["geom"]["type_name"] == "GEOMETRY"
 
+            # Milestone 2: Verify geometry_type was captured
+            geometry_type = metadata.get("geometry_type")
+            assert geometry_type is not None, "geometry_type should be captured"
+            assert isinstance(geometry_type, str), "geometry_type should be a string"
+            # The test fixture uses MultiPolygon data (SA1 boundaries)
+            assert geometry_type in ["MULTIPOLYGON", "POLYGON", "GEOMETRY"], (
+                f"Expected polygon-like geometry type, got {geometry_type}"
+            )
+
             _assert_datalake_object_exists(
                 minio_client, minio_settings.lake_bucket, asset_doc["s3_key"]
             )

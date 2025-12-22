@@ -12,7 +12,6 @@ from datetime import datetime
 from enum import Enum
 from typing import Annotated, TYPE_CHECKING
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
-import warnings
 
 if TYPE_CHECKING:
     from .manifest import ManifestMetadata
@@ -392,19 +391,16 @@ class Asset(BaseModel):
         Validate kind-specific metadata requirements.
 
         Rules:
-        - kind == SPATIAL or JOINED → metadata.geometry_type should be set (WARNING until M2)
-        - kind in {TABULAR, SPATIAL, JOINED} → metadata.column_schema MUST be set (ERROR)
+        - kind == SPATIAL or JOINED → metadata.geometry_type MUST be set (ERROR - M2)
+        - kind in {TABULAR, SPATIAL, JOINED} → metadata.column_schema MUST be set (ERROR - M3)
 
         This enforces that system-derived metadata is populated based on asset kind.
         """
-        # Spatial and joined assets should have geometry_type (warning until M2)
+        # Spatial and joined assets MUST have geometry_type (enforced in M2)
         if self.kind in {AssetKind.SPATIAL, AssetKind.JOINED}:
             if self.metadata.geometry_type is None:
-                warnings.warn(
-                    f"Asset with kind '{self.kind.value}' should have metadata.geometry_type set. "
-                    f"This will become a required field in Milestone 2.",
-                    UserWarning,
-                    stacklevel=2,
+                raise ValueError(
+                    f"Asset with kind '{self.kind.value}' requires metadata.geometry_type"
                 )
 
         # ALL columnar assets MUST have column_schema (enforced in M3)

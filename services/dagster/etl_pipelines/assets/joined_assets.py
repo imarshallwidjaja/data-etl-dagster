@@ -126,6 +126,7 @@ def joined_spatial_asset(
             manifest=validated_manifest.model_dump(mode="json"),
             crs=str(spatial_asset.crs),
             bounds_dict=join_result["bounds"],
+            geometry_type=join_result.get("geometry_type"),  # Milestone 2
             dataset_id=dataset_id,
             dagster_run_id=dagster_run_id,
             run_id=run_id,

@@ -13,6 +13,7 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
 - **Tabular & Columnar Registry**: Tabular (CSV) and Spatial (GeoParquet) data automatically capture column schemas (names, types, nullability) during export to the data-lake. Types are normalized to a canonical vocabulary (STRING, INTEGER, GEOMETRY, etc.) and stored in MongoDB for UI/API introspection.
+- **Geometry Type Capture**: Spatial and joined assets automatically capture geometry type (POINT, POLYGON, MULTIPOLYGON, etc.) from PostGIS during processing. Stored in `metadata.geometry_type` for catalog introspection. Enforced as required for spatial/joined assets.
 - **Header Cleaning**: Headers in tabular CSVs are cleaned to valid Postgres identifiers for reliable downstream joins.
 
 ## Entry points / key files

@@ -65,6 +65,7 @@ def _export_to_datalake(
     manifest = transform_result["manifest"]
     bounds_dict = transform_result["bounds"]
     crs = transform_result["crs"]
+    geometry_type = transform_result.get("geometry_type")  # Milestone 2
 
     # Generate dataset_id
     dataset_id = f"dataset_{uuid.uuid4().hex[:12]}"
@@ -133,7 +134,7 @@ def _export_to_datalake(
         validated_manifest = Manifest(**manifest)
         asset_metadata = AssetMetadata.from_manifest_metadata(
             validated_manifest.metadata,
-            geometry_type=None,  # TODO: Populate in Milestone 2
+            geometry_type=geometry_type,  # Milestone 2: spatial metadata capture
             column_schema=column_schema,
         )
 

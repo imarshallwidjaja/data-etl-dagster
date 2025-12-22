@@ -340,11 +340,22 @@ def _execute_spatial_join(
             "maxy": bounds.maxy,
         }
 
+    # Extract geometry type for joined output (Milestone 2)
+    try:
+        geometry_type = postgis.get_geometry_type(
+            schema, output_table, geom_column="geom"
+        )
+        log.info(f"Captured geometry type for joined asset: {geometry_type}")
+    except Exception as e:
+        log.warning(f"Failed to extract geometry type: {e}. Using UNKNOWN.")
+        geometry_type = "UNKNOWN"
+
     return {
         "schema": schema,
         "table": output_table,
         "bounds": bounds_dict,
         "geom_column": "geom",
+        "geometry_type": geometry_type,  # Milestone 2: spatial metadata capture
     }
 
 
@@ -359,6 +370,7 @@ def _export_joined_to_datalake(
     manifest: Dict[str, Any],
     crs: str,
     bounds_dict: dict[str, float] | None,
+    geometry_type: str | None,  # Milestone 2: spatial metadata capture
     dataset_id: str,
     dagster_run_id: str,
     run_id: str,
@@ -420,7 +432,7 @@ def _export_joined_to_datalake(
         validated_manifest = Manifest(**manifest)
         asset_metadata = AssetMetadata.from_manifest_metadata(
             validated_manifest.metadata,
-            geometry_type=None,  # TODO: Populate in Milestone 2
+            geometry_type=geometry_type,  # Milestone 2: spatial metadata capture
             column_schema=column_schema,
         )
 
