@@ -13,6 +13,8 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 from bson import ObjectId
 
+from pymongo.errors import OperationFailure
+
 from libs.models import Asset, ManifestRecord, ManifestStatus, Run, RunStatus
 
 __all__ = ["MongoDBResource"]
@@ -204,7 +206,7 @@ class MongoDBResource(ConfigurableResource):
         Register a processed asset in MongoDB.
         """
         collection = self._get_collection(self.ASSETS)
-        result = collection.insert_one(asset.model_dump(exclude_none=True))
+        result = collection.insert_one(asset.model_dump(mode="json"))
         return str(result.inserted_id)
 
     def get_asset_by_id(self, asset_id: str) -> Asset | None:
@@ -356,12 +358,20 @@ class MongoDBResource(ConfigurableResource):
         if kind:
             query["kind"] = kind
 
-        cursor = (
-            self._get_collection(self.ASSETS)
-            .find(query, {"score": {"$meta": "textScore"}})
-            .sort([("score", {"$meta": "textScore"})])
-            .limit(limit)
-        )
+        try:
+            cursor = (
+                self._get_collection(self.ASSETS)
+                .find(query, {"score": {"$meta": "textScore"}})
+                .sort([("score", {"$meta": "textScore"})])
+                .limit(limit)
+            )
+        except OperationFailure as e:
+            if "text index required" in str(e).lower():
+                raise RuntimeError(
+                    "Text search index not found. "
+                    "Ensure migration 002_add_text_search has been applied."
+                ) from e
+            raise
 
         assets = []
         for doc in cursor:

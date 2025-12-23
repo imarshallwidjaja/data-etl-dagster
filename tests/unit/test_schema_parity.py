@@ -83,6 +83,22 @@ class TestAssetSchemaParity:
             f"Format enum mismatch. Pydantic: {pydantic_values}, MongoDB: {mongo_values}"
         )
 
+    def test_asset_created_at_is_date(self):
+        """Test that created_at field is validated as bsonType: date."""
+        created_at_schema = ASSETS_SCHEMA_V001["$jsonSchema"]["properties"][
+            "created_at"
+        ]
+        assert created_at_schema.get("bsonType") == "date", (
+            f"Expected created_at bsonType 'date', got {created_at_schema}"
+        )
+
+    def test_asset_version_is_int(self):
+        """Test that version field is validated as bsonType: int."""
+        version_schema = ASSETS_SCHEMA_V001["$jsonSchema"]["properties"]["version"]
+        assert version_schema.get("bsonType") == "int", (
+            f"Expected version bsonType 'int', got {version_schema}"
+        )
+
 
 class TestManifestSchemaParity:
     """Verify ManifestRecord matches latest migration schema."""

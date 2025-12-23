@@ -34,6 +34,8 @@ def json_type_to_bson(json_type: str | list) -> str | list:
 
 def transform_schema(schema: dict, defs: dict | None = None) -> dict:
     """Recursively transform JSON Schema to MongoDB bsonType format."""
+    import warnings
+
     if defs is None:
         defs = schema.get("$defs", {})
 
@@ -62,11 +64,20 @@ def transform_schema(schema: dict, defs: dict | None = None) -> dict:
             result["bsonType"] = types
         return result
 
+    # Handle format (date-time -> date)
+    if schema.get("format") == "date-time":
+        result["bsonType"] = "date"
+        return result
+
     if "type" in schema:
         result["bsonType"] = json_type_to_bson(schema["type"])
 
     if "enum" in schema:
         result["enum"] = schema["enum"]
+
+    if "const" in schema:
+        # MongoDB doesn't have const, use enum with single value
+        result["enum"] = [schema["const"]]
 
     if "pattern" in schema:
         result["pattern"] = schema["pattern"]
@@ -92,6 +103,34 @@ def transform_schema(schema: dict, defs: dict | None = None) -> dict:
             result["additionalProperties"] = transform_schema(
                 schema["additionalProperties"], defs
             )
+
+    # Warn about unhandled keywords
+    handled_keywords = {
+        "$ref",
+        "anyOf",
+        "type",
+        "enum",
+        "const",
+        "pattern",
+        "minimum",
+        "properties",
+        "required",
+        "items",
+        "additionalProperties",
+        "format",
+        "$defs",
+        "title",
+        "description",
+        "default",
+        "examples",
+    }
+    unhandled = set(schema.keys()) - handled_keywords
+    if unhandled:
+        warnings.warn(
+            f"Unhandled JSON Schema keywords (may need manual mapping): {unhandled}",
+            UserWarning,
+            stacklevel=2,
+        )
 
     return result
 
