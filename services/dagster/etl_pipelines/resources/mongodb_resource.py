@@ -204,9 +204,14 @@ class MongoDBResource(ConfigurableResource):
     def insert_asset(self, asset: Asset) -> str:
         """
         Register a processed asset in MongoDB.
+
+        Note: Uses model_dump() WITHOUT mode="json" to preserve datetime objects
+        as native Python datetime, which pymongo converts to BSON date type.
+        Using mode="json" would convert datetime to ISO strings, causing
+        MongoDB schema validation to fail (bsonType: "date" requires actual dates).
         """
         collection = self._get_collection(self.ASSETS)
-        result = collection.insert_one(asset.model_dump(mode="json"))
+        result = collection.insert_one(asset.model_dump())
         return str(result.inserted_id)
 
     def get_asset_by_id(self, asset_id: str) -> Asset | None:

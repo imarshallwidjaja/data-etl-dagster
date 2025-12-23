@@ -7,7 +7,6 @@
 
 import hashlib
 import tempfile
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any
@@ -26,6 +25,7 @@ from libs.models import (
 )
 from libs.spatial_utils import RunIdSchemaMapping
 from libs.normalization import extract_column_schema
+from ..partitions import extract_partition_key
 from ..resources.gdal_resource import GDALResult
 
 
@@ -67,9 +67,10 @@ def _export_to_datalake(
     crs = transform_result["crs"]
     geometry_type = transform_result.get("geometry_type")  # Milestone 2
 
-    # Generate dataset_id
-    dataset_id = f"dataset_{uuid.uuid4().hex[:12]}"
-    log.info(f"Generated dataset_id: {dataset_id}")
+    # Extract dataset_id from manifest tags or generate if not provided
+    # Uses metadata.tags.dataset_id if present, otherwise generates UUID
+    dataset_id = extract_partition_key(manifest)
+    log.info(f"Using dataset_id: {dataset_id}")
 
     # Get next version number
     version = mongodb.get_next_version(dataset_id)
