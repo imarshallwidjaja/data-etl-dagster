@@ -1,43 +1,66 @@
 # MongoDB Schema Migrations
 
-This directory contains **versioned, idempotent** MongoDB schema migrations for the platform’s **metadata ledger**.
+Versioned, idempotent schema migrations for the metadata ledger.
 
-The migration runner is `scripts/migrate_db.py`.
+## Migration History
 
-## Why migrations exist
+> Migrations consolidated on 2025-12-23 (Milestone 4).
+> Original 001-004 squashed into single baseline.
 
-MongoDB init scripts in `services/mongodb/init/` only run on **first** container startup (fresh volume).
-Migrations let us evolve schema/validators/indexes safely on **existing** deployments without wiping data.
+## Current Migrations
 
-## How it works
+| Version | File | Purpose |
+|---------|------|---------|
+| 001 | `001_baseline_schema.py` | Complete baseline (assets, manifests, runs, lineage) |
+| 002 | `002_add_text_search.py` | Text index for keyword search |
 
-- **Discovery**: the runner loads `NNN_description.py` files (3-digit prefix) from this directory.
-- **Ordering**: migrations are applied in ascending `NNN` order.
-- **Tracking**: applied versions are recorded in the `schema_migrations` collection.
-- **Retry semantics**: if a migration fails, it is **not** recorded and will be retried on the next run.
+## Schema Management Pattern
 
-## Migration file contract
+1. **Pydantic models** (`libs/models/`) are source of truth for Python
+2. **Migrations** contain FROZEN schema constants (never modified after creation)
+3. **Generator script** (`scripts/generate_migration_schema.py`) creates schemas from Pydantic
+4. **Parity tests** (`tests/unit/test_schema_parity.py`) detect drift
 
-Each migration file must define:
+### Workflow: Changing Schema
 
-```python
-from pymongo.database import Database
-
-VERSION = "001"  # must match filename prefix
-
-def up(db: Database) -> None:
-    ...
+```
+1. Update libs/models/*.py
+2. Run parity test → FAILS (expected)
+3. Generate schema: python scripts/generate_migration_schema.py Asset
+4. Create new migration with frozen schema constant + data migration
+5. Update parity test for new migration
+6. Run migrations
 ```
 
-## Adding a new migration
+## Indexes
 
-1. Create `services/mongodb/migrations/NNN_short_description.py`
-2. Set `VERSION = "NNN"` to match the filename prefix exactly
-3. Implement `up(db)` (make it idempotent: safe to run more than once)
-4. Run locally: `python scripts/migrate_db.py`
+### Assets
+- `s3_key` (unique)
+- `dataset_id+version` (compound)
+- `content_hash`, `run_id`, `kind`, `created_at`
+- `metadata.keywords` (multikey for array)
+- `kind+dataset_id` (compound)
+- `metadata.keywords` (text) - for full-text search
 
-## Notes
+### Manifests
+- `batch_id` (unique), `status`, `ingested_at`
 
-- `001_baseline_schema.py` includes tabular support; `002_add_tabular_contracts.py` is effectively a no-op for fresh installs.
+### Runs
+- `dagster_run_id` (unique, sparse), `batch_id`, `status`, `batch_id+started_at`
 
+### Lineage
+- `source_asset_id`, `target_asset_id`, `run_id`
 
+## Developer Recovery
+
+If schema validation errors block development:
+
+```powershell
+# Drop specific collections
+python scripts/reset_mongodb.py --collections assets manifests --confirm
+
+# Or drop all ETL collections
+python scripts/reset_mongodb.py --all --confirm
+```
+
+See also: `docker compose down -v` for nuclear reset.

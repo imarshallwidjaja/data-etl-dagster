@@ -323,3 +323,50 @@ class MongoDBResource(ConfigurableResource):
         if not latest:
             return 1
         return latest.version + 1
+
+    def search_assets_by_keywords(
+        self,
+        search_text: str,
+        kind: str | None = None,
+        limit: int = 20,
+    ) -> list[Asset]:
+        """
+        Search assets by keywords using MongoDB text search.
+
+        Uses text index on metadata.keywords (created by migration 002).
+
+        Text search supports:
+        - Multiple words (OR): "climate water" matches either term
+        - Phrases: '"climate change"' matches exact phrase
+        - Exclusions: "climate -water" excludes water
+
+        Args:
+            search_text: Text to search for in keywords.
+            kind: Optional filter by asset kind.
+            limit: Maximum results (default 20).
+
+        Returns:
+            List of matching Asset models, ordered by relevance.
+
+        Example:
+            >>> mongo.search_assets_by_keywords("population census")
+            [Asset(dataset_id="sa2_population", ...), ...]
+        """
+        query: dict = {"$text": {"$search": search_text}}
+        if kind:
+            query["kind"] = kind
+
+        cursor = (
+            self._get_collection(self.ASSETS)
+            .find(query, {"score": {"$meta": "textScore"}})
+            .sort([("score", {"$meta": "textScore"})])
+            .limit(limit)
+        )
+
+        assets = []
+        for doc in cursor:
+            doc = self._strip_object_id(doc)
+            doc.pop("score", None)
+            assets.append(Asset.model_validate(doc))
+
+        return assets

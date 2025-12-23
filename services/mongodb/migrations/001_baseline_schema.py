@@ -1,303 +1,309 @@
 """
-Migration 001: Baseline Schema
+Migration 001: Baseline Schema (Consolidated)
 
-Creates the baseline MongoDB schema with collections, validators, and indexes.
-This migration establishes the core collections: assets, manifests, runs, and lineage.
+This migration establishes the complete MongoDB schema for the ETL platform.
+Consolidates original migrations 001-004 into single baseline.
 
-Idempotency: Uses create_collection wrapped in try/except for CollectionInvalid,
-then applies collMod to update validators unconditionally.
+History (for reference):
+- Original 001: Basic collections and validators
+- Original 002: Tabular support (already in 001)
+- Original 003: Runs collection, unified status values
+- Original 004: Enhanced metadata, column_schema, geometry_type
+
+Schema constants are FROZEN - do not modify. Create new migration for changes.
 """
+
 from pymongo.database import Database
 from pymongo.errors import CollectionInvalid
 
 VERSION = "001"
 
+# =============================================================================
+# FROZEN SCHEMA CONSTANTS - DO NOT MODIFY
+# Generated from Pydantic models on 2025-12-23
+# To update: create new migration with new schema version
+# =============================================================================
+
+ASSETS_SCHEMA_V001 = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+            "s3_key",
+            "dataset_id",
+            "version",
+            "content_hash",
+            "run_id",
+            "kind",
+            "format",
+            "created_at",
+            "metadata",
+        ],
+        "properties": {
+            "s3_key": {"bsonType": "string"},
+            "dataset_id": {"bsonType": "string"},
+            "version": {"bsonType": "int", "minimum": 1},
+            "content_hash": {
+                "bsonType": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$",
+            },
+            "run_id": {"bsonType": "string"},
+            "kind": {"enum": ["spatial", "tabular", "joined"]},
+            "format": {"enum": ["geoparquet", "cog", "geojson", "parquet"]},
+            "crs": {"bsonType": ["string", "null"]},
+            "bounds": {
+                "bsonType": ["object", "null"],
+                "properties": {
+                    "minx": {"bsonType": "double"},
+                    "miny": {"bsonType": "double"},
+                    "maxx": {"bsonType": "double"},
+                    "maxy": {"bsonType": "double"},
+                },
+            },
+            "metadata": {
+                "bsonType": "object",
+                "required": [
+                    "title",
+                    "description",
+                    "keywords",
+                    "source",
+                    "license",
+                    "attribution",
+                ],
+                "properties": {
+                    "title": {"bsonType": "string"},
+                    "description": {"bsonType": "string"},
+                    "keywords": {
+                        "bsonType": "array",
+                        "items": {"bsonType": "string"},
+                    },
+                    "source": {"bsonType": "string"},
+                    "license": {"bsonType": "string"},
+                    "attribution": {"bsonType": "string"},
+                    "tags": {
+                        "bsonType": "object",
+                        "additionalProperties": {
+                            "bsonType": ["string", "int", "long", "double", "bool"]
+                        },
+                    },
+                    "header_mapping": {
+                        "bsonType": ["object", "null"],
+                        "additionalProperties": {"bsonType": "string"},
+                    },
+                    "column_schema": {"bsonType": ["object", "null"]},
+                    "geometry_type": {"bsonType": ["string", "null"]},
+                },
+            },
+            "created_at": {"bsonType": "date"},
+            "updated_at": {"bsonType": ["date", "null"]},
+        },
+    }
+}
+
+MANIFESTS_SCHEMA_V001 = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+            "batch_id",
+            "uploader",
+            "intent",
+            "files",
+            "metadata",
+            "status",
+            "ingested_at",
+        ],
+        "properties": {
+            "batch_id": {"bsonType": "string"},
+            "uploader": {"bsonType": "string"},
+            "intent": {"bsonType": "string"},
+            "files": {
+                "bsonType": "array",
+                "items": {
+                    "bsonType": "object",
+                    "required": ["path", "type", "format"],
+                    "properties": {
+                        "path": {"bsonType": "string"},
+                        "type": {"enum": ["raster", "vector", "tabular"]},
+                        "format": {"bsonType": "string"},
+                    },
+                    "additionalProperties": False,
+                },
+            },
+            "metadata": {
+                "bsonType": "object",
+                "required": [
+                    "title",
+                    "description",
+                    "source",
+                    "license",
+                    "attribution",
+                ],
+                "properties": {
+                    "title": {"bsonType": "string"},
+                    "description": {"bsonType": "string"},
+                    "keywords": {"bsonType": "array", "items": {"bsonType": "string"}},
+                    "source": {"bsonType": "string"},
+                    "license": {"bsonType": "string"},
+                    "attribution": {"bsonType": "string"},
+                    "project": {"bsonType": ["string", "null"]},
+                    "tags": {
+                        "bsonType": ["object", "null"],
+                        "additionalProperties": {
+                            "bsonType": ["string", "int", "long", "double", "bool"]
+                        },
+                    },
+                    "join_config": {"bsonType": ["object", "null"]},
+                },
+            },
+            "status": {"enum": ["running", "success", "failure", "canceled"]},
+            "error_message": {"bsonType": ["string", "null"]},
+            "ingested_at": {"bsonType": "date"},
+            "completed_at": {"bsonType": ["date", "null"]},
+            "updated_at": {"bsonType": ["date", "null"]},
+        },
+    }
+}
+
+RUNS_SCHEMA_V001 = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["dagster_run_id", "batch_id", "job_name", "status", "started_at"],
+        "properties": {
+            "dagster_run_id": {"bsonType": "string"},
+            "batch_id": {"bsonType": "string"},
+            "job_name": {"bsonType": "string"},
+            "partition_key": {"bsonType": ["string", "null"]},
+            "status": {"enum": ["running", "success", "failure", "canceled"]},
+            "asset_ids": {"bsonType": "array", "items": {"bsonType": "objectId"}},
+            "error_message": {"bsonType": ["string", "null"]},
+            "started_at": {"bsonType": "date"},
+            "completed_at": {"bsonType": ["date", "null"]},
+        },
+    }
+}
+
+LINEAGE_SCHEMA_V001 = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+            "source_asset_id",
+            "target_asset_id",
+            "run_id",
+            "transformation",
+            "created_at",
+        ],
+        "properties": {
+            "source_asset_id": {"bsonType": "objectId"},
+            "target_asset_id": {"bsonType": "objectId"},
+            "run_id": {"bsonType": "objectId"},
+            "transformation": {"bsonType": "string"},
+            "parameters": {"bsonType": "object"},
+            "created_at": {"bsonType": "date"},
+        },
+    }
+}
+
 
 def up(db: Database) -> None:
-    """
-    Apply this migration.
-    
-    Args:
-        db: PyMongo Database instance (already connected).
-        
-    Raises:
-        Exception: If migration fails (will cause retry on next startup).
-    """
-    # Assets Collection - Core asset registry
-    assets_validator = {
-        "$jsonSchema": {
-            "bsonType": "object",
-            "required": ["s3_key", "dataset_id", "version", "content_hash", "dagster_run_id", "kind", "format", "created_at"],
-            "properties": {
-                "s3_key": {
-                    "bsonType": "string",
-                    "description": "S3 object key - required"
-                },
-                "dataset_id": {
-                    "bsonType": "string",
-                    "description": "Unique dataset identifier - required"
-                },
-                "version": {
-                    "bsonType": "int",
-                    "minimum": 1,
-                    "description": "Asset version number - required"
-                },
-                "content_hash": {
-                    "bsonType": "string",
-                    "pattern": "^sha256:[a-f0-9]{64}$",
-                    "description": "SHA256 hash of content - required"
-                },
-                "dagster_run_id": {
-                    "bsonType": "string",
-                    "description": "Dagster run ID that created this asset - required"
-                },
-                "kind": {
-                    "enum": ["spatial", "tabular", "joined"],
-                    "description": "Asset kind - required"
-                },
-                "format": {
-                    "enum": ["geoparquet", "cog", "geojson", "parquet"],
-                    "description": "Output format - required"
-                },
-                "crs": {
-                    "bsonType": ["string", "null"],
-                    "description": "Coordinate Reference System (required for spatial/joined, null for tabular)"
-                },
-                "bounds": {
-                    "bsonType": ["object", "null"],
-                    "required": ["minx", "miny", "maxx", "maxy"],
-                    "properties": {
-                        "minx": {"bsonType": "double"},
-                        "miny": {"bsonType": "double"},
-                        "maxx": {"bsonType": "double"},
-                        "maxy": {"bsonType": "double"}
-                    }
-                },
-                "metadata": {
-                    "bsonType": "object",
-                    "required": ["title"],
-                    "properties": {
-                        "title": {"bsonType": "string"},
-                        "description": {"bsonType": "string"},
-                        "source": {"bsonType": "string"},
-                        "license": {"bsonType": "string"},
-                        "tags": {
-                            "bsonType": "object",
-                            "additionalProperties": {
-                                "bsonType": ["string", "int", "long", "double", "bool"]
-                            }
-                        },
-                        "header_mapping": {
-                            "bsonType": ["object", "null"],
-                            "additionalProperties": {"bsonType": "string"}
-                        }
-                    }
-                },
-                "created_at": {
-                    "bsonType": "date",
-                    "description": "Creation timestamp - required"
-                },
-                "updated_at": {
-                    "bsonType": "date",
-                    "description": "Last update timestamp"
-                }
-            }
-        }
-    }
-    
+    """Apply baseline schema migration."""
+
+    # Assets collection
     try:
-        db.create_collection("assets", validator=assets_validator, validationLevel="strict", validationAction="error")
+        db.create_collection(
+            "assets",
+            validator=ASSETS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
     except CollectionInvalid:
-        # Collection exists, update validator
-        db.command("collMod", "assets", validator=assets_validator, validationLevel="strict", validationAction="error")
-    
-    # Manifests Collection - Ingested manifest records
-    manifests_validator = {
-        "$jsonSchema": {
-            "bsonType": "object",
-            "required": ["batch_id", "uploader", "intent", "files", "metadata", "status", "ingested_at"],
-            "properties": {
-                "batch_id": {
-                    "bsonType": "string",
-                    "description": "Unique batch identifier - required"
-                },
-                "uploader": {
-                    "bsonType": "string",
-                    "description": "User or system that uploaded - required"
-                },
-                "intent": {
-                    "bsonType": "string",
-                    "description": "Processing intent - required"
-                },
-                "files": {
-                    "bsonType": "array",
-                    "items": {
-                        "bsonType": "object",
-                        "required": ["path", "type", "format"],
-                        "properties": {
-                            "path": {"bsonType": "string"},
-                            "type": {"enum": ["raster", "vector", "tabular"]},
-                            "format": {"bsonType": "string"}
-                        },
-                        "additionalProperties": False
-                    }
-                },
-                "metadata": {
-                    "bsonType": "object",
-                    "required": ["project"],
-                    "properties": {
-                        "project": {"bsonType": "string"},
-                        "description": {"bsonType": "string"},
-                        "tags": {
-                            "bsonType": "object",
-                            "additionalProperties": {
-                                "bsonType": ["string", "int", "long", "double", "bool"]
-                            }
-                        },
-                        "join_config": {
-                            "bsonType": "object",
-                            "required": ["left_key"],
-                            "additionalProperties": False,
-                            "properties": {
-                                "target_asset_id": {"bsonType": "string"},
-                                "left_key": {"bsonType": "string"},
-                                "right_key": {"bsonType": "string"},
-                                "how": {"enum": ["left", "inner", "right", "outer"]}
-                            }
-                        }
-                    },
-                    "additionalProperties": False
-                },
-                "status": {
-                    "enum": ["pending", "processing", "completed", "failed"],
-                    "description": "Processing status - required"
-                },
-                "dagster_run_id": {
-                    "bsonType": "string"
-                },
-                "error_message": {
-                    "bsonType": "string"
-                },
-                "ingested_at": {
-                    "bsonType": "date",
-                    "description": "Ingestion timestamp - required"
-                },
-                "completed_at": {
-                    "bsonType": "date"
-                }
-            }
-        }
-    }
-    
-    try:
-        db.create_collection("manifests", validator=manifests_validator, validationLevel="strict", validationAction="error")
-    except CollectionInvalid:
-        # Collection exists, update validator
-        db.command("collMod", "manifests", validator=manifests_validator, validationLevel="strict", validationAction="error")
-    
-    # Runs Collection - ETL run metadata
-    runs_validator = {
-        "$jsonSchema": {
-            "bsonType": "object",
-            "required": ["dagster_run_id", "manifest_id", "status", "started_at"],
-            "properties": {
-                "dagster_run_id": {
-                    "bsonType": "string",
-                    "description": "Dagster run ID - required"
-                },
-                "manifest_id": {
-                    "bsonType": "objectId",
-                    "description": "Reference to manifest - required"
-                },
-                "status": {
-                    "enum": ["running", "success", "failure"],
-                    "description": "Run status - required"
-                },
-                "assets_created": {
-                    "bsonType": "array",
-                    "items": {"bsonType": "objectId"}
-                },
-                "started_at": {
-                    "bsonType": "date",
-                    "description": "Run start time - required"
-                },
-                "completed_at": {
-                    "bsonType": "date"
-                },
-                "error_message": {
-                    "bsonType": "string"
-                }
-            }
-        }
-    }
-    
-    try:
-        db.create_collection("runs", validator=runs_validator)
-    except CollectionInvalid:
-        # Collection exists, update validator
-        db.command("collMod", "runs", validator=runs_validator)
-    
-    # Lineage Collection - Asset transformation graph
-    lineage_validator = {
-        "$jsonSchema": {
-            "bsonType": "object",
-            "required": ["source_asset_id", "target_asset_id", "dagster_run_id", "transformation", "created_at"],
-            "properties": {
-                "source_asset_id": {
-                    "bsonType": "objectId",
-                    "description": "Source asset reference - required"
-                },
-                "target_asset_id": {
-                    "bsonType": "objectId",
-                    "description": "Target asset reference - required"
-                },
-                "dagster_run_id": {
-                    "bsonType": "string",
-                    "description": "Run that created this relationship - required"
-                },
-                "transformation": {
-                    "bsonType": "string",
-                    "description": "Type of transformation applied - required"
-                },
-                "parameters": {
-                    "bsonType": "object",
-                    "description": "Transformation parameters"
-                },
-                "created_at": {
-                    "bsonType": "date",
-                    "description": "Lineage record creation time - required"
-                }
-            }
-        }
-    }
-    
-    try:
-        db.create_collection("lineage", validator=lineage_validator)
-    except CollectionInvalid:
-        # Collection exists, update validator
-        db.command("collMod", "lineage", validator=lineage_validator)
-    
-    # Create Indexes
-    # Assets indexes
+        db.command(
+            "collMod",
+            "assets",
+            validator=ASSETS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+
     db.assets.create_index([("s3_key", 1)], unique=True)
     db.assets.create_index([("dataset_id", 1), ("version", -1)])
     db.assets.create_index([("content_hash", 1)])
-    db.assets.create_index([("dagster_run_id", 1)])
+    db.assets.create_index([("run_id", 1)])
     db.assets.create_index([("kind", 1)])
     db.assets.create_index([("created_at", -1)])
-    
-    # Manifests indexes
+    db.assets.create_index([("metadata.keywords", 1)])
+    db.assets.create_index([("kind", 1), ("dataset_id", 1)])
+
+    # Manifests collection
+    try:
+        db.create_collection(
+            "manifests",
+            validator=MANIFESTS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+    except CollectionInvalid:
+        db.command(
+            "collMod",
+            "manifests",
+            validator=MANIFESTS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+
     db.manifests.create_index([("batch_id", 1)], unique=True)
     db.manifests.create_index([("status", 1)])
     db.manifests.create_index([("ingested_at", -1)])
-    
-    # Runs indexes
-    db.runs.create_index([("dagster_run_id", 1)], unique=True)
-    db.runs.create_index([("manifest_id", 1)])
+
+    # Runs collection
+    try:
+        db.create_collection(
+            "runs",
+            validator=RUNS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+    except CollectionInvalid:
+        db.command(
+            "collMod",
+            "runs",
+            validator=RUNS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+
+    db.runs.create_index([("dagster_run_id", 1)], unique=True, sparse=True)
+    db.runs.create_index([("batch_id", 1)])
     db.runs.create_index([("status", 1)])
-    
-    # Lineage indexes
+    db.runs.create_index([("batch_id", 1), ("started_at", -1)])
+
+    # Lineage collection
+    try:
+        db.create_collection(
+            "lineage",
+            validator=LINEAGE_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+    except CollectionInvalid:
+        db.command(
+            "collMod",
+            "lineage",
+            validator=LINEAGE_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+
     db.lineage.create_index([("source_asset_id", 1)])
     db.lineage.create_index([("target_asset_id", 1)])
-    db.lineage.create_index([("dagster_run_id", 1)])
+    db.lineage.create_index([("run_id", 1)])
 
+
+def down(db: Database) -> None:
+    """
+    Rollback migration (best effort).
+
+    Note: This is destructive - drops all collections.
+    Only use in development when resetting to clean state.
+    """
+    for collection_name in ["assets", "manifests", "runs", "lineage"]:
+        if collection_name in db.list_collection_names():
+            db.drop_collection(collection_name)

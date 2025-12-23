@@ -15,6 +15,7 @@ from libs.models import (
     AssetKind,
     AssetMetadata,
     Bounds,
+    ColumnInfo,
     FileEntry,
     FileType,
     Manifest,
@@ -64,7 +65,15 @@ def manifest_record():
         uploader="test_user",
         intent="ingest_vector",
         files=files,
-        metadata=ManifestMetadata(project="ALPHA", description="Test batch"),
+        metadata=ManifestMetadata(
+            title="Test Batch",
+            description="Test batch for unit tests",
+            keywords=["test", "vector"],
+            source="Unit test source",
+            license="MIT",
+            attribution="Test User",
+            project="ALPHA",
+        ),
     )
     return ManifestRecord.from_manifest(manifest)
 
@@ -81,7 +90,23 @@ def asset():
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=Bounds(minx=0.0, miny=0.0, maxx=1.0, maxy=1.0),
-        metadata=AssetMetadata(title="Test Dataset"),
+        metadata=AssetMetadata(
+            title="Test Dataset",
+            description="Test asset for unit tests",
+            keywords=["test", "spatial"],
+            source="Unit test source",
+            license="MIT",
+            attribution="Test User",
+            geometry_type="POLYGON",
+            column_schema={
+                "id": ColumnInfo(
+                    title="id",
+                    type_name="INTEGER",
+                    logical_type="int64",
+                    nullable=False,
+                )
+            },
+        ),
         created_at=datetime.now(timezone.utc),
     )
 
@@ -151,7 +176,7 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
         s3_key="data-lake/test/v1/data.parquet",
         dataset_id="test_dataset_none_bounds",
         version=1,
-        content_hash="sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        content_hash=f"sha256:{'a' * 64}",
         run_id="507f1f77bcf86cd799439011",
         kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
@@ -160,6 +185,19 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
         metadata=AssetMetadata(
             title="Test Asset",
             description="Test asset with None bounds",
+            keywords=["test"],
+            source="Unit test source",
+            license="MIT",
+            attribution="Test User",
+            geometry_type="POLYGON",
+            column_schema={
+                "id": ColumnInfo(
+                    title="id",
+                    type_name="INTEGER",
+                    logical_type="int64",
+                    nullable=False,
+                )
+            },
         ),
         created_at=datetime.now(timezone.utc),
         updated_at=None,
