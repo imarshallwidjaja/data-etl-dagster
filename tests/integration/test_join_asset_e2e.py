@@ -438,10 +438,23 @@ def _format_error_details(error_details: Optional[dict]) -> str:
 def _assert_mongodb_asset_exists(
     mongo_client: MongoClient, mongo_settings: MongoSettings, run_id: str
 ) -> dict:
+    """Look up asset via run document (consistent with spatial/tabular E2E tests).
+
+    Assets use run_id (MongoDB ObjectId string) not dagster_run_id.
+    """
     db = mongo_client[mongo_settings.database]
-    asset_doc = db["assets"].find_one({"dagster_run_id": run_id})
+
+    # First, find the run document to get the MongoDB ObjectId
+    run_doc = db["runs"].find_one({"dagster_run_id": run_id})
+    assert run_doc is not None, (
+        f"No run document found in MongoDB for dagster_run_id: {run_id}"
+    )
+    mongodb_run_id = str(run_doc["_id"])
+
+    # Assets use run_id (string representation of MongoDB ObjectId)
+    asset_doc = db["assets"].find_one({"run_id": mongodb_run_id})
     assert asset_doc is not None, (
-        f"No asset record found in MongoDB for run_id: {run_id}"
+        f"No asset record found in MongoDB for run_id: {mongodb_run_id} (Dagster run: {run_id})"
     )
     return asset_doc
 
@@ -608,8 +621,13 @@ class TestJoinAssetE2E:
                     }
                 ],
                 "metadata": {
+                    "title": "E2E Tabular Parent for Join",
+                    "description": "Tabular parent dataset for join test",
+                    "keywords": ["test", "tabular", "join", "e2e"],
+                    "source": "E2E Test Suite",
+                    "license": "MIT",
+                    "attribution": "Test Runner",
                     "project": "E2E_JOIN_TEST",
-                    "description": "Tabular parent for join test",
                     "tags": {"dataset_id": tabular_partition_key},
                 },
             }
@@ -695,6 +713,30 @@ class TestJoinAssetE2E:
             assert joined_asset_doc.get("kind") == "joined"
             _assert_datalake_object_exists(
                 minio_client, minio_settings.lake_bucket, joined_asset_doc["s3_key"]
+            )
+
+            # Milestone 5: Verify human metadata fields were propagated from manifest
+            joined_metadata = joined_asset_doc.get("metadata") or {}
+            assert joined_metadata.get("title"), "title should be present and non-empty"
+            assert joined_metadata.get("source"), (
+                "source should be present and non-empty"
+            )
+            assert joined_metadata.get("license"), (
+                "license should be present and non-empty"
+            )
+            assert joined_metadata.get("attribution"), (
+                "attribution should be present and non-empty"
+            )
+            assert isinstance(joined_metadata.get("keywords"), list), (
+                "keywords should be a list"
+            )
+            # Joined assets should have geometry_type (inherited from spatial parent)
+            assert joined_metadata.get("geometry_type"), (
+                "geometry_type should be captured for joined assets"
+            )
+            # Joined assets should have column_schema (merged columns)
+            assert isinstance(joined_metadata.get("column_schema"), dict), (
+                "column_schema should be a dict"
             )
 
             # =========================================================

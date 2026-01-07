@@ -524,6 +524,17 @@ class TestSpatialAssetE2E:
                 f"Expected polygon-like geometry type, got {geometry_type}"
             )
 
+            # Milestone 5: Verify human metadata fields were propagated from manifest
+            assert metadata.get("title"), "title should be present and non-empty"
+            assert metadata.get("source"), "source should be present and non-empty"
+            assert metadata.get("license"), "license should be present and non-empty"
+            assert metadata.get("attribution"), (
+                "attribution should be present and non-empty"
+            )
+            assert isinstance(metadata.get("keywords"), list), (
+                "keywords should be a list"
+            )
+
             _assert_datalake_object_exists(
                 minio_client, minio_settings.lake_bucket, asset_doc["s3_key"]
             )

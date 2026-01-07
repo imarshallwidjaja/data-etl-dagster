@@ -516,6 +516,17 @@ class TestTabularAssetJobE2E:
             assert "sa1_code21" in column_schema
             assert column_schema["sa1_code21"]["type_name"] == "INTEGER"
 
+            # Milestone 5: Verify human metadata fields were propagated from manifest
+            assert metadata.get("title"), "title should be present and non-empty"
+            assert metadata.get("source"), "source should be present and non-empty"
+            assert metadata.get("license"), "license should be present and non-empty"
+            assert metadata.get("attribution"), (
+                "attribution should be present and non-empty"
+            )
+            assert isinstance(metadata.get("keywords"), list), (
+                "keywords should be a list"
+            )
+
             s3_key = asset_doc.get("s3_key")
             assert s3_key, "Asset document missing s3_key"
             _assert_datalake_object_exists(

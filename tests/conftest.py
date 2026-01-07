@@ -360,3 +360,91 @@ def sample_wkt_crs():
 def sample_proj_crs():
     """Example PROJ string for CRS tests."""
     return "+proj=utm +zone=55 +south +ellps=GRS80 +datum=GDA94 +units=m +no_defs"
+
+
+# =============================================================================
+# MongoDB Test Isolation Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mongo_database():
+    """Get MongoDB database for tests that need direct database access.
+
+    Includes connectivity verification to fail fast with clear error message.
+    """
+    from pymongo import MongoClient
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    from libs.models import MongoSettings
+
+    settings = MongoSettings()
+    client = MongoClient(settings.connection_string, serverSelectionTimeoutMS=5000)
+
+    # Force connection verification - fail fast with clear message
+    try:
+        client.admin.command("ping")
+    except ServerSelectionTimeoutError as e:
+        pytest.skip(f"MongoDB not available: {e}")
+
+    yield client[settings.database]
+    client.close()
+
+
+@pytest.fixture
+def clean_mongodb(mongo_database):
+    """Provide clean MongoDB state by clearing all non-system collections.
+
+    This fixture preserves schema validators and indexes (created by migrations)
+    while clearing all business data for test isolation.
+
+    Uses pre-cleanup only pattern: relies on next test's pre-cleanup to handle
+    any data left behind. This exposes test pollution issues rather than hiding them.
+    """
+    # Exclude system/special collections from cleanup
+    EXCLUDED_COLLECTIONS = {"system.indexes", "schema_migrations"}
+
+    # Get all collections and clean them BEFORE the test
+    all_collections = set(mongo_database.list_collection_names())
+    collections_to_clean = all_collections - EXCLUDED_COLLECTIONS
+
+    for coll in collections_to_clean:
+        mongo_database[coll].delete_many({})
+
+    yield mongo_database
+    # NO post-cleanup - rely on next test's pre-cleanup
+
+
+# =============================================================================
+# MinIO Test Isolation Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def clean_minio(minio_client):
+    """Ensure MinIO buckets used in tests are empty before test.
+
+    WARNING: Destructive! Only clears test buckets.
+
+    Uses pre-cleanup only pattern with specific error handling:
+    - NoSuchBucket/NoSuchKey are expected for fresh environments
+    - Other S3 errors are re-raised to surface real issues
+    """
+    from minio.error import S3Error
+
+    buckets = ["landing-zone", "data-lake", "archive"]
+
+    def _clean():
+        for bucket in buckets:
+            try:
+                objects = list(minio_client.list_objects(bucket, recursive=True))
+                for obj in objects:
+                    minio_client.remove_object(bucket, obj.object_name)
+            except S3Error as e:
+                if e.code in ("NoSuchBucket", "NoSuchKey"):
+                    continue  # Expected for fresh/empty buckets
+                raise  # Unexpected errors should fail the test
+
+    _clean()
+    yield minio_client
+    # NO post-cleanup - rely on next test's pre-cleanup

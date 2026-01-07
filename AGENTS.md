@@ -10,13 +10,62 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 ## Key invariants / non-negotiables
 
 - **Offline-first**: no public cloud dependencies at runtime.
-- **Ledger**: MongoDB is the Source of Truth. No Mongo record = data doesn’t exist.
+- **Ledger**: MongoDB is the Source of Truth. No Mongo record = data doesn't exist.
 - **Persistence**: PostGIS is transient compute only. Never store permanent data there.
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
 - **Tabular & Columnar Registry**: Tabular (CSV) and Spatial (GeoParquet) data automatically capture column schemas (names, types, nullability) during export to the data-lake. Types are normalized to a canonical vocabulary (STRING, INTEGER, GEOMETRY, etc.) and stored in MongoDB for UI/API introspection.
 - **Geometry Type Capture**: Spatial and joined assets automatically capture geometry type (POINT, POLYGON, MULTIPOLYGON, etc.) from PostGIS during processing. Stored in `metadata.geometry_type` for catalog introspection. Enforced as required for spatial/joined assets.
 - **Header Cleaning**: Headers in tabular CSVs are cleaned to valid Postgres identifiers for reliable downstream joins.
+
+## Metadata Contract (M1-M4)
+
+The metadata restructuring (Milestones 1-4) established the following invariants:
+
+### Human Metadata Fields (Required on All Assets/Manifests)
+
+All manifests and assets require these human-readable metadata fields:
+- `title` - Human-readable dataset title
+- `description` - Abstract/summary (empty string allowed)
+- `keywords` - Subject keywords as list (empty list allowed)
+- `source` - Data lineage/provenance statement
+- `license` - License identifier or statement
+- `attribution` - Credit/attribution statement
+
+Captured from manifest at ingestion, stored in asset metadata. Enforced by Pydantic at runtime, MongoDB validators at rest.
+
+### Kind-Specific Metadata
+
+| Asset Kind | Required Metadata |
+|------------|-------------------|
+| `tabular` | `column_schema` (from PyArrow) |
+| `spatial` | `geometry_type` (from PostGIS), `column_schema` (from GeoParquet) |
+| `joined` | Both `geometry_type` and `column_schema` |
+
+### Type Normalization
+
+- Column types normalized via `libs/normalization.py`
+- Canonical vocabulary: STRING, INTEGER, FLOAT, BOOLEAN, TIMESTAMP, DATE, TIME, DECIMAL, BINARY, ARRAY, STRUCT, MAP, GEOMETRY, UNKNOWN
+- Geometry type normalized to OGC uppercase: POINT, POLYGON, MULTIPOLYGON, etc.
+
+### Schema Management
+
+- MongoDB schemas defined in `services/mongodb/migrations/` as frozen constants
+- Use `scripts/generate_migration_schema.py` to generate from Pydantic (write-time only)
+- Schema drift detected by `tests/unit/test_schema_parity.py`
+
+### Model Usage Patterns
+
+Always use `AssetMetadata.from_manifest_metadata()` factory method to propagate human metadata from manifest to asset:
+
+```python
+asset_metadata = AssetMetadata.from_manifest_metadata(
+    manifest.metadata,
+    geometry_type="MULTIPOLYGON",  # For spatial/joined
+    column_schema=column_schema,    # For tabular/spatial/joined
+    header_mapping=header_mapping,  # For tabular
+)
+```
 
 ## Entry points / key files
 
