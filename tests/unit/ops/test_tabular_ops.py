@@ -35,8 +35,13 @@ SAMPLE_TABULAR_MANIFEST = {
         }
     ],
     "metadata": {
-        "project": "TEST_PROJECT",
+        "title": "Test Tabular Dataset",
         "description": "Test tabular data",
+        "keywords": ["test", "tabular"],
+        "source": "Unit Test",
+        "license": "MIT",
+        "attribution": "Test Team",
+        "project": "TEST_PROJECT",
         "tags": {"priority": 1},
         "join_config": {
             "spatial_dataset_id": "sa1_spatial_001",
