@@ -144,6 +144,7 @@ Both manifests and runs use: `running`, `success`, `failure`, `canceled`
 ## Links
 
 - Root guide: `../../AGENTS.md`
+- **ETL Pipelines (code location)**: `etl_pipelines/AGENTS.md`
 - Transformations: `../../libs/transformations/AGENTS.md`
 - MinIO: `../minio/AGENTS.md`
 - MongoDB: `../mongodb/AGENTS.md`

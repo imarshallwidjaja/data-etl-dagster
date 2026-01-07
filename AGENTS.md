@@ -1,5 +1,7 @@
 # data-etl-dagster — Agent Guide
 
+> **Generated**: 2026-01-07 | **Commit**: f7dcb0c | **Branch**: feature/harden-metadata-models-CL
+
 ## What this repo is / owns
 
 This repo implements an offline-first Spatial Data ETL platform orchestrated by Dagster.
@@ -201,6 +203,7 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 
 **Services:**
 - `services/dagster/AGENTS.md`
+- `services/dagster/etl_pipelines/AGENTS.md`
 - `services/minio/AGENTS.md`
 - `services/mongodb/AGENTS.md`
 - `services/postgis/AGENTS.md`
