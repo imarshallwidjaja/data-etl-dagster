@@ -77,6 +77,38 @@ async def list_runs(
     )
 
 
+@router.get("/{run_id}/status", response_class=HTMLResponse)
+async def get_run_status(
+    request: Request,
+    run_id: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Return partial HTML fragment for run status (HTMX target)."""
+    dagster = get_dagster_service()
+
+    try:
+        details = dagster.get_run_details(run_id)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail=f"Failed to query Dagster: {exc}"
+        ) from exc
+
+    if not details:
+        raise HTTPException(status_code=404, detail=f"Run not found: {run_id}")
+
+    run_dict = {
+        "run_id": details.run_id,
+        "status": details.status,
+        "ended_at": details.ended_at.isoformat() if details.ended_at else None,
+        "error_message": details.error_message,
+    }
+
+    return templates.TemplateResponse(
+        "runs/_status_fragment.html",
+        {"request": request, "run": run_dict},
+    )
+
+
 @router.get("/{run_id}")
 async def get_run_details(
     request: Request,

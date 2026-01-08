@@ -104,7 +104,7 @@ class MongoDBService:
         if status:
             query["status"] = status
 
-        cursor = collection.find(query).sort("created_at", -1).limit(limit)
+        cursor = collection.find(query).sort("ingested_at", -1).limit(limit)
 
         results = []
         for doc in cursor:
@@ -116,7 +116,7 @@ class MongoDBService:
                     uploader=doc.get("uploader", ""),
                     project=doc.get("metadata", {}).get("project", ""),
                     file_count=len(doc.get("files", [])),
-                    created_at=doc.get("created_at", datetime.now()),
+                    created_at=doc.get("ingested_at") or datetime.now(),
                     dagster_run_id=doc.get("dagster_run_id"),
                 )
             )

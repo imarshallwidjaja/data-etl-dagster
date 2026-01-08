@@ -6,18 +6,8 @@
 <article>
     <header>
         <hgroup>
-            <h1>🔄 Run: {{ run.run_id[:16] }}...</h1>
-            <p>
-                {% if run.status == 'SUCCESS' %}
-                <span class="badge badge-success">{{ run.status }}</span>
-                {% elif run.status == 'FAILURE' %}
-                <span class="badge badge-error">{{ run.status }}</span>
-                {% elif run.status == 'STARTED' %}
-                <span class="badge badge-warning">{{ run.status }}</span>
-                {% else %}
-                <span class="badge badge-info">{{ run.status }}</span>
-                {% endif %}
-            </p>
+            <h1>Run: {{ run.run_id[:16] }}...</h1>
+            {% include "runs/_status_fragment.html" %}
         </hgroup>
     </header>
 
