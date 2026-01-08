@@ -47,16 +47,31 @@ class ManifestCreateRequest(BaseModel):
     """Request for creating a manifest.
 
     Uses validated Pydantic models from libs.models for files, tags, and join_config.
+    Includes all HumanMetadataMixin fields required by the pipeline:
+    - title (required)
+    - description, keywords, source, license, attribution (required, can be empty)
     """
 
+    # Batch identification
     batch_id: Optional[str] = None
-    project: str
-    description: Optional[str] = None
     dataset_id: Optional[str] = None
-    tags: Optional[dict[str, TagValue]] = None
+
+    # Human metadata fields (HumanMetadataMixin contract)
+    title: str  # Required, human-readable dataset title
+    description: str = ""  # Required but can be empty
+    keywords: list[str] = []  # Required but can be empty list
+    source: str = ""  # Required but can be empty
+    license: str = ""  # Required but can be empty
+    attribution: str = ""  # Required but can be empty
+
+    # Optional project (demoted from required in M1)
+    project: Optional[str] = None
+
+    # Processing configuration
     intent: Optional[str] = None
     files: Optional[list[FileEntry]] = None
     join_config: Optional[JoinConfig] = None
+    tags: Optional[dict[str, TagValue]] = None
 
 
 class ManifestCreateResponse(BaseModel):

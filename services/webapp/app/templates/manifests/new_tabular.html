@@ -13,6 +13,50 @@
 
     <form id="manifest-form" method="post">
         <fieldset>
+            <legend>Dataset Information</legend>
+
+            <label>
+                Title *
+                <input type="text" name="title" required placeholder="Human-readable dataset title">
+            </label>
+
+            <label>
+                Description
+                <textarea name="description" rows="2" placeholder="Abstract or summary of the dataset"></textarea>
+            </label>
+
+            <label>
+                Keywords (comma-separated)
+                <input type="text" name="keywords" placeholder="census, demographics, population">
+                <small>Subject keywords for discovery</small>
+            </label>
+
+            <label>
+                Source
+                <input type="text" name="source" placeholder="Data lineage/provenance statement">
+            </label>
+
+            <div class="grid">
+                <label>
+                    License
+                    <select name="license">
+                        <option value="">Select license...</option>
+                        <option value="CC-BY-4.0">CC-BY-4.0</option>
+                        <option value="CC-BY-SA-4.0">CC-BY-SA-4.0</option>
+                        <option value="CC0-1.0">CC0 (Public Domain)</option>
+                        <option value="MIT">MIT</option>
+                        <option value="proprietary">Proprietary</option>
+                    </select>
+                </label>
+
+                <label>
+                    Attribution
+                    <input type="text" name="attribution" placeholder="Credit statement">
+                </label>
+            </div>
+        </fieldset>
+
+        <fieldset>
             <legend>Basic Information</legend>
 
             <label>
@@ -22,13 +66,9 @@
             </label>
 
             <label>
-                Project *
-                <input type="text" name="project" required placeholder="e.g., CENSUS_DATA">
-            </label>
-
-            <label>
-                Description
-                <textarea name="description" rows="2" placeholder="Optional description"></textarea>
+                Project
+                <input type="text" name="project" placeholder="e.g., CENSUS_DATA">
+                <small>Optional project identifier</small>
             </label>
         </fieldset>
 
@@ -74,8 +114,15 @@
         const formData = new FormData(e.target);
         const data = {
             batch_id: formData.get('batch_id') || null,
-            project: formData.get('project'),
-            description: formData.get('description') || null,
+            // Human metadata fields (HumanMetadataMixin contract)
+            title: formData.get('title'),
+            description: formData.get('description') || '',
+            keywords: (formData.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean),
+            source: formData.get('source') || '',
+            license: formData.get('license') || '',
+            attribution: formData.get('attribution') || '',
+            // Optional project
+            project: formData.get('project') || null,
             dataset_id: formData.get('dataset_id') || null,
             files: [{
                 path: formData.get('file_path'),
