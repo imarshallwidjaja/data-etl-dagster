@@ -238,6 +238,28 @@ async def create_manifest(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/schemas/{asset_type}")
+async def get_manifest_schema(
+    asset_type: str,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Return JSON Schema for manifest creation forms.
+
+    Exposes the ManifestCreateRequest schema for client-side validation.
+    The asset_type is included as x-asset-type metadata hint.
+    """
+    if asset_type not in ("spatial", "tabular", "joined"):
+        raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")
+
+    # Generate JSON Schema from Pydantic model
+    schema = ManifestCreateRequest.model_json_schema()
+
+    # Add asset-type specific hints for frontend use
+    schema["x-asset-type"] = asset_type
+
+    return schema
+
+
 @router.get("/{batch_id}")
 async def get_manifest(
     request: Request,

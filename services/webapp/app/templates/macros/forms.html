@@ -1,0 +1,93 @@
+{# =============================================================================
+   Form Macros - Reusable form field components
+   =============================================================================
+   Provides consistent form field rendering with validation error display.
+   Use these macros for DRY form templates.
+   ============================================================================= #}
+
+{% macro render_text_field(name, label, required=false, placeholder="", description="", value="") %}
+<label>
+    {{ label }}{% if required %} *{% endif %}
+    <input type="text" 
+           name="{{ name }}" 
+           id="{{ name }}"
+           {% if required %}required{% endif %}
+           placeholder="{{ placeholder }}"
+           value="{{ value }}">
+    {% if description %}
+    <small>{{ description }}</small>
+    {% endif %}
+    <span class="field-error" id="{{ name }}-error"></span>
+</label>
+{% endmacro %}
+
+{% macro render_textarea_field(name, label, required=false, placeholder="", description="", value="", rows=3) %}
+<label>
+    {{ label }}{% if required %} *{% endif %}
+    <textarea name="{{ name }}" 
+              id="{{ name }}"
+              rows="{{ rows }}"
+              {% if required %}required{% endif %}
+              placeholder="{{ placeholder }}">{{ value }}</textarea>
+    {% if description %}
+    <small>{{ description }}</small>
+    {% endif %}
+    <span class="field-error" id="{{ name }}-error"></span>
+</label>
+{% endmacro %}
+
+{% macro render_select_field(name, label, options, required=false, description="", value="") %}
+<label>
+    {{ label }}{% if required %} *{% endif %}
+    <select name="{{ name }}" id="{{ name }}" {% if required %}required{% endif %}>
+        {% for opt in options %}
+        <option value="{{ opt.value }}" {% if opt.value == value %}selected{% endif %}>
+            {{ opt.label }}
+        </option>
+        {% endfor %}
+    </select>
+    {% if description %}
+    <small>{{ description }}</small>
+    {% endif %}
+    <span class="field-error" id="{{ name }}-error"></span>
+</label>
+{% endmacro %}
+
+{% macro render_checkbox_field(name, label, checked=false, description="") %}
+<label>
+    <input type="checkbox" 
+           name="{{ name }}" 
+           id="{{ name }}"
+           {% if checked %}checked{% endif %}>
+    {{ label }}
+    {% if description %}
+    <small>{{ description }}</small>
+    {% endif %}
+    <span class="field-error" id="{{ name }}-error"></span>
+</label>
+{% endmacro %}
+
+{% macro render_hidden_field(name, value) %}
+<input type="hidden" name="{{ name }}" id="{{ name }}" value="{{ value }}">
+{% endmacro %}
+
+{# Field error display styles - include once per page #}
+{% macro field_error_styles() %}
+<style>
+    .field-error {
+        display: none;
+        color: var(--pico-color-red-550, #dc3545);
+        font-size: 0.875em;
+        margin-top: 0.25rem;
+    }
+    .field-error:not(:empty) {
+        display: block;
+    }
+    input:invalid, select:invalid, textarea:invalid {
+        border-color: var(--pico-color-red-550, #dc3545);
+    }
+    input.validated:valid, select.validated:valid, textarea.validated:valid {
+        border-color: var(--pico-color-green-550, #198754);
+    }
+</style>
+{% endmacro %}

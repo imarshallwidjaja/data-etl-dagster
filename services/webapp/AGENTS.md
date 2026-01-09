@@ -12,6 +12,31 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
 - **Libs reuse**: Use `libs/models` for manifest/asset validation (consistency with pipeline).
 - **Mixed response format**: All list endpoints support `?format=json` for API access.
 
+### Manifest schema endpoint (contract)
+
+- **Route**: `GET /manifests/schemas/{asset_type}`
+- **asset_type values**: `spatial`, `tabular`, `joined`
+- **Response**: JSON Schema generated via `ManifestCreateRequest.model_json_schema()` (Pydantic v2)
+- **Extension field**: `x-asset-type` added at schema root with the requested asset type
+- **Compatibility**: Must remain Ajv-consumable JSON Schema (draft-07)
+- **Error behavior**: Returns 400 for invalid asset_type
+
+### Client-side validation (contract)
+
+- `static/js/validation.js` provides `ManifestFormValidator` class
+- Templates must:
+  - Include Ajv CDN **before** `validation.js` (loaded in `base.html`)
+  - Initialize validator with `new ManifestFormValidator(schemaUrl, formId, submitBtnId)`
+- Validator assumptions:
+  - Input `name` attributes align with schema property names
+  - Server-side validation remains authoritative (client-side is UX only)
+- Graceful degradation: If Ajv fails to load, form submits normally (server validates)
+
+### Operational dependency
+
+- Ajv is loaded via CDN in `base.html`: `https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.bundle.min.js`
+- Offline deployments must vendor Ajv locally and update `base.html`
+
 ## Entry points / key files
 
 - `app/main.py` - FastAPI application entry point
@@ -71,6 +96,7 @@ Environment variables (via `app/config.py`):
 | GET | `/manifests/new` | ✅ | Asset type selection |
 | GET | `/manifests/new/{type}` | ✅ | Asset-specific form |
 | POST | `/manifests/new/{type}` | ✅ | Create manifest |
+| GET | `/manifests/schemas/{asset_type}` | ✅ | JSON Schema for form validation |
 | GET | `/manifests/{batch_id}` | ✅ | Manifest details |
 | POST | `/manifests/{batch_id}/rerun` | ✅ | Re-run manifest |
 | GET | `/runs/` | ✅ | List Dagster runs |
@@ -89,6 +115,7 @@ Environment variables (via `app/config.py`):
 - `test_folder_router.py` - Folder CRUD tests
 - `test_minio_service.py` - MinIO service mocking
 - `test_manifest_router.py` - Manifest router tests
+- `test_manifest_schema.py` - Schema endpoint tests (14 tests)
 
 ### Integration tests (in `../../tests/integration/`):
 - `test_webapp_health.py` - Health endpoint tests
