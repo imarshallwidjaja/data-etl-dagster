@@ -1,0 +1,32 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Dataset Information</legend>
+        
+        {{ render_step_field("title", "Title", required=true, value=accumulated_data.get('title', ''), error=errors.get('title')) }}
+        {{ render_step_field("description", "Description", type="textarea", value=accumulated_data.get('description', ''), error=errors.get('description')) }}
+        {{ render_step_field("keywords", "Keywords (comma-separated)", value=accumulated_data.get('keywords', ''), description="Subject keywords for discovery", error=errors.get('keywords')) }}
+        {{ render_step_field("source", "Source", value=accumulated_data.get('source', ''), error=errors.get('source')) }}
+        
+        <div class="grid">
+            {% set license_options = [
+                {"value": "", "label": "Select license..."},
+                {"value": "CC-BY-4.0", "label": "CC-BY-4.0"},
+                {"value": "CC-BY-SA-4.0", "label": "CC-BY-SA-4.0"},
+                {"value": "CC0-1.0", "label": "CC0 (Public Domain)"},
+                {"value": "MIT", "label": "MIT"},
+                {"value": "proprietary", "label": "Proprietary"}
+            ] %}
+            {{ render_step_field("license", "License", type="select", options=license_options, value=accumulated_data.get('license', ''), error=errors.get('license')) }}
+            {{ render_step_field("attribution", "Attribution", value=accumulated_data.get('attribution', ''), error=errors.get('attribution')) }}
+        </div>
+    </fieldset>
+
+    <footer class="grid">
+        <div></div>
+        <button type="submit" name="_nav" value="next">Next</button>
+    </footer>
+</form>

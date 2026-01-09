@@ -1,0 +1,34 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Select Files</legend>
+        
+        {{ render_step_field("file_path", "File Path", required=true, placeholder="s3://landing-zone/batch_001/data.geojson", value=accumulated_data.get('file_path', ''), error=errors.get('file_path')) }}
+        
+        <div class="grid">
+            {% set format_options = [
+                {"value": "GeoJSON", "label": "GeoJSON"},
+                {"value": "SHP", "label": "Shapefile"},
+                {"value": "GPKG", "label": "GeoPackage"},
+                {"value": "GTiff", "label": "GeoTIFF"}
+            ] %}
+            {{ render_step_field("file_format", "Format", type="select", options=format_options, value=accumulated_data.get('file_format', 'GeoJSON'), error=errors.get('file_format')) }}
+            
+            {% set type_options = [
+                {"value": "vector", "label": "Vector"},
+                {"value": "raster", "label": "Raster"}
+            ] %}
+            {{ render_step_field("file_type", "Type", type="select", options=type_options, value=accumulated_data.get('file_type', 'vector'), error=errors.get('file_type')) }}
+        </div>
+    </fieldset>
+
+    <footer class="grid">
+        <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
+        <button type="submit" name="_nav" value="{{ 'submit' if (current_step_index == workflow.steps|length - 1) else 'next' }}">
+            {{ 'Submit' if (current_step_index == workflow.steps|length - 1) else 'Next' }}
+        </button>
+    </footer>
+</form>

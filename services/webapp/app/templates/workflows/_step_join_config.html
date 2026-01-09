@@ -1,0 +1,29 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Configure Join</legend>
+        
+        {{ render_step_field("left_key", "Join Column (Tabular)", required=true, placeholder="e.g., id", value=accumulated_data.get('left_key', ''), error=errors.get('left_key')) }}
+        {{ render_step_field("right_key", "Join Column (Spatial - optional)", placeholder="Defaults to tabular key", value=accumulated_data.get('right_key', ''), error=errors.get('right_key')) }}
+        
+        {% set how_options = [
+            {"value": "left", "label": "Left Join (Keep all tabular records)"},
+            {"value": "inner", "label": "Inner Join (Keep only matches)"},
+            {"value": "right", "label": "Right Join (Keep all spatial records)"},
+            {"value": "outer", "label": "Outer Join (Keep all records from both)"}
+        ] %}
+        {{ render_step_field("how", "Join Strategy", type="select", options=how_options, value=accumulated_data.get('how', 'left'), error=errors.get('how')) }}
+    </fieldset>
+
+    {% if errors.global %}
+    <p class="error" style="color: var(--pico-del-color);">{{ errors.global }}</p>
+    {% endif %}
+
+    <footer class="grid">
+        <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
+        <button type="submit" name="_nav" value="submit">Submit</button>
+    </footer>
+</form>

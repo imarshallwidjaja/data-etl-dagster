@@ -7,10 +7,12 @@ FastAPI-based web interface for managing the data-etl-dagster pipeline.
 This webapp provides a user-friendly interface for:
 
 - **Landing Zone Management** - Browse, upload, delete files in the landing zone
-- **Manifest Creation** - Asset-type-specific forms with validation
+- **Guided Workflows** - Step-by-step wizards for common data operations
+- **Manifest Creation** - Asset-type-specific forms with validation (supports JSON paste mode)
 - **Manifest Re-run** - Re-process archived manifests with versioned batch IDs
 - **Run Tracking** - Monitor Dagster run progress with error diagnostics
 - **Asset Browsing** - View metadata, versions, lineage, and download assets
+
 
 ## Quick Start
 
@@ -113,7 +115,16 @@ tests/
 | GET | `/manifests/{batch_id}` | Manifest details |
 | POST | `/manifests/{batch_id}/rerun` | Re-run archived manifest |
 
+### Workflows
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/workflows/` | List available guided workflows |
+| GET | `/workflows/{id}` | Start a workflow wizard |
+| POST | `/workflows/{id}/step/{n}` | Process workflow step (HTMX) |
+
 ### Runs
+
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -161,6 +172,8 @@ pytest -m integration tests/integration/test_webapp*.py -v
 | Phase 3 | API endpoints | ✅ Complete |
 | Phase 4 | Templates & forms | ✅ Complete |
 | Phase 5 | Testing & docs | ✅ Complete |
+| Phase 6 | Guided Workflows | ✅ Complete |
+
 
 ## Schema-Driven Form Validation
 

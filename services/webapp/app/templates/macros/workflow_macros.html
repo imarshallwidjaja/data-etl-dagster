@@ -1,0 +1,43 @@
+{# =============================================================================
+   Workflow Macros - Wizard state and field components
+   ============================================================================= #}
+
+{% macro render_hidden_state(data) %}
+<input type="hidden" name="_wizard_state" value='{{ data | tojson | e }}'>
+{% endmacro %}
+
+{% macro render_step_field(name, label, type="text", required=false, placeholder="", description="", value="", error="", options=None) %}
+<label>
+    {{ label }}{% if required %} *{% endif %}
+    {% if type == "select" %}
+    <select name="{{ name }}" id="{{ name }}" {% if required %}required{% endif %} {% if error %}aria-invalid="true"{% endif %}>
+        {% for opt in options %}
+        <option value="{{ opt.value }}" {% if opt.value == value %}selected{% endif %}>
+            {{ opt.label }}
+        </option>
+        {% endfor %}
+    </select>
+    {% elif type == "textarea" %}
+    <textarea name="{{ name }}" 
+              id="{{ name }}"
+              rows="2"
+              {% if required %}required{% endif %}
+              {% if error %}aria-invalid="true"{% endif %}
+              placeholder="{{ placeholder }}">{{ value }}</textarea>
+    {% else %}
+    <input type="{{ type }}" 
+           name="{{ name }}" 
+           id="{{ name }}"
+           {% if required %}required{% endif %}
+           {% if error %}aria-invalid="true"{% endif %}
+           placeholder="{{ placeholder }}"
+           value="{{ value }}">
+    {% endif %}
+    
+    {% if error %}
+    <small class="error-text" style="color: var(--pico-del-color);">{{ error }}</small>
+    {% elif description %}
+    <small>{{ description }}</small>
+    {% endif %}
+</label>
+{% endmacro %}

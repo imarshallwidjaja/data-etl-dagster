@@ -11,103 +11,151 @@
         </hgroup>
     </header>
 
-    <form id="manifest-form" method="post">
-        <fieldset>
-            <legend>Dataset Information</legend>
+    <div class="grid" style="margin-bottom: 2rem;">
+        <button type="button" id="form-mode-btn" class="active">Form Mode</button>
+        <button type="button" id="json-mode-btn" class="secondary outline">JSON Mode</button>
+    </div>
 
-            <label>
-                Title *
-                <input type="text" name="title" required placeholder="Human-readable dataset title">
-            </label>
+    <div id="form-mode">
+        <form id="manifest-form" method="post">
+            <fieldset>
+                <legend>Dataset Information</legend>
 
-            <label>
-                Description
-                <textarea name="description" rows="2" placeholder="Abstract or summary of the dataset"></textarea>
-            </label>
-
-            <label>
-                Keywords (comma-separated)
-                <input type="text" name="keywords" placeholder="census, demographics, population">
-                <small>Subject keywords for discovery</small>
-            </label>
-
-            <label>
-                Source
-                <input type="text" name="source" placeholder="Data lineage/provenance statement">
-            </label>
-
-            <div class="grid">
                 <label>
-                    License
-                    <select name="license">
-                        <option value="">Select license...</option>
-                        <option value="CC-BY-4.0">CC-BY-4.0</option>
-                        <option value="CC-BY-SA-4.0">CC-BY-SA-4.0</option>
-                        <option value="CC0-1.0">CC0 (Public Domain)</option>
-                        <option value="MIT">MIT</option>
-                        <option value="proprietary">Proprietary</option>
-                    </select>
+                    Title *
+                    <input type="text" name="title" required placeholder="Human-readable dataset title">
                 </label>
 
                 <label>
-                    Attribution
-                    <input type="text" name="attribution" placeholder="Credit statement">
+                    Description
+                    <textarea name="description" rows="2" placeholder="Abstract or summary of the dataset"></textarea>
                 </label>
-            </div>
-        </fieldset>
 
-        <fieldset>
-            <legend>Basic Information</legend>
+                <label>
+                    Keywords (comma-separated)
+                    <input type="text" name="keywords" placeholder="census, demographics, population">
+                    <small>Subject keywords for discovery</small>
+                </label>
 
-            <label>
-                Batch ID (optional)
-                <input type="text" name="batch_id" placeholder="{{ suggested_batch_id }}" value="">
-                <small>Leave blank to auto-generate</small>
-            </label>
+                <label>
+                    Source
+                    <input type="text" name="source" placeholder="Data lineage/provenance statement">
+                </label>
 
-            <label>
-                Project
-                <input type="text" name="project" placeholder="e.g., CENSUS_DATA">
-                <small>Optional project identifier</small>
-            </label>
-        </fieldset>
+                <div class="grid">
+                    <label>
+                        License
+                        <select name="license">
+                            <option value="">Select license...</option>
+                            <option value="CC-BY-4.0">CC-BY-4.0</option>
+                            <option value="CC-BY-SA-4.0">CC-BY-SA-4.0</option>
+                            <option value="CC0-1.0">CC0 (Public Domain)</option>
+                            <option value="MIT">MIT</option>
+                            <option value="proprietary">Proprietary</option>
+                        </select>
+                    </label>
 
-        <fieldset>
-            <legend>File</legend>
-
-            <label>
-                Dataset ID (optional)
-                <input type="text" name="dataset_id" placeholder="Auto-generated if blank">
-            </label>
-
-            <label>
-                CSV File Path *
-                <input type="text" name="file_path" required placeholder="s3://landing-zone/batch_001/data.csv">
-            </label>
-
-            <p><small>Tabular ingestion requires exactly one CSV file.</small></p>
-        </fieldset>
-
-        <fieldset>
-            <legend>Tags (Optional)</legend>
-            <div id="tags-container">
-                <div class="tag-entry grid">
-                    <input type="text" name="tag_key" placeholder="Key">
-                    <input type="text" name="tag_value" placeholder="Value">
+                    <label>
+                        Attribution
+                        <input type="text" name="attribution" placeholder="Credit statement">
+                    </label>
                 </div>
-            </div>
-            <button type="button" id="add-tag-btn" class="secondary outline">+ Add Tag</button>
-        </fieldset>
+            </fieldset>
 
-        <div id="submit-status"></div>
-        <button type="submit">Create Manifest</button>
-    </form>
+            <fieldset>
+                <legend>Basic Information</legend>
+
+                <label>
+                    Batch ID (optional)
+                    <input type="text" name="batch_id" placeholder="{{ suggested_batch_id }}" value="">
+                    <small>Leave blank to auto-generate</small>
+                </label>
+
+                <label>
+                    Project
+                    <input type="text" name="project" placeholder="e.g., CENSUS_DATA">
+                    <small>Optional project identifier</small>
+                </label>
+            </fieldset>
+
+            <fieldset>
+                <legend>File</legend>
+
+                <label>
+                    Dataset ID (optional)
+                    <input type="text" name="dataset_id" placeholder="Auto-generated if blank">
+                </label>
+
+                <label>
+                    CSV File Path *
+                    <input type="text" name="file_path" required placeholder="s3://landing-zone/batch_001/data.csv">
+                </label>
+
+                <p><small>Tabular ingestion requires exactly one CSV file.</small></p>
+            </fieldset>
+
+            <fieldset>
+                <legend>Tags (Optional)</legend>
+                <div id="tags-container">
+                    <div class="tag-entry grid">
+                        <input type="text" name="tag_key" placeholder="Key">
+                        <input type="text" name="tag_value" placeholder="Value">
+                    </div>
+                </div>
+                <button type="button" id="add-tag-btn" class="secondary outline">+ Add Tag</button>
+            </fieldset>
+
+            <div id="submit-status"></div>
+            <button type="submit">Create Manifest</button>
+        </form>
+    </div>
+
+    <div id="json-mode" style="display: none;">
+        <label for="json-input">Manifest JSON (ManifestCreateRequest format)</label>
+        <textarea id="json-input" rows="15" placeholder='{
+    "title": "My Tabular Dataset",
+    "intent": "ingest_tabular",
+    "files": [
+        {
+            "path": "s3://landing-zone/batch_001/data.csv",
+            "type": "tabular",
+            "format": "CSV"
+        }
+    ]
+}'></textarea>
+        <div id="json-status"></div>
+        <button type="button" id="json-submit-btn">Validate & Submit JSON</button>
+    </div>
 </article>
 
 <script src="/static/js/forms.js"></script>
 <script src="/static/js/validation.js"></script>
 <script>
     const validator = new ManifestFormValidator('manifest-form', 'tabular');
+
+    // Mode toggle
+    const formModeBtn = document.getElementById('form-mode-btn');
+    const jsonModeBtn = document.getElementById('json-mode-btn');
+    const formDiv = document.getElementById('form-mode');
+    const jsonDiv = document.getElementById('json-mode');
+
+    formModeBtn.addEventListener('click', () => {
+        formDiv.style.display = 'block';
+        jsonDiv.style.display = 'none';
+        formModeBtn.classList.remove('secondary', 'outline');
+        formModeBtn.classList.add('active');
+        jsonModeBtn.classList.add('secondary', 'outline');
+        jsonModeBtn.classList.remove('active');
+    });
+
+    jsonModeBtn.addEventListener('click', () => {
+        formDiv.style.display = 'none';
+        jsonDiv.style.display = 'block';
+        jsonModeBtn.classList.remove('secondary', 'outline');
+        jsonModeBtn.classList.add('active');
+        formModeBtn.classList.add('secondary', 'outline');
+        formModeBtn.classList.remove('active');
+    });
     
     document.getElementById('manifest-form').addEventListener('submit', async function (e) {
         e.preventDefault();
@@ -155,6 +203,53 @@
             } else {
                 const error = await response.json();
                 status.innerHTML = '<p class="error">' + (error.detail || 'Creation failed') + '</p>';
+            }
+        } catch (err) {
+            status.innerHTML = '<p class="error">' + err.message + '</p>';
+        }
+    });
+
+    // JSON Submit
+    document.getElementById('json-submit-btn').addEventListener('click', async function() {
+        const textarea = document.getElementById('json-input');
+        const status = document.getElementById('json-status');
+        status.innerHTML = '<p aria-busy="true">Validating JSON...</p>';
+
+        let data;
+        try {
+            data = JSON.parse(textarea.value);
+        } catch (e) {
+            status.innerHTML = '<p class="error">Invalid JSON: ' + e.message + '</p>';
+            return;
+        }
+
+        // Fetch schema and validate with Ajv
+        try {
+            const schemaRes = await fetch('/manifests/schemas/tabular');
+            const schema = await schemaRes.json();
+            const ajv = new Ajv({allErrors: true, strict: false});
+            const validate = ajv.compile(schema);
+            
+            if (!validate(data)) {
+                const errors = validate.errors.map(e => (e.instancePath || 'root') + ': ' + e.message).join('; ');
+                status.innerHTML = '<p class="error">Validation failed: ' + errors + '</p>';
+                return;
+            }
+
+            status.innerHTML = '<p aria-busy="true">Submitting...</p>';
+            const response = await fetch('/manifests/new/tabular', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                status.innerHTML = '<p class="success">Manifest created: ' + result.batch_id + '</p>';
+                setTimeout(() => window.location.href = '/manifests/', 1500);
+            } else {
+                const error = await response.json();
+                status.innerHTML = '<p class="error">' + (error.detail || 'Submission failed') + '</p>';
             }
         } catch (err) {
             status.innerHTML = '<p class="error">' + err.message + '</p>';

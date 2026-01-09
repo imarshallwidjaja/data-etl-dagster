@@ -1,0 +1,22 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Select Spatial Dataset</legend>
+        
+        {% set asset_options = [{"value": "", "label": "Select spatial asset..."}] %}
+        {% for asset in spatial_assets %}
+            {% set _ = asset_options.append({"value": asset.dataset_id, "label": asset.dataset_id ~ " (v" ~ asset.version ~ ")"}) %}
+        {% endfor %}
+        
+        {{ render_step_field("spatial_dataset_id", "Spatial Asset", type="select", options=asset_options, required=true, value=accumulated_data.get('spatial_dataset_id', ''), error=errors.get('spatial_dataset_id')) }}
+        {{ render_step_field("spatial_version", "Version (optional)", placeholder="Latest", value=accumulated_data.get('spatial_version', ''), error=errors.get('spatial_version')) }}
+    </fieldset>
+
+    <footer class="grid">
+        <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
+        <button type="submit" name="_nav" value="next">Next</button>
+    </footer>
+</form>

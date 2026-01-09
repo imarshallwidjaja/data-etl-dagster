@@ -1,0 +1,21 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Processing Options</legend>
+        
+        {{ render_step_field("dataset_id", "Dataset ID", placeholder="Auto-generated if blank", value=accumulated_data.get('dataset_id', ''), error=errors.get('dataset_id')) }}
+        {{ render_step_field("project", "Project", placeholder="e.g., ALPHA", value=accumulated_data.get('project', ''), error=errors.get('project')) }}
+    </fieldset>
+
+    {% if errors.global %}
+    <p class="error" style="color: var(--pico-del-color);">{{ errors.global }}</p>
+    {% endif %}
+
+    <footer class="grid">
+        <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
+        <button type="submit" name="_nav" value="submit">Submit</button>
+    </footer>
+</form>

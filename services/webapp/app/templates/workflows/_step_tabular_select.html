@@ -1,0 +1,22 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Select Tabular Dataset</legend>
+        
+        {% set asset_options = [{"value": "", "label": "Select tabular asset..."}] %}
+        {% for asset in tabular_assets %}
+            {% set _ = asset_options.append({"value": asset.dataset_id, "label": asset.dataset_id ~ " (v" ~ asset.version ~ ")"}) %}
+        {% endfor %}
+        
+        {{ render_step_field("tabular_dataset_id", "Tabular Asset", type="select", options=asset_options, required=true, value=accumulated_data.get('tabular_dataset_id', ''), error=errors.get('tabular_dataset_id')) }}
+        {{ render_step_field("tabular_version", "Version (optional)", placeholder="Latest", value=accumulated_data.get('tabular_version', ''), error=errors.get('tabular_version')) }}
+    </fieldset>
+
+    <footer class="grid">
+        <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
+        <button type="submit" name="_nav" value="next">Next</button>
+    </footer>
+</form>

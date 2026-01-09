@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+
+{% block title %}{{ workflow.name }} - Workflow Wizard{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>{{ workflow.name }}</h1>
+            <p>Step {{ current_step_index + 1 }} of {{ workflow.steps | length }}: {{ workflow.steps[current_step_index].title }}</p>
+        </hgroup>
+        
+        <progress value="{{ current_step_index + 1 }}" max="{{ workflow.steps | length }}"></progress>
+    </header>
+
+    <div id="step-content">
+        {% include step_template %}
+    </div>
+</article>
+{% endblock %}

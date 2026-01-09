@@ -1,0 +1,19 @@
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+    {{ render_hidden_state(accumulated_data) }}
+    
+    <fieldset>
+        <legend>Select CSV File</legend>
+        
+        {{ render_step_field("file_path", "File Path", required=true, placeholder="s3://landing-zone/batch_001/data.csv", value=accumulated_data.get('file_path', ''), error=errors.get('file_path')) }}
+        
+        <input type="hidden" name="file_format" value="CSV">
+        <input type="hidden" name="file_type" value="tabular">
+    </fieldset>
+
+    <footer class="grid">
+        <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
+        <button type="submit" name="_nav" value="next">Next</button>
+    </footer>
+</form>

@@ -48,6 +48,7 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
   - `health.py` - `/health`, `/ready`, `/whoami`
   - `landing.py` - Landing zone management
   - `manifests.py` - Manifest CRUD & re-run
+  - `workflows.py` - Guided wizard-style workflows
   - `runs.py` - Dagster run tracking
   - `assets.py` - Asset browsing & lineage
 - `app/services/` - Service wrappers
@@ -55,6 +56,7 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
   - `mongodb_service.py` - MongoDB queries
   - `dagster_service.py` - Dagster GraphQL
   - `manifest_builder.py` - Form → Manifest conversion
+  - `workflow_registry.py` - Workflow definitions and steps
 - `app/templates/` - Jinja2 templates with PicoCSS
 - `app/static/` - CSS and JavaScript
 - `Dockerfile` - Python 3.11-slim, installs `libs/`
@@ -99,6 +101,9 @@ Environment variables (via `app/config.py`):
 | GET | `/manifests/schemas/{asset_type}` | ✅ | JSON Schema for form validation |
 | GET | `/manifests/{batch_id}` | ✅ | Manifest details |
 | POST | `/manifests/{batch_id}/rerun` | ✅ | Re-run manifest |
+| GET | `/workflows/` | ✅ | List available workflows |
+| GET | `/workflows/{id}` | ✅ | Start workflow wizard |
+| POST | `/workflows/{id}/step/{n}` | ✅ | Process workflow step (HTMX) |
 | GET | `/runs/` | ✅ | List Dagster runs |
 | GET | `/runs/{run_id}` | ✅ | Run details + events |
 | GET | `/assets/` | ✅ | List assets |
@@ -116,11 +121,14 @@ Environment variables (via `app/config.py`):
 - `test_minio_service.py` - MinIO service mocking
 - `test_manifest_router.py` - Manifest router tests
 - `test_manifest_schema.py` - Schema endpoint tests (14 tests)
+- `test_workflow_registry.py` - Registry definitions
+- `test_workflow_router.py` - Wizard logic and state
 
 ### Integration tests (in `../../tests/integration/`):
 - `test_webapp_health.py` - Health endpoint tests
 - `test_webapp_landing.py` - Landing zone CRUD
 - `test_webapp_assets.py` - Asset listing
+- `test_webapp_workflows.py` - Wizard flow end-to-end
 
 ### Run tests:
 ```powershell
