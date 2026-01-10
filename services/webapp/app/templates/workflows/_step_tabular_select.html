@@ -1,6 +1,6 @@
 {% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
 
-<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="outerHTML">
+<form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="innerHTML">
     {{ render_hidden_state(accumulated_data) }}
     
     <fieldset>
