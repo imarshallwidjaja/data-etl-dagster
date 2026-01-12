@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.auth.dependencies import AuthenticatedUser, get_current_user
 from app.services.minio_service import get_minio_service
 from app.services.mongodb_service import get_mongodb_service
+from app.utils.markdown import render_markdown
 
 router = APIRouter(prefix="/assets", tags=["assets"])
 
@@ -112,6 +113,8 @@ async def get_asset(
     if format == "json":
         return AssetDetailResponse(asset=asset, versions=version_dicts)
 
+    description_html = render_markdown(asset.get("metadata", {}).get("description", ""))
+
     return templates.TemplateResponse(
         "assets/detail.html",
         {
@@ -119,6 +122,7 @@ async def get_asset(
             "user": current_user,
             "asset": asset,
             "versions": version_dicts,
+            "description_html": description_html,
         },
     )
 
@@ -208,3 +212,75 @@ async def get_lineage(
             "parents": parent_dicts,
         },
     )
+
+
+@router.get("/{dataset_id}/v{version}/lineage/graph")
+async def get_lineage_graph(
+    dataset_id: str,
+    version: int,
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    """Return lineage graph data for Cytoscape.js visualization."""
+    mongodb = get_mongodb_service()
+
+    asset = mongodb.get_asset(dataset_id, version=version)
+    if not asset:
+        raise HTTPException(
+            status_code=404, detail=f"Asset not found: {dataset_id} v{version}"
+        )
+
+    focal_id = asset.get("_id")
+    parents = mongodb.get_parent_assets(focal_id) if focal_id else []
+    children = mongodb.get_child_assets(focal_id) if focal_id else []
+
+    nodes: dict[str, dict] = {}
+    edges: list[dict] = []
+
+    def truncate(text: str, max_len: int = 50) -> str:
+        return text[:max_len] + "..." if len(text) > max_len else text
+
+    def add_node(doc: dict, is_root: bool = False) -> None:
+        node_id = str(doc.get("_id"))
+        if node_id not in nodes:
+            nodes[node_id] = {
+                "data": {
+                    "id": node_id,
+                    "dataset_id": doc.get("dataset_id"),
+                    "title": truncate(
+                        doc.get("metadata", {}).get("title", doc.get("dataset_id", ""))
+                    ),
+                    "kind": doc.get("kind"),
+                    "version": doc.get("version", 1),
+                    "is_root": is_root,
+                }
+            }
+
+    add_node(asset, is_root=True)
+
+    for parent in parents:
+        add_node(parent)
+        edges.append(
+            {
+                "data": {
+                    "id": f"edge_{parent.get('_id')}_{focal_id}",
+                    "source": str(parent.get("_id")),
+                    "target": str(focal_id),
+                    "transformation": parent.get("_lineage_transformation", ""),
+                }
+            }
+        )
+
+    for child in children:
+        add_node(child)
+        edges.append(
+            {
+                "data": {
+                    "id": f"edge_{focal_id}_{child.get('_id')}",
+                    "source": str(focal_id),
+                    "target": str(child.get("_id")),
+                    "transformation": child.get("_lineage_transformation", ""),
+                }
+            }
+        )
+
+    return {"elements": {"nodes": list(nodes.values()), "edges": edges}}

@@ -1,27 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}Asset: {{ asset.dataset_id }} - Data ETL Tooling{% endblock %}
+{% block title %}Asset: {{ asset.metadata.title or asset.dataset_id }} - Data ETL Tooling{% endblock %}
 
 {% block content %}
 <article>
     <header>
-        <hgroup>
-            <h1>📦 {{ asset.dataset_id }}</h1>
-            <p>
-                {% if asset.kind == 'spatial' %}
-                🗺️ Spatial Asset
-                {% elif asset.kind == 'tabular' %}
-                📊 Tabular Asset
-                {% elif asset.kind == 'joined' %}
-                🔗 Joined Asset
-                {% else %}
-                📦 {{ asset.kind }}
-                {% endif %}
-            </p>
-        </hgroup>
+        <h1>{{ asset.metadata.title or asset.dataset_id }}</h1>
+        <p>
+            {% if asset.kind == 'spatial' %}
+            Spatial Asset
+            {% elif asset.kind == 'tabular' %}
+            Tabular Asset
+            {% elif asset.kind == 'joined' %}
+            Joined Asset
+            {% else %}
+            {{ asset.kind }}
+            {% endif %}
+        </p>
     </header>
 
-    <!-- Details -->
     <h2>Latest Version (v{{ asset.version }})</h2>
     <figure>
         <table>
@@ -54,37 +51,90 @@
         </table>
     </figure>
 
-    <!-- Actions -->
     <div class="grid">
         <a href="/assets/{{ asset.dataset_id }}/v{{ asset.version }}/download" role="button">Download Latest</a>
         <a href="/assets/{{ asset.dataset_id }}/v{{ asset.version }}/lineage" role="button" class="secondary">View
             Lineage</a>
     </div>
 
-    <!-- Metadata -->
-    {% if asset.metadata %}
-    <h2>Metadata</h2>
-    <figure>
-        <table>
-            <tbody>
-                {% if asset.metadata.project %}
-                <tr>
-                    <td><strong>Project</strong></td>
-                    <td>{{ asset.metadata.project }}</td>
-                </tr>
+    <section>
+        <h2>Metadata</h2>
+        <dl>
+            <dt>Description</dt>
+            <dd>{{ description_html|safe }}</dd>
+
+            <dt>Keywords</dt>
+            <dd>
+                {% for kw in asset.metadata.keywords or [] %}
+                <kbd>{{ kw }}</kbd>
+                {% else %}
+                <em>None</em>
+                {% endfor %}
+            </dd>
+
+            <dt>Source</dt>
+            <dd>{{ asset.metadata.source or 'Not specified' }}</dd>
+
+            <dt>License</dt>
+            <dd>{{ asset.metadata.license or 'Not specified' }}</dd>
+
+            <dt>Attribution</dt>
+            <dd>{{ asset.metadata.attribution or 'Not specified' }}</dd>
+        </dl>
+    </section>
+
+    {% if asset.kind in ['spatial', 'joined'] %}
+    <section>
+        <h2>Spatial Information</h2>
+        <dl>
+            <dt>CRS</dt>
+            <dd>{{ asset.crs or 'Not specified' }}</dd>
+
+            <dt>Bounds</dt>
+            <dd>
+                {% if asset.bounds %}
+                [{{ asset.bounds.minx }}, {{ asset.bounds.miny }}] – [{{ asset.bounds.maxx }}, {{ asset.bounds.maxy }}]
+                {% else %}
+                Not available
                 {% endif %}
-                {% if asset.metadata.description %}
-                <tr>
-                    <td><strong>Description</strong></td>
-                    <td>{{ asset.metadata.description }}</td>
-                </tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </figure>
+            </dd>
+
+            <dt>Geometry Type</dt>
+            <dd>{{ asset.metadata.geometry_type or 'Not specified' }}</dd>
+        </dl>
+    </section>
     {% endif %}
 
-    <!-- Versions -->
+    {% if asset.metadata.column_schema %}
+    <section>
+        <h2>Column Schema</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Type</th>
+                    <th>Logical Type</th>
+                    <th>Nullable</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for col_name, col_info in asset.metadata.column_schema.items() %}
+                <tr>
+                    <td><code>{{ col_name }}</code></td>
+                    <td>{{ col_info.title or col_name }}</td>
+                    <td>{{ col_info.description or '' }}</td>
+                    <td>{{ col_info.type_name }}</td>
+                    <td>{{ col_info.logical_type }}</td>
+                    <td>{{ 'Yes' if col_info.nullable else 'No' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% endif %}
+
     <h2>All Versions ({{ versions|length }})</h2>
     {% if versions %}
     <figure>

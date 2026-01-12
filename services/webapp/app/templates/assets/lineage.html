@@ -1,135 +1,120 @@
 {% extends "base.html" %}
 
-{% block title %}Lineage: {{ asset.dataset_id }} - Data ETL Tooling{% endblock %}
+{% block title %}{{ asset.metadata.title or asset.dataset_id }} — Lineage{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.28.0/dist/cytoscape.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dagre@0.8.5/dist/dagre.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/cytoscape-dagre@2.5.0/cytoscape-dagre.min.js"></script>
+{% endblock %}
 
 {% block content %}
-<article>
-    <header>
-        <hgroup>
-            <h1>🔗 Lineage: {{ asset.dataset_id }}</h1>
-            <p>View parent assets and transformations.</p>
-        </hgroup>
-    </header>
+<h1>{{ asset.metadata.title or asset.dataset_id }} — Lineage</h1>
 
-    <p><a href="/assets/{{ asset.dataset_id }}" role="button" class="secondary outline">← Back to Asset</a></p>
+<p>
+    <a href="/assets/{{ asset.dataset_id }}">← Back to Asset</a>
+</p>
 
-    <!-- Current Asset -->
-    <h2>Target Asset</h2>
-    <figure>
-        <table>
-            <tbody>
-                <tr>
-                    <td><strong>Dataset ID</strong></td>
-                    <td><code>{{ asset.dataset_id }}</code></td>
-                </tr>
-                <tr>
-                    <td><strong>Version</strong></td>
-                    <td>v{{ asset.version }}</td>
-                </tr>
-                <tr>
-                    <td><strong>Kind</strong></td>
-                    <td>{{ asset.kind }}</td>
-                </tr>
-                <tr>
-                    <td><strong>S3 Key</strong></td>
-                    <td><code>{{ asset.s3_key }}</code></td>
-                </tr>
-            </tbody>
-        </table>
-    </figure>
+<div id="cy" style="min-height: 500px; width: 100%; border: 1px solid var(--pico-muted-border-color); border-radius: 4px;"></div>
 
-    <!-- Parent Assets -->
-    <h2>Parent Assets ({{ parents|length }})</h2>
-
-    {% if parents %}
-    <div class="lineage-graph">
-        {% for p in parents %}
-        <article class="lineage-node">
-            <header>
-                <h4>{{ p.dataset_id }}</h4>
-            </header>
-            <p>
-                <strong>Version:</strong> v{{ p.version }}<br>
-                <strong>Kind:</strong> {{ p.kind }}<br>
-                <strong>Transformation:</strong> <code>{{ p.transformation }}</code>
-            </p>
-            <footer>
-                <a href="/assets/{{ p.dataset_id }}" role="button" class="outline"
-                    style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</a>
-            </footer>
-        </article>
-        {% endfor %}
-    </div>
-
-    <!-- Lineage Diagram -->
-    <h3>Lineage Visualization</h3>
-    <div class="lineage-diagram">
-        <div class="lineage-parents">
-            {% for p in parents %}
-            <div class="lineage-parent-box">
-                📦 {{ p.dataset_id }}<br>
-                <small>({{ p.kind }} v{{ p.version }})</small>
-            </div>
-            {% endfor %}
-        </div>
-        <div class="lineage-arrow">↓</div>
-        <div class="lineage-target-box">
-            ⬇️ {{ parents[0].transformation if parents else 'transform' }}<br>
-            📦 <strong>{{ asset.dataset_id }}</strong><br>
-            <small>({{ asset.kind }} v{{ asset.version }})</small>
-        </div>
-    </div>
-    {% else %}
-    <p><em>No parent assets found. This asset has no lineage (it may be a source asset).</em></p>
-    {% endif %}
-</article>
-
-<style>
-    .lineage-graph {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-        gap: 1rem;
+<script>
+document.addEventListener('DOMContentLoaded', async () => {
+    const resp = await fetch('/assets/{{ asset.dataset_id }}/v{{ asset.version }}/lineage/graph');
+    if (!resp.ok) {
+        console.error('Failed to load lineage graph:', resp.status);
+        document.getElementById('cy').innerHTML = '<p style="padding: 2rem; text-align: center;">Failed to load lineage graph</p>';
+        return;
     }
+    const graphData = await resp.json();
 
-    .lineage-node {
-        margin: 0;
-    }
+    cytoscape.use(cytoscapeDagre);
 
-    .lineage-diagram {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        margin: 2rem 0;
-        padding: 1rem;
-        background: var(--pico-card-background-color);
-        border-radius: var(--pico-border-radius);
-    }
-
-    .lineage-parents {
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-        justify-content: center;
-    }
-
-    .lineage-parent-box,
-    .lineage-target-box {
-        padding: 1rem;
-        background: var(--pico-background-color);
-        border: 2px solid var(--pico-muted-border-color);
-        border-radius: var(--pico-border-radius);
-        text-align: center;
-    }
-
-    .lineage-target-box {
-        border-color: var(--pico-primary);
-        margin-top: 0.5rem;
-    }
-
-    .lineage-arrow {
-        font-size: 2rem;
-        margin: 0.5rem 0;
-        color: var(--pico-muted-color);
-    }
-</style>
+    cytoscape({
+        container: document.getElementById('cy'),
+        elements: graphData.elements,
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'label': 'data(title)',
+                    'text-valign': 'center',
+                    'text-halign': 'center',
+                    'background-color': '#6c757d',
+                    'color': '#fff',
+                    'text-wrap': 'wrap',
+                    'text-max-width': '100px',
+                    'width': 120,
+                    'height': 60,
+                    'shape': 'roundrectangle',
+                    'font-size': '10px',
+                }
+            },
+            {
+                selector: 'node[?is_root]',
+                style: {
+                    'background-color': '#0d6efd',
+                    'border-width': 3,
+                    'border-color': '#0a58ca',
+                }
+            },
+            {
+                selector: 'node[kind="spatial"]',
+                style: { 'background-color': '#198754' }
+            },
+            {
+                selector: 'node[kind="tabular"]',
+                style: { 'background-color': '#fd7e14' }
+            },
+            {
+                selector: 'node[kind="joined"]',
+                style: { 'background-color': '#6f42c1' }
+            },
+            {
+                selector: 'node[?is_root][kind="spatial"]',
+                style: {
+                    'background-color': '#198754',
+                    'border-width': 3,
+                    'border-color': '#0a58ca',
+                }
+            },
+            {
+                selector: 'node[?is_root][kind="tabular"]',
+                style: {
+                    'background-color': '#fd7e14',
+                    'border-width': 3,
+                    'border-color': '#0a58ca',
+                }
+            },
+            {
+                selector: 'node[?is_root][kind="joined"]',
+                style: {
+                    'background-color': '#6f42c1',
+                    'border-width': 3,
+                    'border-color': '#0a58ca',
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'width': 2,
+                    'line-color': '#adb5bd',
+                    'target-arrow-color': '#adb5bd',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier',
+                    'label': 'data(transformation)',
+                    'font-size': '8px',
+                    'text-rotation': 'autorotate',
+                    'text-margin-y': -10,
+                }
+            }
+        ],
+        layout: {
+            name: 'dagre',
+            rankDir: 'TB',
+            nodeSep: 50,
+            rankSep: 80,
+        }
+    });
+});
+</script>
 {% endblock %}

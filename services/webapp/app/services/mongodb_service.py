@@ -294,6 +294,37 @@ class MongoDBService:
 
         return parents
 
+    def get_child_assets(self, source_asset_id: str) -> list[dict]:
+        """
+        Get full child asset documents for a given asset.
+
+        Args:
+            source_asset_id: MongoDB ObjectId of the source asset
+
+        Returns:
+            List of child asset documents with _lineage_transformation attached
+        """
+        lineage_collection = self._get_collection(self.LINEAGE)
+        assets_collection = self._get_collection(self.ASSETS)
+
+        lineage_edges = list(
+            lineage_collection.find({"source_asset_id": ObjectId(source_asset_id)})
+        )
+
+        children = []
+        for edge in lineage_edges:
+            try:
+                target_oid = edge["target_asset_id"]
+                doc = assets_collection.find_one({"_id": target_oid})
+                if doc:
+                    doc["_id"] = str(doc["_id"])
+                    doc["_lineage_transformation"] = edge.get("transformation", "")
+                    children.append(doc)
+            except Exception:
+                continue
+
+        return children
+
     # ------------------------------------------------------------------
     # Re-run versioning
     # ------------------------------------------------------------------

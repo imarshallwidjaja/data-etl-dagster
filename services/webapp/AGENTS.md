@@ -110,6 +110,13 @@ Environment variables (via `app/config.py`):
 | GET | `/assets/{dataset_id}` | ✅ | Asset versions |
 | GET | `/assets/{id}/v{ver}/download` | ✅ | Download asset |
 | GET | `/assets/{id}/v{ver}/lineage` | ✅ | View lineage |
+| GET | `/assets/{id}/v{ver}/lineage/graph` | ✅ | Lineage graph JSON for Cytoscape.js |
+
+## Enhanced Asset Display
+
+- **Markdown rendering**: Only `metadata.description` is rendered as markdown and sanitized with `bleach`.
+- **CRS/bounds**: Read from top-level `asset.crs` and `asset.bounds`, not metadata.
+- **Column schema**: Display `ColumnInfo` fields (title, description, type_name, logical_type, nullable).
 
 ## Testing
 
