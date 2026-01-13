@@ -154,10 +154,9 @@
                     <td><code>{{ v.s3_key }}</code></td>
                     <td>{{ v.created_at[:19] if v.created_at else '-' }}</td>
                     <td>
-                        <a href="/assets/{{ asset.dataset_id }}/v{{ v.version }}/download" role="button" class="outline"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Download</a>
+                        <a href="/assets/{{ asset.dataset_id }}/v{{ v.version }}/download" role="button" class="outline btn-sm">Download</a>
                         <a href="/assets/{{ asset.dataset_id }}/v{{ v.version }}/lineage" role="button"
-                            class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Lineage</a>
+                            class="outline secondary btn-sm">Lineage</a>
                     </td>
                 </tr>
                 {% endfor %}

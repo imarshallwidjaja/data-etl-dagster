@@ -55,19 +55,19 @@
                         <span class="badge badge-error">{{ m.status }}</span>
                         {% elif m.status == 'processing' %}
                         <span class="badge badge-warning">{{ m.status }}</span>
-                        {% else %}
+                        {% elif m.status == 'pending' %}
                         <span class="badge badge-pending">{{ m.status }}</span>
+                        {% else %}
+                        <span class="badge badge-unknown">{{ m.status }}</span>
                         {% endif %}
                     </td>
                     <td>{{ m.project or '-' }}</td>
                     <td>{{ m.file_count }}</td>
                     <td>{{ m.created_at[:19] if m.created_at else '-' }}</td>
                     <td>
-                        <a href="/manifests/{{ m.batch_id }}" role="button" class="outline contrast"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</a>
+                        <a href="/manifests/{{ m.batch_id }}" role="button" class="outline contrast btn-sm">View</a>
                         {% if m.dagster_run_id %}
-                        <a href="/runs/{{ m.dagster_run_id }}" role="button" class="outline"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Run</a>
+                        <a href="/runs/{{ m.dagster_run_id }}" role="button" class="outline btn-sm">Run</a>
                         {% endif %}
                     </td>
                 </tr>

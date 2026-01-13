@@ -171,7 +171,7 @@ pytest -m integration tests/integration/test_webapp*.py -v
 | Phase 2 | Service wrappers | ✅ Complete |
 | Phase 3 | API endpoints | ✅ Complete |
 | Phase 4 | Templates & forms | ✅ Complete |
-| Phase 5 | Testing & docs | ✅ Complete |
+| Phase 5 | UI Polish & Docs | ✅ Complete |
 | Phase 6 | Guided Workflows | ✅ Complete |
 
 

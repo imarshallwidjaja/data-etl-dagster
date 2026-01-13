@@ -51,10 +51,12 @@
                         <span class="badge badge-success">{{ r.status }}</span>
                         {% elif r.status == 'FAILURE' %}
                         <span class="badge badge-error">{{ r.status }}</span>
-                        {% elif r.status == 'STARTED' %}
+                        {% elif r.status in ['STARTED', 'QUEUED', 'NOT_STARTED'] %}
                         <span class="badge badge-warning">{{ r.status }}</span>
-                        {% else %}
+                        {% elif r.status == 'CANCELED' %}
                         <span class="badge badge-info">{{ r.status }}</span>
+                        {% else %}
+                        <span class="badge badge-unknown">{{ r.status }}</span>
                         {% endif %}
                     </td>
                     <td>{{ r.batch_id or '-' }}</td>

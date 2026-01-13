@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
@@ -309,7 +309,16 @@ async def submit_workflow(
             content_type="application/json",
         )
 
-        return RedirectResponse(url=f"/manifests/{manifest.batch_id}", status_code=303)
+        return templates.TemplateResponse(
+            "workflows/_step_success.html",
+            {
+                "request": request,
+                "user": user,
+                "workflow": workflow,
+                "batch_id": manifest.batch_id,
+                "manifest_key": manifest_key,
+            },
+        )
     except Exception as e:
         logger.exception("Failed to submit workflow")
         # Re-render last step with global error

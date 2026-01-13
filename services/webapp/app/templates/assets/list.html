@@ -47,22 +47,20 @@
                     <td>v{{ a.version }}</td>
                     <td>
                         {% if a.kind == 'spatial' %}
-                        🗺️ {{ a.kind }}
+                        <span class="badge badge-kind-spatial">{{ a.kind }}</span>
                         {% elif a.kind == 'tabular' %}
-                        📊 {{ a.kind }}
+                        <span class="badge badge-kind-tabular">{{ a.kind }}</span>
                         {% elif a.kind == 'joined' %}
-                        🔗 {{ a.kind }}
+                        <span class="badge badge-kind-joined">{{ a.kind }}</span>
                         {% else %}
-                        📦 {{ a.kind }}
+                        <span class="badge badge-unknown">{{ a.kind }}</span>
                         {% endif %}
                     </td>
                     <td>{{ a.project or '-' }}</td>
                     <td>{{ a.created_at[:19] if a.created_at else '-' }}</td>
                     <td>
-                        <a href="/assets/{{ a.dataset_id }}" role="button" class="outline contrast"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</a>
-                        <a href="/assets/{{ a.dataset_id }}/v{{ a.version }}/download" role="button" class="outline"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Download</a>
+                        <a href="/assets/{{ a.dataset_id }}" role="button" class="outline contrast btn-sm">View</a>
+                        <a href="/assets/{{ a.dataset_id }}/v{{ a.version }}/download" role="button" class="outline btn-sm">Download</a>
                     </td>
                 </tr>
                 {% endfor %}

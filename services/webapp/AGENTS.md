@@ -118,6 +118,18 @@ Environment variables (via `app/config.py`):
 - **CRS/bounds**: Read from top-level `asset.crs` and `asset.bounds`, not metadata.
 - **Column schema**: Display `ColumnInfo` fields (title, description, type_name, logical_type, nullable).
 
+## Phase 5 UI Polish
+
+- **Font Size**: Base font size set to `87.5%` (14px equivalent) to increase information density, with corresponding spacing adjustments.
+- **Badge System**: Mapping for statuses and kinds uses `badge-unknown` as fallback and `badge-kind-*` for asset-specific styling.
+- **Accessibility**:
+  - Skip link added (`#main-content`) for keyboard navigation.
+  - `aria-live="polite"` implemented on run status fragments for screen reader updates.
+- **Mobile Responsiveness**:
+  - Tables wrapped in `figure` with `overflow-x: auto` for horizontal scrolling.
+  - Mobile-specific grid and navigation adjustments.
+- **Utilities**: `btn-sm` utility added for compact action buttons.
+
 ## Testing
 
 ### Unit tests (in `../../tests/unit/webapp/`):

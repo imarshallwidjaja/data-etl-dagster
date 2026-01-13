@@ -1,5 +1,5 @@
 {# Run status fragment for HTMX polling - returns partial HTML for status updates #}
-<div id="run-status" 
+<div id="run-status" aria-live="polite"
      {% if run.status == 'STARTED' or run.status == 'QUEUED' or run.status == 'NOT_STARTED' %}
      hx-get="/runs/{{ run.run_id }}/status" 
      hx-trigger="every 5s"
