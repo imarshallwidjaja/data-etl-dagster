@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% import 'macros/forms.html' as forms %}
 
 {% block title %}New Join Manifest - Data ETL Tooling{% endblock %}
 
 {% block content %}
+{{ forms.field_error_styles() }}
 <article>
     <header>
         <hgroup>
@@ -21,113 +23,68 @@
             <fieldset>
                 <legend>Output Dataset Information</legend>
 
-                <label>
-                    Title *
-                    <input type="text" name="title" required placeholder="Human-readable title for the joined output">
-                </label>
+                {{ forms.render_text_field('title', 'Title', required=True, placeholder='Human-readable title for the joined output') }}
 
-                <label>
-                    Description
-                    <textarea name="description" rows="2" placeholder="Describe the joined output dataset"></textarea>
-                </label>
+                {{ forms.render_textarea_field('description', 'Description', rows=2, placeholder='Describe the joined output dataset') }}
 
-                <label>
-                    Keywords (comma-separated)
-                    <input type="text" name="keywords" placeholder="joined, spatial, census">
-                    <small>Subject keywords for discovery</small>
-                </label>
+                {{ forms.render_text_field('keywords', 'Keywords (comma-separated)', placeholder='joined, spatial, census', description='Subject keywords for discovery') }}
 
-                <label>
-                    Source
-                    <input type="text" name="source" placeholder="Data lineage/provenance statement">
-                </label>
+                {{ forms.render_text_field('source', 'Source', placeholder='Data lineage/provenance statement') }}
 
                 <div class="grid">
-                    <label>
-                        License
-                        <select name="license">
-                            <option value="">Select license...</option>
-                            <option value="CC-BY-4.0">CC-BY-4.0</option>
-                            <option value="CC-BY-SA-4.0">CC-BY-SA-4.0</option>
-                            <option value="CC0-1.0">CC0 (Public Domain)</option>
-                            <option value="MIT">MIT</option>
-                            <option value="proprietary">Proprietary</option>
-                        </select>
-                    </label>
+                    {% set license_options = [
+                        {'value': '', 'label': 'Select license...'},
+                        {'value': 'CC-BY-4.0', 'label': 'CC-BY-4.0'},
+                        {'value': 'CC-BY-SA-4.0', 'label': 'CC-BY-SA-4.0'},
+                        {'value': 'CC0-1.0', 'label': 'CC0 (Public Domain)'},
+                        {'value': 'MIT', 'label': 'MIT'},
+                        {'value': 'proprietary', 'label': 'Proprietary'}
+                    ] %}
+                    {{ forms.render_select_field('license', 'License', license_options) }}
 
-                    <label>
-                        Attribution
-                        <input type="text" name="attribution" placeholder="Credit statement">
-                    </label>
+                    {{ forms.render_text_field('attribution', 'Attribution', placeholder='Credit statement') }}
                 </div>
             </fieldset>
 
             <fieldset>
                 <legend>Basic Information</legend>
 
-                <label>
-                    Batch ID (optional)
-                    <input type="text" name="batch_id" placeholder="{{ suggested_batch_id }}" value="">
-                    <small>Leave blank to auto-generate</small>
-                </label>
+                {{ forms.render_text_field('batch_id', 'Batch ID (optional)', placeholder=suggested_batch_id, description='Leave blank to auto-generate', value='') }}
 
-                <label>
-                    Project
-                    <input type="text" name="project" placeholder="e.g., SPATIAL_CENSUS_JOIN">
-                    <small>Optional project identifier</small>
-                </label>
+                {{ forms.render_text_field('project', 'Project', placeholder='e.g., SPATIAL_CENSUS_JOIN', description='Optional project identifier') }}
 
-                <label>
-                    Dataset ID (optional)
-                    <input type="text" name="dataset_id" placeholder="Auto-generated if blank">
-                </label>
+                {{ forms.render_text_field('dataset_id', 'Dataset ID (optional)', placeholder='Auto-generated if blank') }}
             </fieldset>
 
             <fieldset>
                 <legend>Join Configuration</legend>
 
                 <div class="grid">
-                    <label>
-                        Spatial Asset *
-                        <select name="spatial_dataset_id" required>
-                            <option value="">Select spatial asset...</option>
-                            {% for asset in spatial_assets %}
-                            <option value="{{ asset.dataset_id }}">{{ asset.dataset_id }} (v{{ asset.version }})</option>
-                            {% endfor %}
-                        </select>
-                    </label>
+                    {% set spatial_opts = [{'value': '', 'label': 'Select spatial asset...'}] %}
+                    {% for asset in spatial_assets %}
+                        {% set _ = spatial_opts.append({'value': asset.dataset_id, 'label': asset.dataset_id ~ ' (v' ~ asset.version ~ ')'}) %}
+                    {% endfor %}
+                    {{ forms.render_select_field('spatial_dataset_id', 'Spatial Asset', spatial_opts, required=True) }}
 
-                    <label>
-                        Tabular Asset *
-                        <select name="tabular_dataset_id" required>
-                            <option value="">Select tabular asset...</option>
-                            {% for asset in tabular_assets %}
-                            <option value="{{ asset.dataset_id }}">{{ asset.dataset_id }} (v{{ asset.version }})</option>
-                            {% endfor %}
-                        </select>
-                    </label>
+                    {% set tabular_opts = [{'value': '', 'label': 'Select tabular asset...'}] %}
+                    {% for asset in tabular_assets %}
+                        {% set _ = tabular_opts.append({'value': asset.dataset_id, 'label': asset.dataset_id ~ ' (v' ~ asset.version ~ ')'}) %}
+                    {% endfor %}
+                    {{ forms.render_select_field('tabular_dataset_id', 'Tabular Asset', tabular_opts, required=True) }}
                 </div>
 
                 <div class="grid">
-                    <label>
-                        Left Key (Tabular) *
-                        <input type="text" name="left_key" required placeholder="e.g., parcel_id">
-                    </label>
+                    {{ forms.render_text_field('left_key', 'Left Key (Tabular)', required=True, placeholder='e.g., parcel_id') }}
 
-                    <label>
-                        Right Key (Spatial)
-                        <input type="text" name="right_key" placeholder="Defaults to left key">
-                    </label>
+                    {{ forms.render_text_field('right_key', 'Right Key (Spatial)', placeholder='Defaults to left key') }}
 
-                    <label>
-                        Join Type
-                        <select name="how">
-                            <option value="left" selected>Left</option>
-                            <option value="inner">Inner</option>
-                            <option value="right">Right</option>
-                            <option value="outer">Outer</option>
-                        </select>
-                    </label>
+                    {% set how_opts = [
+                        {'value': 'left', 'label': 'Left'},
+                        {'value': 'inner', 'label': 'Inner'},
+                        {'value': 'right', 'label': 'Right'},
+                        {'value': 'outer', 'label': 'Outer'}
+                    ] %}
+                    {{ forms.render_select_field('how', 'Join Type', how_opts, value='left') }}
                 </div>
             </fieldset>
 
@@ -276,12 +233,5 @@
 <style>
     .success { color: var(--pico-color-green-550); }
     .error { color: var(--pico-color-red-550); }
-    .field-error {
-        display: none;
-        color: var(--pico-color-red-550);
-        font-size: 0.875em;
-        margin-top: 0.25rem;
-    }
-    .field-error:not(:empty) { display: block; }
 </style>
 {% endblock %}
