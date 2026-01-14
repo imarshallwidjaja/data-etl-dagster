@@ -57,6 +57,13 @@ from .run import (
     RunStatus,
 )
 
+# Activity models
+from .activity import (
+    ActivityLog,
+    ActivityAction,
+    ActivityResourceType,
+)
+
 # Configuration models
 from .config import (
     MinIOSettings,
@@ -94,6 +101,10 @@ __all__ = [
     # Run models
     "Run",
     "RunStatus",
+    # Activity models
+    "ActivityLog",
+    "ActivityAction",
+    "ActivityResourceType",
     # Configuration models
     "MinIOSettings",
     "MongoSettings",

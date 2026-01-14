@@ -35,6 +35,9 @@ MANIFESTS_SCHEMA_V001 = _baseline.MANIFESTS_SCHEMA_V001
 RUNS_SCHEMA_V001 = _baseline.RUNS_SCHEMA_V001
 LINEAGE_SCHEMA_V001 = _baseline.LINEAGE_SCHEMA_V001
 
+_activity = load_migration_schema("003_activity_logs.py")
+ACTIVITY_LOGS_SCHEMA_V003 = _activity.ACTIVITY_LOGS_SCHEMA_V003
+
 
 class TestAssetSchemaParity:
     """Verify Asset model matches latest migration schema."""
@@ -152,3 +155,69 @@ class TestSchemaConstants:
     def test_lineage_schema_has_jsonschema(self):
         """Verify LINEAGE_SCHEMA_V001 has $jsonSchema wrapper."""
         assert "$jsonSchema" in LINEAGE_SCHEMA_V001
+
+    def test_activity_logs_schema_has_jsonschema(self):
+        """Verify ACTIVITY_LOGS_SCHEMA_V003 has $jsonSchema wrapper."""
+        assert "$jsonSchema" in ACTIVITY_LOGS_SCHEMA_V003
+
+
+class TestActivityLogSchemaParity:
+    """Verify ActivityLog model matches migration schema."""
+
+    def test_activity_log_required_fields_match(self):
+        """Test that required fields in Pydantic match migration schema."""
+        from libs.models import ActivityLog
+
+        pydantic_required = {
+            f for f, info in ActivityLog.model_fields.items() if info.is_required()
+        }
+        mongo_required = set(
+            ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"].get("required", [])
+        )
+
+        skippable_fields = {"timestamp", "details"}
+        missing_in_mongo = pydantic_required - mongo_required - skippable_fields
+
+        assert not missing_in_mongo, (
+            f"Pydantic requires fields not in MongoDB schema: {missing_in_mongo}. "
+            "If intentional, create a new migration."
+        )
+
+    def test_activity_log_action_enum_matches(self):
+        """Test that action enum values match between Pydantic and MongoDB."""
+        from libs.models.activity import ActivityAction
+        from typing import get_args
+
+        pydantic_values = set(get_args(ActivityAction))
+        mongo_values = set(
+            ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"]["properties"]["action"]["enum"]
+        )
+
+        assert pydantic_values == mongo_values, (
+            f"Action enum mismatch. Pydantic: {pydantic_values}, MongoDB: {mongo_values}"
+        )
+
+    def test_activity_log_resource_type_enum_matches(self):
+        """Test that resource_type enum values match between Pydantic and MongoDB."""
+        from libs.models.activity import ActivityResourceType
+        from typing import get_args
+
+        pydantic_values = set(get_args(ActivityResourceType))
+        mongo_values = set(
+            ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"]["properties"]["resource_type"][
+                "enum"
+            ]
+        )
+
+        assert pydantic_values == mongo_values, (
+            f"Resource type enum mismatch. Pydantic: {pydantic_values}, MongoDB: {mongo_values}"
+        )
+
+    def test_activity_log_timestamp_is_date(self):
+        """Test that timestamp field is validated as bsonType: date."""
+        timestamp_schema = ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"]["properties"][
+            "timestamp"
+        ]
+        assert timestamp_schema.get("bsonType") == "date", (
+            f"Expected timestamp bsonType 'date', got {timestamp_schema}"
+        )
