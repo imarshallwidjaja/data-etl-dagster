@@ -48,7 +48,16 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 | `runs` | Dagster run tracking (links manifests to assets) |
 | `assets` | Asset registry (spatial, tabular, joined) - uses `run_id` ObjectId |
 | `lineage` | Parent→child asset relationships - uses `run_id` ObjectId |
+| `activity_logs` | Audit trail for user and system actions |
 | `schema_migrations` | Applied migration tracking |
+
+### Activity Logs Indexes
+
+The `activity_logs` collection (added in migration 003) includes:
+- `timestamp_desc`: `timestamp` (-1) for recent activity.
+- `user_timestamp_desc`: `user` (1) + `timestamp` (-1) for user history.
+- `action_timestamp_desc`: `action` (1) + `timestamp` (-1) for action history.
+- `resource_type_resource_id`: `resource_type` (1) + `resource_id` (1) for resource lookups.
 
 ### Status Values (Unified)
 

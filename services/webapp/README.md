@@ -140,6 +140,12 @@ tests/
 | GET | `/assets/{id}/v{ver}/download` | Download asset file |
 | GET | `/assets/{id}/v{ver}/lineage` | View parent assets |
 
+### Activity Logs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/activity/` | List activity logs (HTML) or JSON (`?format=json`). Supports filters (`user`, `action`, `resource_type`, `resource_id`) and pagination (`offset`, `limit`). |
+
 ## Development
 
 ### Rebuild After Code Changes

@@ -32,6 +32,26 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
   - Server-side validation remains authoritative (client-side is UX only)
 - Graceful degradation: If Ajv fails to load, form submits normally (server validates)
 
+### Audit Logging Contract
+
+- **Storage**: MongoDB `activity_logs` collection.
+- **Logging Behavior**: Non-blocking; failures to log are caught and logged as warnings, allowing the primary request to succeed.
+- **IP Capture**: Extracted via `X-Forwarded-For` (first entry) or `request.client.host`.
+- **Logged Actions (Webapp)**:
+  - `create_manifest`
+  - `rerun_manifest`
+  - `delete_manifest`
+  - `upload_file`
+  - `delete_file`
+  - `download_asset`
+- **Logged Actions (System)**:
+  - `run_started`
+  - `run_success`
+  - `run_failure`
+  - `run_canceled`
+- **Filters**: The `/activity/` endpoint supports filtering by `user`, `action`, `resource_type`, and `resource_id`.
+- **Pagination**: Supports `offset` and `limit` (max 100).
+
 ### Operational dependency
 
 - Ajv is loaded via CDN in `base.html`: `https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.bundle.min.js`
