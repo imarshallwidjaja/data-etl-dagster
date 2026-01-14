@@ -22,6 +22,7 @@ from .sensors import (
     tabular_sensor,
     manifest_run_failure_sensor,
     manifest_run_success_sensor,
+    manifest_run_started_sensor,
 )
 
 
@@ -100,6 +101,8 @@ defs = Definitions(
             aws_access_key_id=EnvVar("MINIO_ROOT_USER"),
             aws_secret_access_key=EnvVar("MINIO_ROOT_PASSWORD"),
             aws_s3_endpoint=EnvVar("MINIO_ENDPOINT"),
+            gdal_data_path="",
+            proj_lib_path="",
         ),
     },
     schedules=[],
@@ -110,5 +113,6 @@ defs = Definitions(
         join_sensor,  # Asset-based: routes to join_asset_job
         manifest_run_failure_sensor,  # Lifecycle: updates manifest on failure
         manifest_run_success_sensor,  # Lifecycle: updates manifest on success
+        manifest_run_started_sensor,  # Lifecycle: logs run_started to activity_logs
     ],
 )
