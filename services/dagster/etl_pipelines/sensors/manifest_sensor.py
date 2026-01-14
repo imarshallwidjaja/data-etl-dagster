@@ -28,6 +28,25 @@ from ..jobs import ingest_job
 from libs.models import Manifest
 
 
+def _derive_source_tag(manifest: Manifest) -> str:
+    """Derive source tag from manifest metadata.tags.
+
+    Priority:
+    1. ingestion_source (if present and string)
+    2. source (if present and string)
+    3. "unknown" (fallback)
+    """
+    tags = manifest.metadata.tags
+    if tags:
+        ingestion_source = tags.get("ingestion_source")
+        if isinstance(ingestion_source, str) and ingestion_source:
+            return ingestion_source
+        source = tags.get("source")
+        if isinstance(source, str) and source:
+            return source
+    return "unknown"
+
+
 # =============================================================================
 # Lane Definitions
 # =============================================================================
@@ -260,6 +279,8 @@ def build_run_request(
         "manifest_key": manifest_key,
         "lane": lane.value,
         "manifest_archive_key": archive_key,
+        "operator": manifest.uploader,
+        "source": _derive_source_tag(manifest),
     }
 
     return RunRequest(
