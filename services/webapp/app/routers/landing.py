@@ -4,8 +4,10 @@
 # Endpoints for landing zone file management.
 # =============================================================================
 
+import logging
 import re
 from pathlib import Path
+from typing import Optional
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -13,7 +15,22 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
+from app.services.activity_service import get_activity_service
 from app.services.minio_service import get_minio_service
+
+logger = logging.getLogger(__name__)
+
+
+def _get_client_ip(request: Request) -> Optional[str]:
+    """Extract client IP from X-Forwarded-For header or request.client.host."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        # X-Forwarded-For can be comma-separated; take the first (original client)
+        return forwarded.split(",")[0].strip()
+    if request.client:
+        return request.client.host
+    return None
+
 
 router = APIRouter(prefix="/landing", tags=["landing"])
 
@@ -155,6 +172,7 @@ async def browse_prefix(
 
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(
+    request: Request,
     file: UploadFile = File(...),
     prefix: str = Query("", description="Optional prefix for the upload path"),
     current_user: AuthenticatedUser = Depends(get_current_user),
@@ -174,12 +192,34 @@ async def upload_file(
     # Determine content type
     content_type = file.content_type or "application/octet-stream"
 
+    # Get file size by seeking to end
+    file.file.seek(0, 2)
+    size_bytes = file.file.tell()
+    file.file.seek(0)
+
     # Upload
     minio.upload_to_landing(
         file=file.file,
         key=key,
         content_type=content_type,
     )
+
+    # Log activity (non-blocking)
+    try:
+        user_identity = current_user.username or current_user.display_name or "unknown"
+        get_activity_service().log_activity(
+            user=user_identity,
+            action="upload_file",
+            resource_type="file",
+            resource_id=key,
+            details={
+                "content_type": content_type,
+                "size_bytes": size_bytes,
+            },
+            ip_address=_get_client_ip(request),
+        )
+    except Exception as exc:
+        logger.warning("Failed to log upload_file activity: %s", exc)
 
     return UploadResponse(
         key=key,
@@ -226,6 +266,7 @@ async def download_file(
 @router.post("/delete/{path:path}", response_model=DeleteResponse)
 async def delete_file(
     path: str,
+    request: Request,
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> DeleteResponse:
     """
@@ -241,6 +282,19 @@ async def delete_file(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+    try:
+        user_identity = current_user.username or current_user.display_name or "unknown"
+        get_activity_service().log_activity(
+            user=user_identity,
+            action="delete_file",
+            resource_type="file",
+            resource_id=path,
+            details={},
+            ip_address=_get_client_ip(request),
+        )
+    except Exception as exc:
+        logger.warning("Failed to log delete_file activity: %s", exc)
 
     return DeleteResponse(
         key=path,
