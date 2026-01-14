@@ -12,6 +12,30 @@ This is the **Dagster code location** — the heart of the ETL platform. Contain
 - **Assets use dynamic partitions**: all ingestion assets partitioned by `dataset_id`
 - **PostGIS is transient**: ops MUST clean up ephemeral schemas (use `ephemeral_schema` context manager)
 - **Sensors are one-shot**: cursor tracks processed manifests; no auto-retry on failure
+- **Audit Logging**: Runs are tagged with `operator` and lifecycle events are logged to the `activity_logs` collection.
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "Sensors"
+        SS[Spatial Sensor]
+        TS[Tabular Sensor]
+        JS[Join Sensor]
+    end
+
+    subgraph "Assets"
+        RSA[raw_spatial_asset]
+        RTA[raw_tabular_asset]
+        JSA[joined_spatial_asset]
+    end
+
+    SS --> RSA
+    TS --> RTA
+    RSA --> JSA
+    RTA --> JSA
+    JS --> JSA
+```
 
 ## Structure
 

@@ -11,6 +11,7 @@ This platform processes spatial data through a strict manifest-based ingestion p
 3. **Transform** data using PostGIS as a compute engine with recipe-based transformations (geometry column standardized to `geom`)
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
+6. **Audit** all actions in activity log
 
 ### Sensors (legacy + asset-based)
 
@@ -62,6 +63,7 @@ docker compose up -d
 |---------|-----|-------------|
 | Dagster UI | http://localhost:3000 | - |
 | Tooling Webapp | http://localhost:8080 | admin:admin |
+| Activity Log | http://localhost:8080/activity | admin:admin |
 | MinIO Console | http://localhost:9001 | See .env |
 | MinIO API | http://localhost:9000 | See .env |
 | MongoDB | localhost:27017 | See .env |

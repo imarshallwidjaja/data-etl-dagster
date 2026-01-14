@@ -13,6 +13,7 @@ Versioned, idempotent schema migrations for the metadata ledger.
 |---------|------|---------|
 | 001 | `001_baseline_schema.py` | Complete baseline (assets, manifests, runs, lineage) |
 | 002 | `002_add_text_search.py` | Text index for keyword search |
+| 003 | `003_activity_logs.py` | Activity logging collection and indexes |
 
 ## Schema Management Pattern
 
@@ -50,6 +51,12 @@ Versioned, idempotent schema migrations for the metadata ledger.
 
 ### Lineage
 - `source_asset_id`, `target_asset_id`, `run_id`
+
+### Activity Logs
+- `timestamp` desc
+- `user+timestamp`
+- `action+timestamp`
+- `resource_type+resource_id`
 
 ## Developer Recovery
 

@@ -11,6 +11,19 @@ Dagster runs sensors/jobs that implement the platform’s Load → Transform →
 - **GDAL isolation**: heavy spatial deps live only in the `user-code` image (`Dockerfile.user-code`).
 - **PostGIS is transient**: per-run ephemeral schemas must be cleaned up reliably.
 - **MinIO bucket contract**: landing → lake (no direct writes to lake).
+- **Audit Logging**: All run lifecycle events (started, success, failure, canceled) are logged to MongoDB `activity_logs` via `run_status_sensor`.
+
+## Architecture
+
+```mermaid
+graph TD
+    M[Manifest in MinIO] --> SE[Sensors]
+    SE --> J[Jobs]
+    J --> O[Ops/Assets]
+    O --> PostGIS[(PostGIS)]
+    O --> Lake[(Data Lake)]
+    O --> Ledger[(MongoDB Ledger)]
+```
 
 ## Entry points / key files
 
@@ -86,7 +99,7 @@ The platform uses **dedicated sensors** to ensure manifests trigger the correct 
 - Lane-prefixed to avoid collisions: `{lane}:{batch_id}` (e.g., `ingest:batch_001`, `tabular:batch_002`)
 
 **Tags:**
-- Standard tags: `batch_id`, `uploader`, `intent`, `manifest_key`
+- Standard tags: `batch_id`, `uploader`, `operator`, `intent`, `manifest_key`
 - Lane tag: `lane` (values: `ingest`, `tabular`, `join`)
 - Archive tag: `manifest_archive_key` (value: `archive/{manifest_key}`)
 

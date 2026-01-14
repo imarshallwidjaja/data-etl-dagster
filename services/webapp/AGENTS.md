@@ -11,6 +11,30 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
 - **No direct lake writes**: All data flows through the pipeline via manifest creation.
 - **Libs reuse**: Use `libs/models` for manifest/asset validation (consistency with pipeline).
 - **Mixed response format**: All list endpoints support `?format=json` for API access.
+- **Audit Logging**: All significant user actions (manifest creation, re-runs, asset downloads) are logged to the `activity_logs` collection in MongoDB. Captures user identity, IP address, and operation details.
+
+## Architecture
+
+```mermaid
+graph LR
+    subgraph "Tooling Webapp"
+        R[Routers]
+        S[Services]
+        T[Templates]
+    end
+
+    subgraph "External Services"
+        MinIO[(MinIO)]
+        MongoDB[(MongoDB)]
+        Dagster[Dagster GraphQL]
+    end
+
+    R --> S
+    S --> MinIO
+    S --> MongoDB
+    S --> Dagster
+    T --> R
+```
 
 ### Manifest schema endpoint (contract)
 
@@ -71,12 +95,14 @@ This directory owns the **tooling webapp**: a FastAPI-based web interface for ma
   - `workflows.py` - Guided wizard-style workflows
   - `runs.py` - Dagster run tracking
   - `assets.py` - Asset browsing & lineage
+  - `activity.py` - Activity log browsing
 - `app/services/` - Service wrappers
   - `minio_service.py` - MinIO operations
   - `mongodb_service.py` - MongoDB queries
   - `dagster_service.py` - Dagster GraphQL
   - `manifest_builder.py` - Form → Manifest conversion
   - `workflow_registry.py` - Workflow definitions and steps
+  - `activity_service.py` - Audit logging & retrieval
 - `app/templates/` - Jinja2 templates with PicoCSS
 - `app/static/` - CSS and JavaScript
 - `Dockerfile` - Python 3.11-slim, installs `libs/`
@@ -131,6 +157,7 @@ Environment variables (via `app/config.py`):
 | GET | `/assets/{id}/v{ver}/download` | ✅ | Download asset |
 | GET | `/assets/{id}/v{ver}/lineage` | ✅ | View lineage |
 | GET | `/assets/{id}/v{ver}/lineage/graph` | ✅ | Lineage graph JSON for Cytoscape.js |
+| GET | `/activity/` | ✅ | View platform activity logs |
 
 ## Enhanced Asset Display
 
@@ -138,7 +165,7 @@ Environment variables (via `app/config.py`):
 - **CRS/bounds**: Read from top-level `asset.crs` and `asset.bounds`, not metadata.
 - **Column schema**: Display `ColumnInfo` fields (title, description, type_name, logical_type, nullable).
 
-## Phase 5 UI Polish
+## UI Polish & Accessibility
 
 - **Font Size**: Base font size set to `87.5%` (14px equivalent) to increase information density, with corresponding spacing adjustments.
 - **Badge System**: Mapping for statuses and kinds uses `badge-unknown` as fallback and `badge-kind-*` for asset-specific styling.
@@ -149,6 +176,28 @@ Environment variables (via `app/config.py`):
   - Tables wrapped in `figure` with `overflow-x: auto` for horizontal scrolling.
   - Mobile-specific grid and navigation adjustments.
 - **Utilities**: `btn-sm` utility added for compact action buttons.
+
+## Audit Logging Contract
+
+All platform actions and system events are recorded in the `activity_logs` collection for auditability and observability.
+
+### Logged Actions
+- **Webapp Actions**: `create_manifest`, `rerun_manifest`, `delete_manifest`, `upload_file`, `delete_file`, `download_asset`.
+- **System Events**: `run_started`, `run_success`, `run_failure`, `run_canceled`.
+
+### Data Capture
+- **Operator**: User identity from authentication.
+- **IP Capture**: Client IP address captured from `X-Forwarded-For` header (if behind proxy) or `request.client.host`.
+- **Context**: Timestamps, resource types, resource IDs, and operation-specific details.
+
+### Query Interface (`/activity/`)
+- **Filters**: Supports filtering by `user`, `action`, `resource_type`, and `resource_id`.
+- **Pagination**: Supports `offset` and `limit` parameters.
+- **Formats**: Available in both `html` (default) and `json` (`?format=json`).
+
+### Implementation Details
+- **Best-effort**: Logging is best-effort; failures are caught and logged as warnings, ensuring the primary request still succeeds.
+- **Traceability**: Dagster runs are tagged with `operator` (user identity) and `source` (derived from manifest tags: `ingestion_source` > `source` > "unknown") for end-to-end traceability.
 
 ## Testing
 

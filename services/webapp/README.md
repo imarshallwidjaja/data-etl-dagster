@@ -12,6 +12,7 @@ This webapp provides a user-friendly interface for:
 - **Manifest Re-run** - Re-process archived manifests with versioned batch IDs
 - **Run Tracking** - Monitor Dagster run progress with error diagnostics
 - **Asset Browsing** - View metadata, versions, lineage, and download assets
+- **Activity Log** - Audit trail of all platform operations with user and IP tracking
 
 
 ## Quick Start
@@ -140,11 +141,11 @@ tests/
 | GET | `/assets/{id}/v{ver}/download` | Download asset file |
 | GET | `/assets/{id}/v{ver}/lineage` | View parent assets |
 
-### Activity Logs
+### Activity
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | `/activity/` | List activity logs (HTML) or JSON (`?format=json`). Supports filters (`user`, `action`, `resource_type`, `resource_id`) and pagination (`offset`, `limit`). |
+| GET | `/activity/` | View platform activity logs with filters (`user`, `action`, `resource_type`, `resource_id`) and pagination (`offset`, `limit`). Supports `format=json`. |
 
 ## Development
 
@@ -169,16 +170,14 @@ pytest tests/unit/webapp -v
 pytest -m integration tests/integration/test_webapp*.py -v
 ```
 
-## Implementation Status
+## Core Features
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Foundation (auth, health) | ✅ Complete |
-| Phase 2 | Service wrappers | ✅ Complete |
-| Phase 3 | API endpoints | ✅ Complete |
-| Phase 4 | Templates & forms | ✅ Complete |
-| Phase 5 | UI Polish & Docs | ✅ Complete |
-| Phase 6 | Guided Workflows | ✅ Complete |
+- **Platform Foundation** - Authentication, health monitoring, and service readiness checks.
+- **Service Integration** - Native wrappers for MinIO, MongoDB, and Dagster GraphQL.
+- **Data Ingestion** - Schema-driven forms for spatial and tabular data with client-side validation.
+- **Operational Control** - Manifest re-runs, batch versioning, and real-time run status tracking.
+- **Asset Catalog** - Deep inspection of asset metadata, column schemas, and lineage.
+- **Observability** - Comprehensive activity logging and platform-wide audit trail.
 
 
 ## Schema-Driven Form Validation
