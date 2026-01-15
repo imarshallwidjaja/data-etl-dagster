@@ -3,14 +3,14 @@
 {% block title %}{{ workflow.name }} - Workflow Wizard{% endblock %}
 
 {% block content %}
-<article>
+<article id="wizard-container">
     <header>
         <hgroup>
             <h1>{{ workflow.name }}</h1>
-            <p>Step {{ current_step_index + 1 }} of {{ workflow.steps | length }}: {{ workflow.steps[current_step_index].title }}</p>
+            <p id="step-indicator">Step {{ current_step_index + 1 }} of {{ workflow.steps | length }}: {{ workflow.steps[current_step_index].title }}</p>
         </hgroup>
         
-        <progress value="{{ current_step_index + 1 }}" max="{{ workflow.steps | length }}"></progress>
+        <progress id="step-progress" value="{{ current_step_index + 1 }}" max="{{ workflow.steps | length }}"></progress>
     </header>
 
     <div id="step-content">

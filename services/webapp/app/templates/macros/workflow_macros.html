@@ -6,6 +6,11 @@
 <input type="hidden" name="_wizard_state" value='{{ data | tojson | e }}'>
 {% endmacro %}
 
+{% macro render_progress_oob(workflow, current_step_index) %}
+<p id="step-indicator" hx-swap-oob="true">Step {{ current_step_index + 1 }} of {{ workflow.steps | length }}: {{ workflow.steps[current_step_index].title }}</p>
+<progress id="step-progress" hx-swap-oob="true" value="{{ current_step_index + 1 }}" max="{{ workflow.steps | length }}"></progress>
+{% endmacro %}
+
 {% macro render_step_field(name, label, type="text", required=false, placeholder="", description="", value="", error="", options=None) %}
 <label>
     {{ label }}{% if required %} *{% endif %}

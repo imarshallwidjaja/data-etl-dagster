@@ -59,20 +59,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             },
             {
                 selector: 'node[kind="spatial"]',
-                style: { 'background-color': '#198754' }
+                style: { 'background-color': '#198754', 'color': '#fff' }
             },
             {
                 selector: 'node[kind="tabular"]',
-                style: { 'background-color': '#fd7e14' }
+                style: { 'background-color': '#fd7e14', 'color': '#000' }
             },
             {
                 selector: 'node[kind="joined"]',
-                style: { 'background-color': '#6f42c1' }
+                style: { 'background-color': '#6f42c1', 'color': '#fff' }
             },
             {
                 selector: 'node[?is_root][kind="spatial"]',
                 style: {
                     'background-color': '#198754',
+                    'color': '#fff',
                     'border-width': 3,
                     'border-color': '#0a58ca',
                 }
@@ -81,6 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 selector: 'node[?is_root][kind="tabular"]',
                 style: {
                     'background-color': '#fd7e14',
+                    'color': '#000',
                     'border-width': 3,
                     'border-color': '#0a58ca',
                 }
@@ -89,6 +91,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 selector: 'node[?is_root][kind="joined"]',
                 style: {
                     'background-color': '#6f42c1',
+                    'color': '#fff',
                     'border-width': 3,
                     'border-color': '#0a58ca',
                 }
@@ -103,6 +106,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     'curve-style': 'bezier',
                     'label': 'data(transformation)',
                     'font-size': '8px',
+                    'color': '#adb5bd',
                     'text-rotation': 'autorotate',
                     'text-margin-y': -10,
                 }

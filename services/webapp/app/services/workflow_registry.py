@@ -141,6 +141,12 @@ WORKFLOWS = {
                 description="Specify how to match records",
                 fields=["left_key", "right_key", "how"],
             ),
+            WorkflowStep(
+                id="options",
+                title="Processing Options",
+                description="Configure dataset identity",
+                fields=["dataset_id", "project"],
+            ),
         ],
     ),
     "ingest-buildings": Workflow(

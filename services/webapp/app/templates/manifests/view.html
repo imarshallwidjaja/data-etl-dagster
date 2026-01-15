@@ -8,11 +8,11 @@
         <hgroup>
             <h1>📋 Manifest: {{ manifest.batch_id }}</h1>
             <p>
-                {% if manifest.status == 'completed' %}
+                {% if manifest.status == 'success' %}
                 <span class="badge badge-success">{{ manifest.status }}</span>
-                {% elif manifest.status == 'failed' %}
+                {% elif manifest.status == 'failure' %}
                 <span class="badge badge-error">{{ manifest.status }}</span>
-                {% elif manifest.status == 'processing' %}
+                {% elif manifest.status == 'running' %}
                 <span class="badge badge-warning">{{ manifest.status }}</span>
                 {% else %}
                 <span class="badge badge-pending">{{ manifest.status }}</span>
@@ -26,10 +26,10 @@
         {% if manifest.dagster_run_id %}
         <a href="/runs/{{ manifest.dagster_run_id }}" role="button" class="outline">View Run</a>
         {% endif %}
-        {% if manifest.status in ['completed', 'failed'] %}
+        {% if manifest.status in ['success', 'failure'] %}
         <button id="rerun-btn" class="secondary">Re-run Manifest</button>
         {% endif %}
-        {% if manifest.status == 'pending' %}
+        {% if manifest.status == 'canceled' %}
         <button id="delete-btn" class="secondary outline">Delete</button>
         {% endif %}
     </div>

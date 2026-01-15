@@ -1,4 +1,6 @@
-{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field %}
+{% from "macros/workflow_macros.html" import render_hidden_state, render_step_field, render_progress_oob %}
+
+{{ render_progress_oob(workflow, current_step_index) }}
 
 <form hx-post="/workflows/{{ workflow.id }}/step/{{ current_step_index }}" hx-target="#step-content" hx-swap="innerHTML">
     {{ render_hidden_state(accumulated_data) }}
@@ -24,6 +26,6 @@
 
     <footer class="grid">
         <button type="submit" name="_nav" value="back" class="secondary outline">Back</button>
-        <button type="submit" name="_nav" value="submit">Submit</button>
+        <button type="submit" name="_nav" value="next">Next</button>
     </footer>
 </form>
