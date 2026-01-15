@@ -253,7 +253,7 @@ def _cleanup(
         except Exception:
             pass
 
-    delete_dynamic_partition(dagster_client, partition_key)
+    delete_dynamic_partition(dagster_client, partition_key, strict=True)
 
 
 class TestSensorToJobE2E:
