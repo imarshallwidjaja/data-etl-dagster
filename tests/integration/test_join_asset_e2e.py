@@ -26,6 +26,7 @@ from .helpers import (
     add_dynamic_partition,
     assert_datalake_object_exists,
     assert_mongodb_asset_exists,
+    cleanup_dynamic_partitions,
     cleanup_minio_object,
     cleanup_mongodb_asset,
     cleanup_mongodb_lineage,
@@ -155,6 +156,8 @@ class TestJoinAssetE2E:
         spatial_asset_doc: dict | None = None
         tabular_asset_doc: dict | None = None
         joined_asset_doc: dict | None = None
+        created_partitions: set[str] = set()
+        test_error: BaseException | None = None
 
         try:
             # 1) Create spatial parent via spatial_asset_job
@@ -182,6 +185,7 @@ class TestJoinAssetE2E:
             )
 
             add_dynamic_partition(dagster_client, spatial_partition_key)
+            created_partitions.add(spatial_partition_key)
 
             spatial_run_id = _launch_job_with_run_config(
                 dagster_client,
@@ -242,6 +246,7 @@ class TestJoinAssetE2E:
             )
 
             add_dynamic_partition(dagster_client, tabular_partition_key)
+            created_partitions.add(tabular_partition_key)
 
             tabular_run_id = _launch_job_with_run_config(
                 dagster_client,
@@ -283,6 +288,7 @@ class TestJoinAssetE2E:
             )
 
             add_dynamic_partition(dagster_client, join_partition_key)
+            created_partitions.add(join_partition_key)
 
             join_run_id = _launch_job_with_run_config(
                 dagster_client,
@@ -355,6 +361,10 @@ class TestJoinAssetE2E:
             # 6) Verify PostGIS cleanup
             _assert_postgis_schema_cleaned(postgis_connection, join_run_id)
 
+        except BaseException as e:
+            test_error = e
+            raise
+
         finally:
             cleanup_minio_object(
                 minio_client, minio_settings.landing_bucket, spatial_object_key
@@ -375,3 +385,6 @@ class TestJoinAssetE2E:
                 cleanup_mongodb_asset(mongo_client, mongo_settings, doc)
 
             cleanup_mongodb_lineage(mongo_client, mongo_settings, asset_ids)
+            cleanup_dynamic_partitions(
+                dagster_client, created_partitions, original_error=test_error
+            )

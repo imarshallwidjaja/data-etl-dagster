@@ -163,6 +163,8 @@ def delete_dynamic_partition(
     partitions_def_name: str = "dataset_id",
     repository_location: str = "etl_pipelines",
     repository_name: str = "__repository__",
+    *,
+    strict: bool = False,
 ) -> None:
     """Delete a dynamic partition key via GraphQL.
 
@@ -174,6 +176,8 @@ def delete_dynamic_partition(
         partitions_def_name: Name of the partitions definition (default: dataset_id)
         repository_location: Repository location name
         repository_name: Repository name
+        strict: If True, raise RuntimeError on any GraphQL error or PythonError union.
+                If False (default), swallow errors for best-effort cleanup.
     """
     mutation = """
     mutation DeleteDynamicPartition(
@@ -190,25 +194,63 @@ def delete_dynamic_partition(
             partitionsDefName: $partitionsDefName
             partitionKeys: [$partitionKey]
         ) {
+            __typename
             ... on DeleteDynamicPartitionsSuccess { partitionsDefName }
-            ... on PythonError { message }
+            ... on PythonError { message stack }
         }
     }
     """
-    # Best-effort deletion; don't raise on errors
-    try:
-        client.query(
-            mutation,
-            variables={
-                "repositoryLocationName": repository_location,
-                "repositoryName": repository_name,
-                "partitionsDefName": partitions_def_name,
-                "partitionKey": partition_key,
-            },
-            timeout=10,
+    variables = {
+        "repositoryLocationName": repository_location,
+        "repositoryName": repository_name,
+        "partitionsDefName": partitions_def_name,
+        "partitionKey": partition_key,
+    }
+
+    if strict:
+        result = client.query(mutation, variables=variables, timeout=10)
+        _validate_delete_partition_response(result, partition_key)
+    else:
+        # Best-effort deletion; don't raise on errors
+        try:
+            client.query(mutation, variables=variables, timeout=10)
+        except Exception:
+            pass  # Cleanup errors are non-fatal
+
+
+def _validate_delete_partition_response(result: JsonDict, partition_key: str) -> None:
+    """Validate GraphQL response for delete partition mutation.
+
+    Raises:
+        RuntimeError: If response contains errors or PythonError union type.
+    """
+    if "errors" in result:
+        raise RuntimeError(
+            f"GraphQL errors while deleting partition '{partition_key}': {result}"
         )
-    except Exception:
-        pass  # Cleanup errors are non-fatal
+
+    data = result.get("data")
+    if not isinstance(data, dict):
+        raise RuntimeError(
+            f"No 'data' in response while deleting partition '{partition_key}': {result}"
+        )
+
+    delete_result = data.get("deleteDynamicPartitions")
+    if not isinstance(delete_result, dict):
+        raise RuntimeError(
+            f"Invalid deleteDynamicPartitions result for partition '{partition_key}': {result}"
+        )
+
+    typename = delete_result.get("__typename")
+    if typename == "PythonError":
+        raise RuntimeError(
+            f"PythonError while deleting partition '{partition_key}': {result}"
+        )
+    if typename != "DeleteDynamicPartitionsSuccess":
+        raise RuntimeError(
+            f"Unexpected __typename '{typename}' while deleting partition "
+            f"'{partition_key}': {result}"
+        )
 
 
 # =============================================================================
@@ -675,3 +717,30 @@ def cleanup_mongodb_lineage(
         )
     except Exception:
         pass
+
+
+def cleanup_dynamic_partitions(
+    client: DagsterGraphQLClient,
+    partition_keys: set[str],
+    *,
+    original_error: BaseException | None = None,
+) -> None:
+    """Delete dynamic partitions created during a test, preserving failure context.
+
+    Only deletes partition keys from the provided set (created by this test).
+
+    Args:
+        client: DagsterGraphQLClient instance
+        partition_keys: Set of partition keys to delete (created by this test)
+        original_error: If set, cleanup errors combined with this into CleanupError
+    """
+    cleanup_errors: list[tuple[str, Exception]] = []
+
+    for partition_key in partition_keys:
+        try:
+            delete_dynamic_partition(client, partition_key, strict=True)
+        except Exception as e:
+            cleanup_errors.append((f"partition:{partition_key}", e))
+
+    if original_error is not None and cleanup_errors:
+        raise CleanupError(original_error, cleanup_errors) from original_error

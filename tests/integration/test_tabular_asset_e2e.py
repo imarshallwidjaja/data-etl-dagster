@@ -12,7 +12,6 @@ Run with: pytest tests/integration/test_tabular_asset_e2e.py -v -m "integration 
 
 import json
 from pathlib import Path
-from typing import Optional
 from uuid import uuid4
 
 import pytest
@@ -20,9 +19,8 @@ import pytest
 from .helpers import (
     add_dynamic_partition,
     assert_datalake_object_exists,
-    assert_mongodb_asset_exists,
+    cleanup_dynamic_partitions,
     cleanup_minio_object,
-    cleanup_mongodb_asset,
     format_error_details,
     poll_run_to_completion,
     upload_bytes_to_minio,
@@ -104,13 +102,13 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
     return run_id
 
 
-def _cleanup(
+def _cleanup_minio_mongo(
     minio_client,
     minio_settings,
     mongo_client,
-    mongo_settings,
+    mongo_database: str,
     landing_key: str,
-    asset_doc: Optional[dict],
+    asset_doc: dict | None,
 ) -> None:
     cleanup_minio_object(minio_client, minio_settings.landing_bucket, landing_key)
 
@@ -118,7 +116,28 @@ def _cleanup(
         cleanup_minio_object(
             minio_client, minio_settings.lake_bucket, asset_doc.get("s3_key", "")
         )
-        cleanup_mongodb_asset(mongo_client, mongo_settings, asset_doc)
+        try:
+            db = mongo_client[mongo_database]
+            db["assets"].delete_one({"_id": asset_doc["_id"]})
+        except Exception:
+            pass
+
+
+def _assert_mongodb_asset_exists(
+    mongo_client, mongo_database: str, dagster_run_id: str
+) -> dict:
+    db = mongo_client[mongo_database]
+    run_doc = db["runs"].find_one({"dagster_run_id": dagster_run_id})
+    assert run_doc is not None, (
+        f"No run document found in MongoDB for dagster_run_id: {dagster_run_id}"
+    )
+    mongodb_run_id = str(run_doc["_id"])
+    asset_doc = db["assets"].find_one({"run_id": mongodb_run_id})
+    assert asset_doc is not None, (
+        f"No asset record found in MongoDB for run_id: {mongodb_run_id} "
+        f"(Dagster run: {dagster_run_id})"
+    )
+    return asset_doc
 
 
 class TestTabularAssetJobE2E:
@@ -128,7 +147,7 @@ class TestTabularAssetJobE2E:
         minio_client,
         minio_settings,
         mongo_client,
-        mongo_settings,
+        mongo_database,
     ):
         batch_id = f"e2e_tabular_{uuid4().hex[:12]}"
         object_key = f"e2e/{batch_id}/data.csv"
@@ -143,6 +162,8 @@ class TestTabularAssetJobE2E:
 
         run_id: str | None = None
         asset_doc: dict | None = None
+        created_partitions: set[str] = set()
+        test_error: BaseException | None = None
 
         try:
             upload_bytes_to_minio(
@@ -153,9 +174,9 @@ class TestTabularAssetJobE2E:
                 "text/csv",
             )
 
-            add_dynamic_partition(
-                dagster_client, manifest["metadata"]["tags"]["dataset_id"]
-            )
+            partition_key = manifest["metadata"]["tags"]["dataset_id"]
+            add_dynamic_partition(dagster_client, partition_key)
+            created_partitions.add(partition_key)
 
             run_id = _launch_tabular_asset_job(dagster_client, manifest)
 
@@ -165,9 +186,9 @@ class TestTabularAssetJobE2E:
                     f"tabular_asset_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            asset_doc = assert_mongodb_asset_exists(
+            asset_doc = _assert_mongodb_asset_exists(
                 mongo_client,
-                mongo_settings,
+                mongo_database,
                 run_id,
             )
 
@@ -210,14 +231,21 @@ class TestTabularAssetJobE2E:
                 s3_key,
             )
 
+        except BaseException as e:
+            test_error = e
+            raise
+
         finally:
-            _cleanup(
+            _cleanup_minio_mongo(
                 minio_client,
                 minio_settings,
                 mongo_client,
-                mongo_settings,
+                mongo_database,
                 object_key,
                 asset_doc,
+            )
+            cleanup_dynamic_partitions(
+                dagster_client, created_partitions, original_error=test_error
             )
 
     def test_tabular_asset_job_with_join_key_normalization(
@@ -226,7 +254,7 @@ class TestTabularAssetJobE2E:
         minio_client,
         minio_settings,
         mongo_client,
-        mongo_settings,
+        mongo_database,
     ):
         batch_id = f"e2e_tabular_join_{uuid4().hex[:12]}"
         object_key = f"e2e/{batch_id}/data.csv"
@@ -248,6 +276,8 @@ class TestTabularAssetJobE2E:
 
         run_id: str | None = None
         asset_doc: dict | None = None
+        created_partitions: set[str] = set()
+        test_error: BaseException | None = None
 
         try:
             upload_bytes_to_minio(
@@ -258,9 +288,9 @@ class TestTabularAssetJobE2E:
                 "text/csv",
             )
 
-            add_dynamic_partition(
-                dagster_client, manifest["metadata"]["tags"]["dataset_id"]
-            )
+            partition_key = manifest["metadata"]["tags"]["dataset_id"]
+            add_dynamic_partition(dagster_client, partition_key)
+            created_partitions.add(partition_key)
 
             run_id = _launch_tabular_asset_job(dagster_client, manifest)
 
@@ -270,21 +300,28 @@ class TestTabularAssetJobE2E:
                     f"tabular_asset_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            asset_doc = assert_mongodb_asset_exists(
+            asset_doc = _assert_mongodb_asset_exists(
                 mongo_client,
-                mongo_settings,
+                mongo_database,
                 run_id,
             )
             metadata = asset_doc.get("metadata") or {}
             tags = metadata.get("tags") or {}
             assert tags.get("join_key_clean") == "sa1_code21"
 
+        except BaseException as e:
+            test_error = e
+            raise
+
         finally:
-            _cleanup(
+            _cleanup_minio_mongo(
                 minio_client,
                 minio_settings,
                 mongo_client,
-                mongo_settings,
+                mongo_database,
                 object_key,
                 asset_doc,
+            )
+            cleanup_dynamic_partitions(
+                dagster_client, created_partitions, original_error=test_error
             )

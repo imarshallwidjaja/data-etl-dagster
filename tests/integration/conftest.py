@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Generator
 
 import pytest
@@ -18,6 +19,21 @@ from .helpers import DagsterGraphQLClient, wait_for_graphql_ready
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as Psycopg2Connection
+
+
+@dataclass
+class MinIOSettingsData:
+    endpoint: str
+    access_key: str
+    secret_key: str
+    use_ssl: bool
+    landing_bucket: str
+    lake_bucket: str
+
+
+@dataclass
+class MongoSettingsData:
+    database: str
 
 
 @pytest.fixture
@@ -59,6 +75,25 @@ def minio_landing_bucket() -> str:
 @pytest.fixture
 def minio_lake_bucket() -> str:
     return os.getenv("MINIO_LAKE_BUCKET", "data-lake")
+
+
+@pytest.fixture
+def minio_settings(
+    minio_endpoint: str,
+    minio_access_key: str,
+    minio_secret_key: str,
+    minio_use_ssl: bool,
+    minio_landing_bucket: str,
+    minio_lake_bucket: str,
+) -> MinIOSettingsData:
+    return MinIOSettingsData(
+        endpoint=minio_endpoint,
+        access_key=minio_access_key,
+        secret_key=minio_secret_key,
+        use_ssl=minio_use_ssl,
+        landing_bucket=minio_landing_bucket,
+        lake_bucket=minio_lake_bucket,
+    )
 
 
 @pytest.fixture
@@ -117,6 +152,11 @@ def mongo_password() -> str:
 @pytest.fixture
 def mongo_database() -> str:
     return os.getenv("MONGO_DATABASE", "etl_metadata")
+
+
+@pytest.fixture
+def mongo_settings(mongo_database: str) -> MongoSettingsData:
+    return MongoSettingsData(database=mongo_database)
 
 
 @pytest.fixture
