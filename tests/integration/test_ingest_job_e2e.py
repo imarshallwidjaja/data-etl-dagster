@@ -10,179 +10,43 @@ This test validates the full offline-first ETL loop:
 Run with: pytest tests/integration/test_ingest_job_e2e.py -v -m "integration and e2e"
 """
 
-import os
 import json
-import time
-import pytest
-import psycopg2
-import requests
-from io import BytesIO
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
-from requests.exceptions import RequestException, Timeout
-from minio import Minio
-from minio.error import S3Error
-from pymongo import MongoClient
 
-from libs.models import MinIOSettings, MongoSettings, PostGISSettings
+import pytest
+
 from libs.spatial_utils import RunIdSchemaMapping
+
+from .helpers import (
+    assert_datalake_object_exists,
+    assert_mongodb_asset_exists_legacy,
+    cleanup_minio_object,
+    format_error_details,
+    poll_run_to_completion,
+    upload_bytes_to_minio,
+)
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
-
-# Test fixtures directory
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 MANIFEST_TEMPLATE_PATH = FIXTURES_DIR / "e2e_sample_sa1_data-manifest.json"
 DATASET_PATH = FIXTURES_DIR / "e2e_sample_sa1_data.json"
 
 
-@pytest.fixture
-def dagster_graphql_url():
-    """Get Dagster GraphQL endpoint URL."""
-    port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
-    return f"http://localhost:{port}/graphql"
-
-
-@pytest.fixture
-def dagster_client(dagster_graphql_url):
-    """Create a simple Dagster GraphQL client."""
-
-    class DagsterGraphQLClient:
-        def __init__(self, url: str):
-            self.url = url
-
-        def query(
-            self, query_str: str, variables: Optional[dict] = None, timeout: int = 30
-        ) -> dict:
-            """Execute a GraphQL query."""
-            payload = {"query": query_str}
-            if variables:
-                payload["variables"] = variables
-
-            try:
-                response = requests.post(
-                    self.url,
-                    json=payload,
-                    timeout=timeout,
-                )
-                if response.status_code != 200:
-                    raise RuntimeError(
-                        f"GraphQL request failed with status {response.status_code}: "
-                        f"{response.text}"
-                    )
-                return response.json()
-            except (RequestException, Timeout) as e:
-                raise RuntimeError(
-                    f"Failed to communicate with Dagster GraphQL API: {e}"
-                )
-
-    return DagsterGraphQLClient(dagster_graphql_url)
-
-
-@pytest.fixture
-def minio_settings():
-    """Load MinIO settings from environment."""
-    return MinIOSettings()
-
-
-@pytest.fixture
-def minio_client(minio_settings):
-    """Create MinIO client and ensure required buckets exist."""
-    client = Minio(
-        minio_settings.endpoint,
-        access_key=minio_settings.access_key,
-        secret_key=minio_settings.secret_key,
-        secure=minio_settings.use_ssl,
-    )
-
-    # Wait for MinIO to be ready
-    deadline = time.time() + 30
-    while time.time() < deadline:
-        try:
-            client.list_buckets()
-            break
-        except Exception:
-            time.sleep(1)
-    else:
-        raise RuntimeError("MinIO did not become ready within timeout")
-
-    # Ensure buckets exist
-    for bucket in [minio_settings.landing_bucket, minio_settings.lake_bucket]:
-        if not client.bucket_exists(bucket):
-            client.make_bucket(bucket)
-
-    return client
-
-
-@pytest.fixture
-def mongo_settings():
-    """Load MongoDB settings from environment."""
-    return MongoSettings()
-
-
-@pytest.fixture
-def mongo_client(mongo_settings):
-    """Create MongoDB client."""
-    client = MongoClient(
-        mongo_settings.connection_string,
-        serverSelectionTimeoutMS=5000,
-    )
-    return client
-
-
-@pytest.fixture
-def postgis_settings():
-    """Load PostGIS settings from environment."""
-    return PostGISSettings()
-
-
-@pytest.fixture
-def postgis_connection(postgis_settings):
-    """Create PostGIS connection."""
-    conn = psycopg2.connect(
-        postgis_settings.connection_string,
-        connect_timeout=5,
-    )
-    yield conn
-    conn.close()
-
-
 def _load_fixture_manifest() -> dict:
-    """Load and return the manifest template from fixtures."""
     with open(MANIFEST_TEMPLATE_PATH, "r") as f:
         return json.load(f)
 
 
 def _load_fixture_dataset() -> bytes:
-    """Load and return the dataset bytes from fixtures."""
     with open(DATASET_PATH, "rb") as f:
         return f.read()
 
 
-def _upload_dataset_to_landing_zone(
-    minio_client: Minio,
-    landing_bucket: str,
-    object_key: str,
-    dataset_bytes: bytes,
-) -> None:
-    """Upload dataset to MinIO landing zone."""
-    data = BytesIO(dataset_bytes)
-    minio_client.put_object(
-        landing_bucket,
-        object_key,
-        data,
-        length=len(dataset_bytes),
-        content_type="application/json",
-    )
-
-
-def _launch_ingest_job(
-    dagster_client,
-    manifest: dict,
-) -> str:
-    """Launch ingest_job via GraphQL and return run_id."""
+def _launch_ingest_job(dagster_client, manifest: dict) -> str:
     launch_query = """
     mutation LaunchRun(
         $repositoryLocationName: String!
@@ -245,186 +109,7 @@ def _launch_ingest_job(
     return run_id
 
 
-def _poll_run_to_completion(
-    dagster_client,
-    run_id: str,
-    max_wait: int = 600,  # 10 minutes for E2E
-    poll_interval: int = 3,  # Check every 3 seconds
-) -> tuple[str, Optional[dict]]:
-    """Poll run until terminal state and return (status, error_details)."""
-    elapsed = 0
-    status = "STARTING"
-    error_details = None
-
-    while elapsed < max_wait:
-        run_query = """
-        query GetRun($runId: ID!) {
-            runOrError(runId: $runId) {
-                ... on Run {
-                    id
-                    status
-                }
-                ... on RunNotFoundError {
-                    message
-                }
-            }
-        }
-        """
-
-        run_result = dagster_client.query(
-            run_query, variables={"runId": run_id}, timeout=10
-        )
-
-        assert "errors" not in run_result, (
-            f"Failed to query run status: {run_result.get('errors')}"
-        )
-
-        run_or_error = run_result["data"]["runOrError"]
-        if "id" not in run_or_error:
-            # Run not found yet, wait and retry
-            time.sleep(poll_interval)
-            elapsed += poll_interval
-            continue
-
-        status = run_or_error["status"]
-
-        # Check for terminal states
-        if status in ["SUCCESS", "FAILURE", "CANCELED"]:
-            break
-
-        time.sleep(poll_interval)
-        elapsed += poll_interval
-
-    # If not successful, fetch error details
-    if status != "SUCCESS":
-        error_details = _get_run_error_details(dagster_client, run_id)
-
-    return status, error_details
-
-
-def _get_run_error_details(dagster_client, run_id: str) -> Optional[dict]:
-    """Fetch detailed error information from Dagster GraphQL for a failed run."""
-    log_query = """
-    query GetRunLogs($runId: ID!) {
-        logsForRun(runId: $runId) {
-            __typename
-            ... on EventConnection {
-                events {
-                    __typename
-                    ... on MessageEvent { message level }
-                    ... on ExecutionStepFailureEvent {
-                        stepKey
-                        error {
-                            message
-                            stack
-                            errorChain {
-                                error { message stack }
-                                isExplicitLink
-                            }
-                            cause { message stack }
-                        }
-                    }
-                    ... on EngineEvent { message level }
-                    ... on RunFailureEvent { message }
-                }
-            }
-        }
-    }
-    """
-    log_result = dagster_client.query(
-        log_query, variables={"runId": run_id}, timeout=30
-    )
-    logs = log_result.get("data", {}).get("logsForRun")
-    if not logs or logs.get("__typename") != "EventConnection":
-        return {"error": "Could not fetch logs", "raw": log_result}
-
-    events_list = logs.get("events", [])
-    failure_events = [
-        e
-        for e in events_list
-        if "Failure" in e.get("__typename", "") or e.get("level") == "ERROR"
-    ]
-    context_events = events_list[-20:] if len(events_list) > 20 else events_list
-
-    return {
-        "failure_events": failure_events,
-        "context_events": context_events,
-        "total_events": len(events_list),
-    }
-
-
-def _format_error_details(error_details: Optional[dict]) -> str:
-    """Format error details into a readable string for pytest failure output."""
-    if not error_details:
-        return "No error details available"
-
-    lines = ["\n" + "=" * 80, "DAGSTER RUN ERROR DETAILS", "=" * 80]
-
-    for i, event in enumerate(error_details.get("failure_events", []), 1):
-        event_type = event.get("__typename", "Unknown")
-        lines.append(f"\n--- Failure Event {i}: {event_type} ---")
-
-        if event_type == "ExecutionStepFailureEvent":
-            lines.append(f"Step: {event.get('stepKey', 'unknown')}")
-            error = event.get("error", {})
-            if error:
-                lines.append(f"\nError Message:\n{error.get('message', 'N/A')}")
-                stack = error.get("stack", [])
-                if stack:
-                    lines.append("\nStack Trace:")
-                    for frame in stack[-10:]:
-                        lines.append(f"  {frame.strip()}")
-                for j, chain_item in enumerate(error.get("errorChain", []), 1):
-                    chain_error = chain_item.get("error", {})
-                    lines.append(f"\n--- Caused By ({j}) ---")
-                    lines.append(f"Message: {chain_error.get('message', 'N/A')}")
-                cause = error.get("cause", {})
-                if cause and cause.get("message"):
-                    lines.append("\n--- Root Cause ---")
-                    lines.append(f"Message: {cause.get('message', 'N/A')}")
-        else:
-            if event.get("message"):
-                lines.append(f"Message: {event.get('message')}")
-
-    lines.append("\n" + "=" * 80)
-    return "\n".join(lines)
-
-
-def _assert_mongodb_asset_exists(
-    mongo_client: MongoClient,
-    mongo_settings: MongoSettings,
-    run_id: str,
-) -> dict:
-    """Assert MongoDB asset record exists and return the asset document."""
-    db = mongo_client[mongo_settings.database]
-    collection = db["assets"]
-
-    asset_doc = collection.find_one({"dagster_run_id": run_id})
-    assert asset_doc is not None, (
-        f"No asset record found in MongoDB for run_id: {run_id}"
-    )
-
-    return asset_doc
-
-
-def _assert_datalake_object_exists(
-    minio_client: Minio,
-    lake_bucket: str,
-    s3_key: str,
-) -> None:
-    """Assert MinIO data-lake object exists and has size > 0."""
-    try:
-        stat = minio_client.stat_object(lake_bucket, s3_key)
-        assert stat.size > 0, f"Data-lake object {s3_key} has zero size"
-    except S3Error as e:
-        pytest.fail(f"Data-lake object {s3_key} does not exist: {e}")
-
-
-def _assert_postgis_schema_cleaned(
-    postgis_connection,
-    run_id: str,
-) -> None:
-    """Assert PostGIS ephemeral schema does not exist."""
+def _assert_postgis_schema_cleaned(postgis_connection, run_id: str) -> None:
     schema_mapping = RunIdSchemaMapping.from_run_id(run_id)
     schema_name = schema_mapping.schema_name
 
@@ -444,50 +129,31 @@ def _assert_postgis_schema_cleaned(
         )
 
 
-def _cleanup_landing_zone_object(
-    minio_client: Minio,
-    landing_bucket: str,
-    object_key: str,
-) -> None:
-    """Remove uploaded landing-zone object."""
-    try:
-        minio_client.remove_object(landing_bucket, object_key)
-    except S3Error:
-        pass  # Ignore cleanup errors
-
-
-def _cleanup_asset_artifacts(
-    minio_client: Minio,
-    mongo_client: MongoClient,
-    mongo_settings: MongoSettings,
-    lake_bucket: str,
-    run_id: str,
+def _cleanup(
+    minio_client,
+    minio_settings,
+    mongo_client,
+    mongo_settings,
+    landing_key: str,
     asset_doc: Optional[dict],
 ) -> None:
-    """Clean up asset artifacts (data-lake object and MongoDB record)."""
+    cleanup_minio_object(minio_client, minio_settings.landing_bucket, landing_key)
+
     if asset_doc is None:
         return
 
-    # Delete data-lake object
     s3_key = asset_doc.get("s3_key")
     if s3_key:
-        try:
-            minio_client.remove_object(lake_bucket, s3_key)
-        except S3Error:
-            pass  # Ignore cleanup errors
+        cleanup_minio_object(minio_client, minio_settings.lake_bucket, s3_key)
 
-    # Delete MongoDB asset record
-    db = mongo_client[mongo_settings.database]
-    collection = db["assets"]
     try:
-        collection.delete_many({"dagster_run_id": run_id})
+        db = mongo_client[mongo_settings.database]
+        db["assets"].delete_one({"_id": asset_doc["_id"]})
     except Exception:
-        pass  # Ignore cleanup errors
+        pass
 
 
 class TestIngestJobE2E:
-    """End-to-end test suite for ingest_job pipeline."""
-
     def test_ingest_job_full_pipeline(
         self,
         dagster_client,
@@ -496,100 +162,68 @@ class TestIngestJobE2E:
         mongo_client,
         mongo_settings,
         postgis_connection,
-        postgis_settings,
     ):
-        """
-        Test full ingest_job pipeline: landing-zone → PostGIS → data-lake + MongoDB.
-
-        This test:
-        1. Uploads sample data to landing-zone
-        2. Launches ingest_job via GraphQL with manifest input
-        3. Polls for job completion
-        4. Asserts MongoDB asset record exists
-        5. Asserts data-lake object exists
-        6. Asserts PostGIS schema is cleaned up
-        7. Cleans up test artifacts
-        """
-        # Generate unique batch_id and object key
         batch_id = f"e2e_{uuid4().hex[:12]}"
         object_key = f"e2e/{batch_id}/input.json"
 
-        # Load fixture files
         manifest_template = _load_fixture_manifest()
         dataset_bytes = _load_fixture_dataset()
 
-        # Prepare manifest with unique batch_id and object path
         manifest = manifest_template.copy()
         manifest["batch_id"] = batch_id
         manifest["files"][0]["path"] = f"s3://landing-zone/{object_key}"
 
-        # Track run_id and asset doc for cleanup
         run_id = None
         asset_doc = None
 
         try:
-            # 1. Upload dataset to landing-zone
-            _upload_dataset_to_landing_zone(
+            upload_bytes_to_minio(
                 minio_client,
                 minio_settings.landing_bucket,
                 object_key,
                 dataset_bytes,
+                "application/json",
             )
 
-            # 2. Launch ingest_job via GraphQL
             run_id = _launch_ingest_job(dagster_client, manifest)
             print(f"Launched ingest_job run: {run_id}")
 
-            # 3. Poll for job completion
-            status, error_details = _poll_run_to_completion(dagster_client, run_id)
+            status, error_details = poll_run_to_completion(dagster_client, run_id)
 
-            # 4. Assert job succeeded
             if status != "SUCCESS":
                 pytest.fail(
-                    f"ingest_job failed: {status}.{_format_error_details(error_details)}"
+                    f"ingest_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            print(f"✅ Job completed successfully: {run_id}")
+            print(f"Job completed successfully: {run_id}")
 
-            # 5. Assert MongoDB asset record exists
-            asset_doc = _assert_mongodb_asset_exists(
+            asset_doc = assert_mongodb_asset_exists_legacy(
                 mongo_client,
                 mongo_settings,
                 run_id,
             )
-            print(f"✅ MongoDB asset record found: {asset_doc.get('_id')}")
+            print(f"MongoDB asset record found: {asset_doc.get('_id')}")
 
-            # 6. Assert data-lake object exists
             s3_key = asset_doc.get("s3_key")
-            assert s3_key, "Asset document missing s3_key"
-            _assert_datalake_object_exists(
+            assert isinstance(s3_key, str), "Asset document missing s3_key"
+            assert_datalake_object_exists(
                 minio_client,
                 minio_settings.lake_bucket,
                 s3_key,
             )
-            print(f"✅ Data-lake object exists: {s3_key}")
+            print(f"Data-lake object exists: {s3_key}")
 
-            # 7. Assert PostGIS schema is cleaned up
             _assert_postgis_schema_cleaned(postgis_connection, run_id)
-            print(f"✅ PostGIS schema cleaned up for run: {run_id}")
+            print(f"PostGIS schema cleaned up for run: {run_id}")
 
         finally:
-            # 8. Cleanup (always, even on failure)
-            _cleanup_landing_zone_object(
+            _cleanup(
                 minio_client,
-                minio_settings.landing_bucket,
+                minio_settings,
+                mongo_client,
+                mongo_settings,
                 object_key,
+                asset_doc,
             )
 
-            # Only cleanup asset artifacts if run_id was assigned
-            if run_id is not None:
-                _cleanup_asset_artifacts(
-                    minio_client,
-                    mongo_client,
-                    mongo_settings,
-                    minio_settings.lake_bucket,
-                    run_id,
-                    asset_doc,
-                )
-
-            print("✅ Cleanup completed")
+            print("Cleanup completed")
