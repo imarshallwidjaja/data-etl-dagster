@@ -744,3 +744,88 @@ def cleanup_dynamic_partitions(
 
     if original_error is not None and cleanup_errors:
         raise CleanupError(original_error, cleanup_errors) from original_error
+
+
+# =============================================================================
+# Parquet/GeoParquet Content Validation
+# =============================================================================
+
+# Maximum bytes to read from MinIO for Parquet validation (10 MB)
+_MAX_PARQUET_BYTES = 10 * 1024 * 1024
+
+
+def assert_parquet_valid(
+    minio_client: "Minio",
+    bucket: str,
+    s3_key: str,
+    expected_columns: list[str],
+    *,
+    min_rows: int = 1,
+    max_bytes: int = _MAX_PARQUET_BYTES,
+) -> None:
+    """Assert Parquet/GeoParquet file is valid with expected columns.
+
+    This is a lightweight validation for E2E tests on known small fixture outputs.
+    It reads the object into memory and validates using PyArrow.
+
+    Args:
+        minio_client: MinIO client instance
+        bucket: Bucket name containing the object
+        s3_key: Object key for the Parquet file
+        expected_columns: List of column names that must exist
+        min_rows: Minimum row count required (default: 1)
+        max_bytes: Maximum bytes to read (default: 10MB, guard against large files)
+
+    Raises:
+        AssertionError: If validation fails (file invalid, missing columns, too few rows)
+        ValueError: If object exceeds max_bytes limit
+    """
+    import pyarrow.parquet as pq
+    from minio.error import S3Error
+
+    # First check object size to enforce bounded reads
+    try:
+        stat = minio_client.stat_object(bucket, s3_key)
+    except S3Error as e:
+        raise AssertionError(f"Parquet object {bucket}/{s3_key} does not exist: {e}")
+
+    if stat.size is None or stat.size == 0:
+        raise AssertionError(f"Parquet object {bucket}/{s3_key} has zero size")
+
+    if stat.size > max_bytes:
+        raise ValueError(
+            f"Parquet object {bucket}/{s3_key} exceeds max_bytes limit: "
+            f"{stat.size} > {max_bytes}. Use only on known small test fixtures."
+        )
+
+    # Download object bytes
+    try:
+        response = minio_client.get_object(bucket, s3_key)
+        data = response.read()
+        response.close()
+        response.release_conn()
+    except S3Error as e:
+        raise AssertionError(f"Failed to read Parquet object {bucket}/{s3_key}: {e}")
+
+    # Parse with PyArrow
+    try:
+        buffer = BytesIO(data)
+        table = pq.read_table(buffer)
+    except Exception as e:
+        raise AssertionError(
+            f"Failed to parse Parquet file {bucket}/{s3_key}: {e}"
+        ) from e
+
+    # Validate row count
+    row_count = table.num_rows
+    assert row_count >= min_rows, (
+        f"Parquet file {bucket}/{s3_key} has {row_count} rows, expected >= {min_rows}"
+    )
+
+    # Validate expected columns exist
+    actual_columns = set(table.column_names)
+    missing_columns = set(expected_columns) - actual_columns
+    assert not missing_columns, (
+        f"Parquet file {bucket}/{s3_key} missing columns: {missing_columns}. "
+        f"Actual columns: {sorted(actual_columns)}"
+    )

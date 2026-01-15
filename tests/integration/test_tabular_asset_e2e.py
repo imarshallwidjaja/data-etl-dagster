@@ -19,6 +19,7 @@ import pytest
 from .helpers import (
     add_dynamic_partition,
     assert_datalake_object_exists,
+    assert_parquet_valid,
     cleanup_dynamic_partitions,
     cleanup_minio_object,
     format_error_details,
@@ -229,6 +230,13 @@ class TestTabularAssetJobE2E:
                 minio_client,
                 minio_settings.lake_bucket,
                 s3_key,
+            )
+
+            assert_parquet_valid(
+                minio_client,
+                minio_settings.lake_bucket,
+                s3_key,
+                expected_columns=["ogc_fid", "sa1_code21"],
             )
 
         except BaseException as e:

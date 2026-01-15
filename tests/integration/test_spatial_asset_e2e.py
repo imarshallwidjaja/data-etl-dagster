@@ -23,6 +23,7 @@ from libs.spatial_utils import RunIdSchemaMapping
 from .helpers import (
     add_dynamic_partition,
     assert_datalake_object_exists,
+    assert_parquet_valid,
     cleanup_dynamic_partitions,
     cleanup_minio_object,
     format_error_details,
@@ -199,6 +200,14 @@ class TestSpatialAssetE2E:
             assert_datalake_object_exists(
                 minio_client, minio_lake_bucket, asset_doc["s3_key"]
             )
+
+            assert_parquet_valid(
+                minio_client,
+                minio_lake_bucket,
+                asset_doc["s3_key"],
+                expected_columns=["geom", "sa1_code21"],
+            )
+
             _assert_postgis_schema_cleaned(postgis_connection, run_id)
 
         except BaseException as e:
