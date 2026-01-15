@@ -263,15 +263,21 @@ def poll_run_to_completion(
     run_id: str,
     *,
     max_wait: int = 900,
-    poll_interval: int = 3,
+    initial_interval: int = 2,
+    max_interval: int = 10,
 ) -> tuple[str, JsonDict | None]:
-    """Poll until run reaches terminal state.
+    """Poll until run reaches terminal state with bounded exponential backoff.
+
+    Uses exponential backoff starting at initial_interval, doubling each iteration
+    up to max_interval. This reduces CI flakiness by avoiding aggressive polling
+    while still detecting completion quickly.
 
     Args:
         client: DagsterGraphQLClient instance
         run_id: Dagster run ID to poll
         max_wait: Maximum seconds to wait (default 900 = 15 min)
-        poll_interval: Seconds between polls
+        initial_interval: Starting interval in seconds (default 2)
+        max_interval: Maximum interval cap in seconds (default 10)
 
     Returns:
         Tuple of (status, error_details).
@@ -289,22 +295,24 @@ def poll_run_to_completion(
 
     terminal_statuses = {"SUCCESS", "FAILURE", "CANCELED"}
     deadline = time.time() + max_wait
-    status = "STARTING"
+    current_interval = initial_interval
 
     while time.time() < deadline:
-        result = client.query(query, variables={"runId": run_id}, timeout=10)
+        result = client.query(query, variables={"runId": run_id}, timeout=30)
 
         if "errors" in result:
             raise RuntimeError(f"Failed to query run status: {result.get('errors')}")
 
         data = result.get("data")
         if not isinstance(data, dict):
-            time.sleep(poll_interval)
+            time.sleep(current_interval)
+            current_interval = min(current_interval * 2, max_interval)
             continue
 
         run_or_error = data.get("runOrError")
         if not isinstance(run_or_error, dict) or "id" not in run_or_error:
-            time.sleep(poll_interval)
+            time.sleep(current_interval)
+            current_interval = min(current_interval * 2, max_interval)
             continue
 
         status_val = run_or_error.get("status")
@@ -314,7 +322,8 @@ def poll_run_to_completion(
                 return status_val, error_details
             return status_val, None
 
-        time.sleep(poll_interval)
+        time.sleep(current_interval)
+        current_interval = min(current_interval * 2, max_interval)
 
     # Timeout
     error_details = get_run_error_details(client, run_id)
