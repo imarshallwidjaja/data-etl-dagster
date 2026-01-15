@@ -505,7 +505,7 @@ pytest -m "integration and e2e" tests/integration -v
 
 #### Test Coverage
 
-**Unit Tests** (`tests/unit/`) - No external dependencies required (189 tests):
+**Unit Tests** (`tests/unit/`) - No external dependencies required (524 tests):
 
 - **Models & Validation** (`test_models.py` - 55 tests):
   - CRS validation (EPSG, WKT, PROJ formats)
@@ -563,7 +563,7 @@ pytest -m "integration and e2e" tests/integration -v
   - Run ID extraction from schema names
   - Round-trip validation
 
-**Integration Tests** (`tests/integration/`) - Requires Docker stack (27 tests):
+**Integration Tests** (`tests/integration/`) - Requires Docker stack (75 tests):
 
 Integration tests include:
 - **Connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup)
@@ -586,7 +586,23 @@ Integration tests include:
 - `test_tabular_asset_e2e.py` (E2E) - `tabular_asset_job` end-to-end run launched via GraphQL (partitioned; CSV → Parquet → Mongo)
 - `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run (spatial parent via spatial_asset_job + tabular CSV → joined GeoParquet + lineage)
 
-**Total Coverage:** 205 unit tests + 27 integration tests = 232 tests
+**Total Coverage:**
+
+To verify the current test count, run:
+
+```bash
+pytest --collect-only -q
+```
+
+Example output:
+```text
+============================= test session starts ==============================
+...
+collected 599 items
+========================= 599 tests collected in 2.43s =========================
+```
+
+*Verified metrics (Jan 2026): 524 unit tests + 75 integration tests = 599 tests total.*
 
 #### Continuous Integration
 
