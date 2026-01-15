@@ -23,6 +23,7 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 
 - `migrations/001_baseline_schema.py`: Squashed baseline (assets, manifests, runs, lineage collections with frozen schemas)
 - `migrations/002_add_text_search.py`: Text index for keyword search
+- `migrations/003_activity_logs.py`: Audit logging collection and indexes
 - `migrations/README.md`: Migration system and schema management documentation
 
 > **Note**: Migration files use `importlib` in parity tests since filenames start with digits.
@@ -48,7 +49,15 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 | `runs` | Dagster run tracking (links manifests to assets) |
 | `assets` | Asset registry (spatial, tabular, joined) - uses `run_id` ObjectId |
 | `lineage` | Parent→child asset relationships - uses `run_id` ObjectId |
+| `activity_logs` | Audit trail of user and system actions |
 | `schema_migrations` | Applied migration tracking |
+
+### Activity Log Indexes
+
+- `timestamp` desc
+- `user` + `timestamp` (-1)
+- `action` + `timestamp` (-1)
+- `resource_type` + `resource_id` (1)
 
 ### Status Values (Unified)
 

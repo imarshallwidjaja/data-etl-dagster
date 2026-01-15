@@ -107,6 +107,8 @@ def test_valid_manifest_yields_run_request_ingest_lane(
     assert run_request.tags["manifest_key"] == manifest_key
     assert run_request.tags["lane"] == "ingest"
     assert run_request.tags["manifest_archive_key"] == f"archive/{manifest_key}"
+    assert run_request.tags["operator"] == valid_manifest_dict["uploader"]
+    assert run_request.tags["source"] == "unit-test"
 
     # Check archiving was called
     mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)

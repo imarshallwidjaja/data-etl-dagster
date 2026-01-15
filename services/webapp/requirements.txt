@@ -23,3 +23,7 @@ python-multipart>=0.0.6
 
 # Static files
 aiofiles>=23.2.0
+
+# Markdown rendering
+markdown
+bleach>=6.0,<7.0

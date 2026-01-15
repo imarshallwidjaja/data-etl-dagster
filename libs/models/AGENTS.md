@@ -19,6 +19,7 @@ It is the application-level validation layer and the contract between ingestion,
 - **Kind-specific metadata enforcement**: Spatial/joined assets **must** have `metadata.geometry_type`; tabular/spatial/joined assets **must** have `metadata.column_schema`. Missing these fields for those kinds results in a `ValueError` during final validation.
 - **Run linking via ObjectId**: `Asset.run_id` and lineage records use MongoDB ObjectId strings to reference the `runs` collection, NOT the raw Dagster run ID string.
 - **Stable env var aliases**: settings fields must map to the env vars used in `docker-compose.yaml`.
+- **JSON Schema is a public interface**: `ManifestCreateRequest.model_json_schema()` is consumed by the webapp for client-side validation. Changes to field names, required/optional status, or enum values will affect the webapp forms. Update `tests/unit/webapp/test_manifest_schema.py` when modifying manifest models.
 
 ## Entry points / key files
 
@@ -26,6 +27,7 @@ It is the application-level validation layer and the contract between ingestion,
 - `manifest.py`: ingestion manifest schema + runtime tracking variants
 - `asset.py`: asset registry models (content hash, s3 keys, bounds, kind, `ColumnInfo`, etc.)
 - `run.py`: run tracking models (dagster_run_id, batch_id, status, asset_ids)
+- `activity.py`: audit logging models (ActivityLog, ActivityAction enum)
 - `spatial.py`: CRS / bounds / enums (FileType, OutputFormat) and validators
 - `config.py`: `pydantic-settings` models (env var aliases + computed connection strings)
 - `__init__.py`: public exports

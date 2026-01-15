@@ -25,6 +25,7 @@ MongoDB stores:
 | `assets` | Asset registry with versioning (s3_key, dataset_id, version, kind) |
 | `runs` | Dagster run tracking (dagster_run_id, batch_id, status, asset_ids) |
 | `lineage` | Parent → child asset relationships (for join provenance) |
+| `activity_logs` | Audit trail of all platform operations with user and IP tracking |
 | `schema_migrations` | Applied migration tracking |
 
 ## Directory Structure
@@ -35,7 +36,8 @@ services/mongodb/
 │   └── 01-init-db.js         # Legacy init script (runs on fresh volumes only)
 ├── migrations/
 │   ├── 001_baseline_schema.py    # Baseline collections, indexes, validators
-│   ├── 002_add_tabular_contracts.py  # Tabular support (no-op on fresh install)
+│   ├── 002_add_text_search.py     # Text index for keyword search
+│   ├── 003_activity_logs.py       # Activity logging collection and indexes
 │   └── README.md             # Migration authoring guide
 └── AGENTS.md                 # AI agent context
 ```

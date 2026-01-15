@@ -14,6 +14,7 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 - **Persistence**: PostGIS is transient compute only. Never store permanent data there.
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
+- **Audit & Observability**: All platform actions (manifest creation, run lifecycle, asset access) are recorded in the `activity_logs` collection. Runs are tagged with `operator` for traceability.
 - **Tabular & Columnar Registry**: Tabular (CSV) and Spatial (GeoParquet) data automatically capture column schemas (names, types, nullability) during export to the data-lake. Types are normalized to a canonical vocabulary (STRING, INTEGER, GEOMETRY, etc.) and stored in MongoDB for UI/API introspection.
 - **Geometry Type Capture**: Spatial and joined assets automatically capture geometry type (POINT, POLYGON, MULTIPOLYGON, etc.) from PostGIS during processing. Stored in `metadata.geometry_type` for catalog introspection. Enforced as required for spatial/joined assets.
 - **Header Cleaning**: Headers in tabular CSVs are cleaned to valid Postgres identifiers for reliable downstream joins.
@@ -98,6 +99,7 @@ graph TD
         CodeLoc -->|6b. Tabular Ops - Direct| CodeLoc
         CodeLoc -->|7. Write GeoParquet/Parquet| Lake
         CodeLoc -->|8. Log Lineage| Mongo
+        CodeLoc -->|9. Audit Activity| Mongo
     end
 ```
 
@@ -220,7 +222,7 @@ Both `ManifestStatus` and `RunStatus` use: `running`, `success`, `failure`, `can
 
 ### Pinned Dagster versions
 
-Current pinned versions (as of Phase 5):
+Current pinned versions:
 
 - **Core packages** (same patch version):
   - `dagster==1.12.5`

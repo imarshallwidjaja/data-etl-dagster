@@ -83,8 +83,18 @@ def build_manifest(
     """
     # Extract common fields
     batch_id = form_data.get("batch_id") or generate_batch_id()
-    project = form_data.get("project", "")
+
+    # Extract human metadata fields (HumanMetadataMixin contract)
+    # These are required by the pipeline manifest validation
+    title = form_data.get("title", "")
     description = form_data.get("description", "")
+    keywords = form_data.get("keywords", [])
+    source = form_data.get("source", "")
+    license_field = form_data.get("license", "")
+    attribution = form_data.get("attribution", "")
+
+    # Optional project (demoted from required in M1)
+    project = form_data.get("project")
 
     # Extract tags
     tags: dict[str, Any] = {}
@@ -102,10 +112,15 @@ def build_manifest(
             if isinstance(value, (str, int, float, bool)):
                 tags[key] = value
 
-    # Build metadata
+    # Build metadata with all human metadata fields
     metadata = ManifestMetadata(
-        project=project,
-        description=description if description else None,
+        title=title,
+        description=description,
+        keywords=keywords if isinstance(keywords, list) else [],
+        source=source,
+        license=license_field,
+        attribution=attribution,
+        project=project if project else None,
         tags=tags if tags else None,
     )
 
@@ -193,10 +208,15 @@ def _build_joined_manifest(
     if not join_config:
         raise ValueError("Join manifest requires join_config")
 
-    # Add join_config to metadata
+    # Add join_config to metadata (propagate all human metadata fields)
     metadata_with_join = ManifestMetadata(
-        project=metadata.project,
+        title=metadata.title,
         description=metadata.description,
+        keywords=metadata.keywords,
+        source=metadata.source,
+        license=metadata.license,
+        attribution=metadata.attribution,
+        project=metadata.project,
         tags=metadata.tags,
         join_config=join_config,
     )

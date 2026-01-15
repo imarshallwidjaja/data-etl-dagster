@@ -23,6 +23,27 @@ from ..resources import MinIOResource
 
 
 CURSOR_VERSION = 1
+
+
+def _derive_source_tag(manifest: Manifest) -> str:
+    """Derive source tag from manifest metadata.tags.
+
+    Priority:
+    1. ingestion_source (if present and string)
+    2. source (if present and string)
+    3. "unknown" (fallback)
+    """
+    tags = manifest.metadata.tags
+    if tags:
+        ingestion_source = tags.get("ingestion_source")
+        if isinstance(ingestion_source, str) and ingestion_source:
+            return ingestion_source
+        source = tags.get("source")
+        if isinstance(source, str) and source:
+            return source
+    return "unknown"
+
+
 MAX_CURSOR_KEYS = 500
 
 
@@ -121,6 +142,8 @@ def tabular_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     "manifest_key": manifest_key,
                     "sensor": "tabular_sensor",
                     "partition_key": partition_key,
+                    "operator": manifest.uploader,
+                    "source": _derive_source_tag(manifest),
                 },
             )
             yield run_request

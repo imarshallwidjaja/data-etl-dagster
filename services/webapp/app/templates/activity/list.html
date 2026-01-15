@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Activity Log - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>📜 Activity Log</h1>
+            <p>View user activity and audit trail.</p>
+        </hgroup>
+    </header>
+
+    <!-- Filter -->
+    <form method="get" class="grid">
+        <label>
+            User
+            <input type="search" name="user" placeholder="Filter by user..." value="{{ filters.user or '' }}">
+        </label>
+        <label>
+            Action
+            <input type="search" name="action" placeholder="Filter by action..." value="{{ filters.action or '' }}">
+        </label>
+        <label>
+            Resource Type
+            <input type="search" name="resource_type" placeholder="Filter by type..." value="{{ filters.resource_type or '' }}">
+        </label>
+        <label>
+            Resource ID
+            <input type="search" name="resource_id" placeholder="Filter by ID..." value="{{ filters.resource_id or '' }}">
+        </label>
+        <div style="display: flex; align-items: flex-end;">
+             <button type="submit" style="margin-bottom: var(--pico-spacing);">Filter</button>
+             <a href="/activity/" role="button" class="secondary outline" style="margin-left: 10px; margin-bottom: var(--pico-spacing);">Clear</a>
+        </div>
+    </form>
+
+    <!-- Activity List -->
+    <h2>Recent Activity</h2>
+
+    {% if activities %}
+    <figure>
+        <table>
+            <thead>
+                <tr>
+                    <th>Timestamp</th>
+                    <th>User</th>
+                    <th>Action</th>
+                    <th>Resource</th>
+                    <th>ID</th>
+                    <th>Details</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for a in activities %}
+                <tr>
+                    <td><small>{{ a.timestamp[:19].replace('T', ' ') }}</small></td>
+                    <td>{{ a.user }}</td>
+                    <td><code>{{ a.action }}</code></td>
+                    <td>{{ a.resource_type }}</td>
+                    <td><small>{{ a.resource_id }}</small></td>
+                    <td>
+                        {% if a.details %}
+                        <details>
+                            <summary><small>View</small></summary>
+                            <pre><code>{{ a.details | tojson(indent=2) }}</code></pre>
+                        </details>
+                        {% else %}
+                        -
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </figure>
+
+    <!-- Pagination -->
+    <div class="grid">
+        <div>
+            {% if pagination.prev_offset is not none %}
+            <a href="?offset={{ pagination.prev_offset }}&limit={{ pagination.limit }}{% if filters.user %}&user={{ filters.user }}{% endif %}{% if filters.action %}&action={{ filters.action }}{% endif %}{% if filters.resource_type %}&resource_type={{ filters.resource_type }}{% endif %}{% if filters.resource_id %}&resource_id={{ filters.resource_id }}{% endif %}" role="button" class="outline">← Newer</a>
+            {% endif %}
+        </div>
+        <div style="text-align: right;">
+            {% if pagination.next_offset is not none %}
+            <a href="?offset={{ pagination.next_offset }}&limit={{ pagination.limit }}{% if filters.user %}&user={{ filters.user }}{% endif %}{% if filters.action %}&action={{ filters.action }}{% endif %}{% if filters.resource_type %}&resource_type={{ filters.resource_type }}{% endif %}{% if filters.resource_id %}&resource_id={{ filters.resource_id }}{% endif %}" role="button" class="outline">Older →</a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% else %}
+    <p><em>No activity found.</em></p>
+    {% endif %}
+</article>
+{% endblock %}

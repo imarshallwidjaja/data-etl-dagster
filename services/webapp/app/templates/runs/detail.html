@@ -6,18 +6,8 @@
 <article>
     <header>
         <hgroup>
-            <h1>🔄 Run: {{ run.run_id[:16] }}...</h1>
-            <p>
-                {% if run.status == 'SUCCESS' %}
-                <span class="badge badge-success">{{ run.status }}</span>
-                {% elif run.status == 'FAILURE' %}
-                <span class="badge badge-error">{{ run.status }}</span>
-                {% elif run.status == 'STARTED' %}
-                <span class="badge badge-warning">{{ run.status }}</span>
-                {% else %}
-                <span class="badge badge-info">{{ run.status }}</span>
-                {% endif %}
-            </p>
+            <h1>Run: {{ run.run_id[:16] }}...</h1>
+            {% include "runs/_status_fragment.html" %}
         </hgroup>
     </header>
 
@@ -65,8 +55,35 @@
     <!-- Error -->
     {% if run.error_message %}
     <h2>Error</h2>
-    <div class="error-chain">
-        <pre>{{ run.error_message }}</pre>
+    {% set msg = run.error_message|lower %}
+    {% if 'validation error' in msg or 'missing required' in msg %}
+        {% set badge_class = 'badge-warning' %}
+        {% set badge_text = 'VALIDATION' %}
+        {% set suggestion = 'Check your manifest metadata or file format.' %}
+    {% elif 'file not found' in msg or 'nosuchkey' in msg or 's3' in msg %}
+        {% set badge_class = 'badge-warning' %}
+        {% set badge_text = 'MISSING FILE' %}
+        {% set suggestion = 'Ensure the file path in your manifest exists in MinIO.' %}
+    {% elif 'postgres' in msg or 'postgis' in msg %}
+        {% set badge_class = 'badge-error' %}
+        {% set badge_text = 'DATABASE' %}
+        {% set suggestion = 'A database error occurred. Check input geometry validity.' %}
+    {% elif 'timeout' in msg or 'timed out' in msg %}
+        {% set badge_class = 'badge-warning' %}
+        {% set badge_text = 'TIMEOUT' %}
+        {% set suggestion = 'The operation took too long. Try a smaller dataset or optimized recipe.' %}
+    {% else %}
+        {% set badge_class = 'badge-unknown' %}
+        {% set badge_text = 'UNKNOWN' %}
+        {% set suggestion = 'Review the logs for full traceback. Retry if transient.' %}
+    {% endif %}
+
+    <div class="error-analysis">
+        <div class="error-header">
+            <span class="badge {{ badge_class }}">{{ badge_text }}</span>
+            <span class="error-suggestion"><strong>Suggestion:</strong> {{ suggestion }}</span>
+        </div>
+        <pre class="error-trace">{{ run.error_message }}</pre>
     </div>
     {% endif %}
 
@@ -128,6 +145,30 @@
 </article>
 
 <style>
+    .error-analysis {
+        background-color: var(--pico-card-background-color);
+        border: 1px solid var(--pico-muted-border-color);
+        border-radius: var(--pico-border-radius);
+        padding: 1rem;
+        margin-top: 0.5rem;
+    }
+    .error-header {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        margin-bottom: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .error-suggestion {
+        font-size: 0.875rem;
+        color: var(--pico-muted-color);
+    }
+    .error-trace {
+        margin-bottom: 0;
+        max-height: 300px;
+        overflow-y: auto;
+        font-size: 0.85rem;
+    }
     .events-table {
         font-size: 0.85rem;
     }

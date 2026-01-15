@@ -7,10 +7,13 @@ FastAPI-based web interface for managing the data-etl-dagster pipeline.
 This webapp provides a user-friendly interface for:
 
 - **Landing Zone Management** - Browse, upload, delete files in the landing zone
-- **Manifest Creation** - Asset-type-specific forms with validation
+- **Guided Workflows** - Step-by-step wizards for common data operations
+- **Manifest Creation** - Asset-type-specific forms with validation (supports JSON paste mode)
 - **Manifest Re-run** - Re-process archived manifests with versioned batch IDs
 - **Run Tracking** - Monitor Dagster run progress with error diagnostics
 - **Asset Browsing** - View metadata, versions, lineage, and download assets
+- **Activity Log** - Audit trail of all platform operations with user and IP tracking
+
 
 ## Quick Start
 
@@ -113,7 +116,16 @@ tests/
 | GET | `/manifests/{batch_id}` | Manifest details |
 | POST | `/manifests/{batch_id}/rerun` | Re-run archived manifest |
 
+### Workflows
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/workflows/` | List available guided workflows |
+| GET | `/workflows/{id}` | Start a workflow wizard |
+| POST | `/workflows/{id}/step/{n}` | Process workflow step (HTMX) |
+
 ### Runs
+
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -128,6 +140,12 @@ tests/
 | GET | `/assets/{dataset_id}` | Asset versions |
 | GET | `/assets/{id}/v{ver}/download` | Download asset file |
 | GET | `/assets/{id}/v{ver}/lineage` | View parent assets |
+
+### Activity
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/activity/` | View platform activity logs with filters (`user`, `action`, `resource_type`, `resource_id`) and pagination (`offset`, `limit`). Supports `format=json`. |
 
 ## Development
 
@@ -152,12 +170,68 @@ pytest tests/unit/webapp -v
 pytest -m integration tests/integration/test_webapp*.py -v
 ```
 
-## Implementation Status
+## Core Features
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| Phase 1 | Foundation (auth, health) | ✅ Complete |
-| Phase 2 | Service wrappers | ✅ Complete |
-| Phase 3 | API endpoints | ✅ Complete |
-| Phase 4 | Templates & forms | ✅ Complete |
-| Phase 5 | Testing & docs | ✅ Complete |
+- **Platform Foundation** - Authentication, health monitoring, and service readiness checks.
+- **Service Integration** - Native wrappers for MinIO, MongoDB, and Dagster GraphQL.
+- **Data Ingestion** - Schema-driven forms for spatial and tabular data with client-side validation.
+- **Operational Control** - Manifest re-runs, batch versioning, and real-time run status tracking.
+- **Asset Catalog** - Deep inspection of asset metadata, column schemas, and lineage.
+- **Observability** - Comprehensive activity logging and platform-wide audit trail.
+
+
+## Schema-Driven Form Validation
+
+The webapp uses JSON Schema for client-side form validation before server submission.
+
+### How It Works
+
+1. Backend serves JSON Schema via `GET /manifests/schemas/{asset_type}`
+2. Frontend loads schema and validates using Ajv library
+3. Inline errors display on blur and form submit
+4. Server-side validation remains authoritative (client-side is UX enhancement)
+
+### Using the Schema Endpoint
+
+```bash
+# Get schema for spatial manifest form
+curl -u admin:admin http://localhost:8080/manifests/schemas/spatial | jq
+
+# Get schema for tabular manifest form
+curl -u admin:admin http://localhost:8080/manifests/schemas/tabular | jq
+```
+
+Response includes `x-asset-type` extension field indicating the requested type.
+
+### Template Wiring
+
+Forms are validated using `ManifestFormValidator` from `static/js/validation.js`:
+
+```html
+<script src="/static/js/validation.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    new ManifestFormValidator(
+      '/manifests/schemas/spatial',  // Schema URL
+      'manifest-form',                // Form element ID
+      'submit-btn'                    // Submit button ID
+    );
+  });
+</script>
+```
+
+### Adding a New Asset Type
+
+1. Add the asset type to the schema endpoint in `app/routers/manifests.py`
+2. Create form template `app/templates/manifests/new_{type}.html`
+3. Initialize `ManifestFormValidator` with the correct schema URL
+4. Add tests in `tests/unit/webapp/test_manifest_schema.py`
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Validation not working | Check browser console for Ajv load errors |
+| CDN blocked | Vendor Ajv locally in `app/static/vendor/` |
+| Schema mismatch | Verify `ManifestCreateRequest` model matches form fields |
+| Field names wrong | Input `name` attributes must match schema property names |
