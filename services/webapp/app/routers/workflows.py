@@ -2,9 +2,10 @@ import json
 import logging
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Form
-from fastapi.responses import HTMLResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, Form, Query
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
@@ -213,6 +214,30 @@ async def start_workflow(
     )
 
 
+@router.get("/{workflow_id}/success", response_class=HTMLResponse)
+async def workflow_success(
+    workflow_id: str,
+    request: Request,
+    batch_id: str = Query(..., description="Manifest batch ID"),
+    manifest_key: Optional[str] = Query(None, description="Manifest key"),
+    current_user: AuthenticatedUser = Depends(get_current_user),
+):
+    workflow = get_workflow(workflow_id)
+    if not workflow:
+        raise HTTPException(status_code=404, detail="Workflow not found")
+
+    return templates.TemplateResponse(
+        "workflows/_step_success.html",
+        {
+            "request": request,
+            "user": current_user,
+            "workflow": workflow,
+            "batch_id": batch_id,
+            "manifest_key": manifest_key,
+        },
+    )
+
+
 @router.post("/{workflow_id}/step/{step_index}", response_class=HTMLResponse)
 async def process_step(
     workflow_id: str,
@@ -309,15 +334,10 @@ async def submit_workflow(
             content_type="application/json",
         )
 
-        return templates.TemplateResponse(
-            "workflows/_step_success.html",
-            {
-                "request": request,
-                "user": user,
-                "workflow": workflow,
-                "batch_id": manifest.batch_id,
-                "manifest_key": manifest_key,
-            },
+        query = urlencode({"batch_id": manifest.batch_id, "manifest_key": manifest_key})
+        return RedirectResponse(
+            url=f"/workflows/{workflow_id}/success?{query}",
+            status_code=303,
         )
     except Exception as e:
         logger.exception("Failed to submit workflow")

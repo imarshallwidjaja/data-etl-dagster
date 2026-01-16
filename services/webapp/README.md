@@ -122,6 +122,7 @@ tests/
 |--------|------|-------------|
 | GET | `/workflows/` | List available guided workflows |
 | GET | `/workflows/{id}` | Start a workflow wizard |
+| GET | `/workflows/{id}/success` | Submission success page |
 | POST | `/workflows/{id}/step/{n}` | Process workflow step (HTMX) |
 
 ### Runs
