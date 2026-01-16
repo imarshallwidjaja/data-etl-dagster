@@ -11,6 +11,7 @@ This platform processes spatial data through a strict manifest-based ingestion p
 3. **Transform** data using PostGIS as a compute engine with recipe-based transformations (geometry column standardized to `geom`)
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
+6. **Audit** all actions in activity log
 
 ### Sensors (legacy + asset-based)
 
@@ -62,6 +63,7 @@ docker compose up -d
 |---------|-----|-------------|
 | Dagster UI | http://localhost:3000 | - |
 | Tooling Webapp | http://localhost:8080 | admin:admin |
+| Activity Log | http://localhost:8080/activity | admin:admin |
 | MinIO Console | http://localhost:9001 | See .env |
 | MinIO API | http://localhost:9000 | See .env |
 | MongoDB | localhost:27017 | See .env |
@@ -503,7 +505,7 @@ pytest -m "integration and e2e" tests/integration -v
 
 #### Test Coverage
 
-**Unit Tests** (`tests/unit/`) - No external dependencies required (189 tests):
+**Unit Tests** (`tests/unit/`) - No external dependencies required (524 tests):
 
 - **Models & Validation** (`test_models.py` - 55 tests):
   - CRS validation (EPSG, WKT, PROJ formats)
@@ -561,7 +563,7 @@ pytest -m "integration and e2e" tests/integration -v
   - Run ID extraction from schema names
   - Round-trip validation
 
-**Integration Tests** (`tests/integration/`) - Requires Docker stack (27 tests):
+**Integration Tests** (`tests/integration/`) - Requires Docker stack (75 tests):
 
 Integration tests include:
 - **Connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup)
@@ -584,7 +586,23 @@ Integration tests include:
 - `test_tabular_asset_e2e.py` (E2E) - `tabular_asset_job` end-to-end run launched via GraphQL (partitioned; CSV → Parquet → Mongo)
 - `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run (spatial parent via spatial_asset_job + tabular CSV → joined GeoParquet + lineage)
 
-**Total Coverage:** 205 unit tests + 27 integration tests = 232 tests
+**Total Coverage:**
+
+To verify the current test count, run:
+
+```bash
+pytest --collect-only -q
+```
+
+Example output:
+```text
+============================= test session starts ==============================
+...
+collected 599 items
+========================= 599 tests collected in 2.43s =========================
+```
+
+*Verified metrics (Jan 2026): 524 unit tests + 75 integration tests = 599 tests total.*
 
 #### Continuous Integration
 

@@ -22,7 +22,7 @@ def gdal_resource():
 
 class TestGDALResourceOgr2ogr:
     """Test suite for ogr2ogr method."""
-    
+
     def test_ogr2ogr_command_construction_minimal(self, gdal_resource):
         """Test ogr2ogr builds correct command with minimal args."""
         with patch("subprocess.run") as mock_run:
@@ -31,22 +31,22 @@ class TestGDALResourceOgr2ogr:
                 stdout="Translation success",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogr2ogr(
                 input_path="/vsis3/landing/data.geojson",
                 output_path="PG:host=postgis",
             )
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert called_cmd[0] == "ogr2ogr"
             assert "-f" in called_cmd
             assert "PostgreSQL" in called_cmd
             assert called_cmd[-2] == "PG:host=postgis"
             assert called_cmd[-1] == "/vsis3/landing/data.geojson"
-            
+
             assert result.success is True
             assert result.return_code == 0
-    
+
     def test_ogr2ogr_with_crs_and_layer(self, gdal_resource):
         """Test ogr2ogr with CRS transformation and layer naming."""
         with patch("subprocess.run") as mock_run:
@@ -55,25 +55,25 @@ class TestGDALResourceOgr2ogr:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogr2ogr(
                 input_path="/vsis3/landing/data.geojson",
                 output_path="PG:host=postgis dbname=spatial_compute",
                 layer_name="raw_input",
                 target_crs="EPSG:4326",
             )
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert "-t_srs" in called_cmd
             idx = called_cmd.index("-t_srs")
             assert called_cmd[idx + 1] == "EPSG:4326"
-            
+
             assert "-nln" in called_cmd
             idx = called_cmd.index("-nln")
             assert called_cmd[idx + 1] == "raw_input"
-            
+
             assert result.success is True
-    
+
     def test_ogr2ogr_with_custom_options(self, gdal_resource):
         """Test ogr2ogr with custom GDAL options."""
         with patch("subprocess.run") as mock_run:
@@ -82,20 +82,20 @@ class TestGDALResourceOgr2ogr:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogr2ogr(
                 input_path="/vsis3/landing/data.geojson",
                 output_path="/vsis3/data-lake/data.parquet",
                 output_format="Parquet",
                 options={"-overwrite": "", "-co": "COMPRESSION=snappy"},
             )
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert "-overwrite" in called_cmd
             assert "-co" in called_cmd
             idx = called_cmd.index("-co")
             assert called_cmd[idx + 1] == "COMPRESSION=snappy"
-    
+
     def test_ogr2ogr_postgresql_output_not_tracked(self, gdal_resource):
         """Test that PostgreSQL outputs don't set output_path."""
         with patch("subprocess.run") as mock_run:
@@ -104,16 +104,16 @@ class TestGDALResourceOgr2ogr:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogr2ogr(
                 input_path="/vsis3/landing/data.geojson",
                 output_path="PG:host=postgis",
                 output_format="PostgreSQL",
             )
-            
+
             # PostgreSQL connection strings should not be tracked
             assert result.output_path is None
-    
+
     def test_ogr2ogr_file_output_tracked(self, gdal_resource):
         """Test that file outputs are tracked in output_path."""
         with patch("subprocess.run") as mock_run:
@@ -122,19 +122,19 @@ class TestGDALResourceOgr2ogr:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogr2ogr(
                 input_path="/vsis3/landing/data.geojson",
                 output_path="/vsis3/data-lake/data.parquet",
                 output_format="Parquet",
             )
-            
+
             assert result.output_path == "/vsis3/data-lake/data.parquet"
 
 
 class TestGDALResourceGdalTranslate:
     """Test suite for gdal_translate method."""
-    
+
     def test_gdal_translate_basic(self, gdal_resource):
         """Test basic gdal_translate call."""
         with patch("subprocess.run") as mock_run:
@@ -143,20 +143,20 @@ class TestGDALResourceGdalTranslate:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.gdal_translate(
                 input_path="/vsis3/landing/image.tif",
                 output_path="/vsis3/data-lake/image_cog.tif",
             )
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert called_cmd[0] == "gdal_translate"
             assert "-of" in called_cmd
             assert "COG" in called_cmd
-            
+
             assert result.success is True
             assert result.output_path == "/vsis3/data-lake/image_cog.tif"
-    
+
     def test_gdal_translate_with_options(self, gdal_resource):
         """Test gdal_translate with creation options."""
         with patch("subprocess.run") as mock_run:
@@ -165,21 +165,23 @@ class TestGDALResourceGdalTranslate:
                 stdout="",
                 stderr="",
             )
-            
+
             result = gdal_resource.gdal_translate(
                 input_path="/vsis3/landing/image.tif",
                 output_path="/tmp/image.tif",
                 output_format="GTiff",
-                options={"-co": "COMPRESS=deflate", "-co": "BLOCKXSIZE=512"},
+                options={"-co": ["COMPRESS=deflate", "BLOCKXSIZE=512"]},
             )
-            
+
             called_cmd = mock_run.call_args[0][0]
-            assert "-co" in called_cmd
+            assert called_cmd.count("-co") == 2
+            assert "COMPRESS=deflate" in called_cmd
+            assert "BLOCKXSIZE=512" in called_cmd
 
 
 class TestGDALResourceInfo:
     """Test suite for info methods (ogrinfo, gdalinfo)."""
-    
+
     def test_ogrinfo_basic(self, gdal_resource):
         """Test basic ogrinfo call."""
         with patch("subprocess.run") as mock_run:
@@ -188,17 +190,17 @@ class TestGDALResourceInfo:
                 stdout="Layer count: 1",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogrinfo("/vsis3/landing/data.geojson")
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert called_cmd[0] == "ogrinfo"
             assert "-al" in called_cmd
             assert "-so" in called_cmd
-            
+
             assert result.success is True
             assert "Layer count" in result.stdout
-    
+
     def test_ogrinfo_with_layer(self, gdal_resource):
         """Test ogrinfo with specific layer."""
         with patch("subprocess.run") as mock_run:
@@ -235,7 +237,7 @@ class TestGDALResourceInfo:
 
             assert result.success is True
             assert result.stdout == '{"layers": []}'
-    
+
     def test_gdalinfo(self, gdal_resource):
         """Test gdalinfo call."""
         with patch("subprocess.run") as mock_run:
@@ -244,13 +246,13 @@ class TestGDALResourceInfo:
                 stdout="Band count: 3",
                 stderr="",
             )
-            
+
             result = gdal_resource.gdalinfo("/vsis3/landing/image.tif")
-            
+
             called_cmd = mock_run.call_args[0][0]
             assert called_cmd[0] == "gdalinfo"
             assert called_cmd[1] == "/vsis3/landing/image.tif"
-            
+
             assert result.success is True
 
 
@@ -277,7 +279,7 @@ class TestGDALEnvironment:
             assert env["AWS_S3_ENDPOINT"] == "minio:9000"
             assert env["AWS_HTTPS"] == "NO"
             assert env["AWS_VIRTUAL_HOSTING"] == "FALSE"
-    
+
     def test_gdal_paths_in_environment(self, gdal_resource):
         """Test that GDAL/PROJ paths are passed to subprocess."""
         with patch("subprocess.run") as mock_run:
@@ -286,14 +288,14 @@ class TestGDALEnvironment:
                 stdout="",
                 stderr="",
             )
-            
+
             gdal_resource.gdalinfo("/tmp/test.tif")
-            
+
             call_kwargs = mock_run.call_args[1]
             env = call_kwargs["env"]
             assert env["GDAL_DATA"] == "/usr/share/gdal"
             assert env["PROJ_LIB"] == "/usr/share/proj"
-    
+
     def test_empty_credentials_not_set(self):
         """Test that empty credentials are not set in environment."""
         resource = GDALResource(
@@ -301,16 +303,16 @@ class TestGDALEnvironment:
             aws_secret_access_key="",
             aws_s3_endpoint="",
         )
-        
+
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = Mock(
                 returncode=0,
                 stdout="",
                 stderr="",
             )
-            
+
             resource.ogrinfo("/tmp/test.geojson")
-            
+
             call_kwargs = mock_run.call_args[1]
             env = call_kwargs["env"]
             # Empty values should not be set (or would be empty strings)
@@ -319,7 +321,7 @@ class TestGDALEnvironment:
 
 class TestGDALFailureHandling:
     """Test suite for error handling."""
-    
+
     def test_command_failure_detection(self, gdal_resource):
         """Test that command failures are properly detected."""
         with patch("subprocess.run") as mock_run:
@@ -328,14 +330,14 @@ class TestGDALFailureHandling:
                 stdout="",
                 stderr="ERROR: File not found",
             )
-            
+
             result = gdal_resource.ogrinfo("/nonexistent/file.shp")
-            
+
             assert result.success is False
             assert result.return_code == 1
             assert "ERROR" in result.stderr
             assert result.output_path is None
-    
+
     def test_result_serialization(self, gdal_resource):
         """Test that GDALResult is serializable."""
         with patch("subprocess.run") as mock_run:
@@ -344,13 +346,13 @@ class TestGDALFailureHandling:
                 stdout="Success output",
                 stderr="",
             )
-            
+
             result = gdal_resource.ogr2ogr(
                 input_path="/vsis3/landing/data.geojson",
                 output_path="/tmp/data.geojson",
                 output_format="GeoJSON",
             )
-            
+
             # Test that all fields are JSON-serializable
             assert isinstance(result.success, bool)
             assert isinstance(result.command, list)
@@ -362,7 +364,7 @@ class TestGDALFailureHandling:
 
 class TestGDALResultDataclass:
     """Test suite for GDALResult dataclass."""
-    
+
     def test_gdal_result_creation(self):
         """Test GDALResult dataclass creation."""
         result = GDALResult(
@@ -373,11 +375,11 @@ class TestGDALResultDataclass:
             return_code=0,
             output_path="/tmp/data.geojson",
         )
-        
+
         assert result.success is True
         assert result.return_code == 0
         assert result.output_path == "/tmp/data.geojson"
-    
+
     def test_gdal_result_without_output_path(self):
         """Test GDALResult without output_path (optional)."""
         result = GDALResult(
@@ -387,5 +389,5 @@ class TestGDALResultDataclass:
             stderr="",
             return_code=0,
         )
-        
+
         assert result.output_path is None

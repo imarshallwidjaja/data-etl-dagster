@@ -31,7 +31,7 @@ It is split into **unit tests** (fast, mocked) and **integration tests** (live s
 | `libs/` | Libs module tests (registry, s3_utils, transformations) |
 | `ops/` | Dagster ops tests (cleanup, export, join, load, transform) |
 | `sensors/` | Sensor tests (asset_sensors, manifest_sensor) |
-| `webapp/` | Webapp unit tests (auth, manifest_builder, folder_router) |
+| `webapp/` | Webapp unit tests (auth, manifest_builder, activity_router, activity_service) |
 
 ### Integration tests (`integration/`)
 

@@ -174,7 +174,7 @@ class TestMigrationIdempotency:
 
     def test_assets_validator_allows_tabular(self, mongo_database):
         """Test that assets validator allows tabular kind and parquet format."""
-        # Try to insert a valid tabular asset (M4 schema requires full metadata)
+        # Try to insert a valid tabular asset (metadata fields required by schema)
         tabular_asset = {
             "s3_key": "data-lake/test_dataset/v1/data.parquet",
             "dataset_id": "test_dataset",
@@ -276,7 +276,7 @@ class TestMigrationIdempotency:
                 "attribution": "Test User",
                 "project": "TEST",
             },
-            "status": "running",  # M4 uses running/success/failure/canceled
+            "status": "running",  # Uses running/success/failure/canceled
             "ingested_at": datetime.now(timezone.utc),
         }
 
@@ -298,7 +298,7 @@ class TestMigrationIndexes:
             "s3_key_1",  # Unique index
             "dataset_id_1_version_-1",  # Compound index
             "content_hash_1",
-            "run_id_1",  # Changed from dagster_run_id_1 in M4
+            "run_id_1",  # ObjectId-based run linkage
             "kind_1",
             "created_at_-1",
             "metadata.keywords_1",  # New multikey index
@@ -342,7 +342,7 @@ class TestMigrationIndexes:
 
         expected_indexes = [
             "dagster_run_id_1",  # Unique sparse index
-            "batch_id_1",  # M4 uses batch_id instead of manifest_id
+            "batch_id_1",  # Batch identifier index
             "status_1",
             "batch_id_1_started_at_-1",  # Compound index
         ]
@@ -360,7 +360,7 @@ class TestMigrationIndexes:
         expected_indexes = [
             "source_asset_id_1",
             "target_asset_id_1",
-            "run_id_1",  # M4 uses run_id (ObjectId) instead of dagster_run_id
+            "run_id_1",  # ObjectId-based run linkage
         ]
 
         for index_name in expected_indexes:

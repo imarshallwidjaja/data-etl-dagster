@@ -1,0 +1,62 @@
+{# Run status fragment for HTMX polling - returns partial HTML for status updates #}
+<div id="run-status" aria-live="polite"
+     {% if run.status == 'STARTED' or run.status == 'QUEUED' or run.status == 'NOT_STARTED' %}
+     hx-get="/runs/{{ run.run_id }}/status" 
+     hx-trigger="every 5s"
+     hx-swap="outerHTML"
+     {% endif %}>
+    
+    <div class="status-display">
+        {% if run.status == 'SUCCESS' %}
+        <span class="badge badge-success">{{ run.status }}</span>
+        {% elif run.status == 'FAILURE' %}
+        <span class="badge badge-error">{{ run.status }}</span>
+        {% elif run.status == 'STARTED' or run.status == 'QUEUED' or run.status == 'NOT_STARTED' %}
+        <span class="badge badge-warning" aria-busy="true">{{ run.status }}</span>
+        {% elif run.status == 'CANCELED' %}
+        <span class="badge badge-info">{{ run.status }}</span>
+        {% else %}
+        <span class="badge badge-info">{{ run.status }}</span>
+        {% endif %}
+    </div>
+    
+    {% if run.status == 'SUCCESS' and run.ended_at %}
+    <p><small>Completed at {{ run.ended_at }}</small></p>
+    {% elif run.status == 'FAILURE' and run.error_message %}
+    <details>
+        <summary>Error Details</summary>
+        {% set msg = run.error_message|lower %}
+        {% if 'validation error' in msg or 'missing required' in msg %}
+            {% set badge_class = 'badge-warning' %}
+            {% set badge_text = 'VALIDATION' %}
+            {% set suggestion = 'Check your manifest metadata or file format.' %}
+        {% elif 'file not found' in msg or 'nosuchkey' in msg or 's3' in msg %}
+            {% set badge_class = 'badge-warning' %}
+            {% set badge_text = 'MISSING FILE' %}
+            {% set suggestion = 'Ensure the file path in your manifest exists in MinIO.' %}
+        {% elif 'postgres' in msg or 'postgis' in msg %}
+            {% set badge_class = 'badge-error' %}
+            {% set badge_text = 'DATABASE' %}
+            {% set suggestion = 'A database error occurred. Check input geometry validity.' %}
+        {% elif 'timeout' in msg or 'timed out' in msg %}
+            {% set badge_class = 'badge-warning' %}
+            {% set badge_text = 'TIMEOUT' %}
+            {% set suggestion = 'The operation took too long. Try a smaller dataset or optimized recipe.' %}
+        {% else %}
+            {% set badge_class = 'badge-unknown' %}
+            {% set badge_text = 'UNKNOWN' %}
+            {% set suggestion = 'Review the logs for full traceback. Retry if transient.' %}
+        {% endif %}
+
+        <div class="error-analysis">
+            <div class="error-header">
+                <span class="badge {{ badge_class }}">{{ badge_text }}</span>
+                <span class="error-suggestion"><strong>Suggestion:</strong> {{ suggestion }}</span>
+            </div>
+            <pre class="error-trace">{{ run.error_message }}</pre>
+        </div>
+    </details>
+    {% elif run.status == 'STARTED' or run.status == 'QUEUED' or run.status == 'NOT_STARTED' %}
+    <p><small>Auto-refreshing every 5 seconds...</small></p>
+    {% endif %}
+</div>

@@ -14,9 +14,18 @@
     <link rel="stylesheet" href="/static/css/custom.css">
     {% endif %}
     
+    <!-- HTMX for progressive enhancement -->
+    <script src="https://unpkg.com/htmx.org@2.0.4" 
+            integrity="sha384-HGfztofotfshcF7+8n44JQL2oJmowVChPTg48S+jvZoztPfvwD79OC/LTtG6dMp+" 
+            crossorigin="anonymous"></script>
+    
+    <!-- Ajv for client-side JSON Schema validation -->
+    <script src="https://cdn.jsdelivr.net/npm/ajv@8/dist/ajv.bundle.min.js"></script>
+    
     {% block extra_head %}{% endblock %}
 </head>
 <body>
+    <a href="#main-content" class="skip-link">Skip to content</a>
     <header class="container">
         <nav>
             <ul>
@@ -26,8 +35,10 @@
                 <li><a href="/">Home</a></li>
                 <li><a href="/landing/">Landing Zone</a></li>
                 <li><a href="/manifests/">Manifests</a></li>
+                <li><a href="/workflows/">Workflows</a></li>
                 <li><a href="/runs/">Runs</a></li>
                 <li><a href="/assets/">Assets</a></li>
+                <li><a href="/activity/">Activity</a></li>
             </ul>
             <ul>
                 {% if user %}
@@ -37,7 +48,7 @@
         </nav>
     </header>
     
-    <main class="container">
+    <main class="container" id="main-content">
         {% block content %}{% endblock %}
     </main>
     

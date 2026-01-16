@@ -18,10 +18,10 @@
             Status
             <select name="status" onchange="this.form.submit()">
                 <option value="">All</option>
-                <option value="pending" {% if status=='pending' %}selected{% endif %}>Pending</option>
-                <option value="processing" {% if status=='processing' %}selected{% endif %}>Processing</option>
-                <option value="completed" {% if status=='completed' %}selected{% endif %}>Completed</option>
-                <option value="failed" {% if status=='failed' %}selected{% endif %}>Failed</option>
+                <option value="running" {% if status=='running' %}selected{% endif %}>Running</option>
+                <option value="success" {% if status=='success' %}selected{% endif %}>Success</option>
+                <option value="failure" {% if status=='failure' %}selected{% endif %}>Failure</option>
+                <option value="canceled" {% if status=='canceled' %}selected{% endif %}>Canceled</option>
             </select>
         </label>
     </form>
@@ -49,25 +49,28 @@
                     <td><a href="/manifests/{{ m.batch_id }}">{{ m.batch_id }}</a></td>
                     <td><code>{{ m.intent }}</code></td>
                     <td>
-                        {% if m.status == 'completed' %}
+                        {% if m.status == 'success' %}
                         <span class="badge badge-success">{{ m.status }}</span>
-                        {% elif m.status == 'failed' %}
+                        {% elif m.status == 'failure' %}
                         <span class="badge badge-error">{{ m.status }}</span>
-                        {% elif m.status == 'processing' %}
+                        {% elif m.status == 'running' %}
                         <span class="badge badge-warning">{{ m.status }}</span>
-                        {% else %}
+                        {% elif m.status == 'canceled' %}
                         <span class="badge badge-pending">{{ m.status }}</span>
+                        {% else %}
+                        <span class="badge badge-unknown">{{ m.status }}</span>
                         {% endif %}
                     </td>
                     <td>{{ m.project or '-' }}</td>
                     <td>{{ m.file_count }}</td>
                     <td>{{ m.created_at[:19] if m.created_at else '-' }}</td>
                     <td>
-                        <a href="/manifests/{{ m.batch_id }}" role="button" class="outline contrast"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">View</a>
+                        <a href="/manifests/{{ m.batch_id }}" role="button" class="outline contrast btn-sm">View</a>
                         {% if m.dagster_run_id %}
-                        <a href="/runs/{{ m.dagster_run_id }}" role="button" class="outline"
-                            style="padding: 0.25rem 0.5rem; font-size: 0.8rem;">Run</a>
+                        <a href="/runs/{{ m.dagster_run_id }}" role="button" class="outline btn-sm">Run</a>
+                        {% endif %}
+                        {% if m.status in ['success', 'failure'] %}
+                        <button class="secondary outline btn-sm rerun-btn" data-batch-id="{{ m.batch_id }}">Re-run</button>
                         {% endif %}
                     </td>
                 </tr>
@@ -79,5 +82,84 @@
     <p><em>No manifests found{% if status %} with status "{{ status }}"{% endif %}.</em></p>
     <p><a href="/manifests/new" role="button">Create your first manifest →</a></p>
     {% endif %}
+
+    <!-- Action Status Toast -->
+    <div id="action-status" class="action-toast"></div>
 </article>
+
+<script>
+    // Re-run button handlers
+    document.querySelectorAll('.rerun-btn').forEach(function(btn) {
+        btn.addEventListener('click', async function() {
+            const batchId = this.getAttribute('data-batch-id');
+            const status = document.getElementById('action-status');
+            const originalText = this.textContent;
+            
+            // Disable button and show loading state
+            this.disabled = true;
+            this.setAttribute('aria-busy', 'true');
+            this.textContent = 'Re-running...';
+            
+            try {
+                const response = await fetch('/manifests/' + batchId + '/rerun', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    status.innerHTML = '<p class="success">' + result.message + '</p>';
+                    status.classList.add('visible');
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    const error = await response.json();
+                    status.innerHTML = '<p class="error">' + (error.detail || 'Re-run failed') + '</p>';
+                    status.classList.add('visible');
+                    this.disabled = false;
+                    this.removeAttribute('aria-busy');
+                    this.textContent = originalText;
+                }
+            } catch (err) {
+                status.innerHTML = '<p class="error">' + err.message + '</p>';
+                status.classList.add('visible');
+                this.disabled = false;
+                this.removeAttribute('aria-busy');
+                this.textContent = originalText;
+            }
+            
+            // Auto-hide status after 5 seconds on error
+            setTimeout(() => status.classList.remove('visible'), 5000);
+        });
+    });
+</script>
+
+<style>
+    .action-toast {
+        position: fixed;
+        bottom: 1rem;
+        right: 1rem;
+        padding: 0.75rem 1.25rem;
+        border-radius: 0.5rem;
+        background: var(--pico-card-background-color);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        opacity: 0;
+        transform: translateY(1rem);
+        transition: opacity 0.3s, transform 0.3s;
+        z-index: 1000;
+    }
+    
+    .action-toast.visible {
+        opacity: 1;
+        transform: translateY(0);
+    }
+    
+    .action-toast .success {
+        color: var(--pico-color-green-550);
+        margin: 0;
+    }
+    
+    .action-toast .error {
+        color: var(--pico-color-red-550);
+        margin: 0;
+    }
+</style>
 {% endblock %}

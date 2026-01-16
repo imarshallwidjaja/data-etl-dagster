@@ -53,7 +53,7 @@ SAMPLE_TRANSFORM_RESULT = {
     },
     "crs": "EPSG:4326",
     "run_id": "abc12345-def6-7890-abcd-ef1234567890",
-    "geometry_type": "MULTIPOLYGON",  # Required for spatial assets (M2)
+    "geometry_type": "MULTIPOLYGON",  # Required for spatial assets
 }
 
 

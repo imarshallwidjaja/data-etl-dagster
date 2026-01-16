@@ -7,7 +7,12 @@ which properly materializes raw_spatial_asset with partition support.
 
 from dagster import job
 
-from ..ops import load_to_postgis, spatial_transform, export_to_datalake
+from ..ops import (
+    load_to_postgis,
+    spatial_transform,
+    export_to_datalake,
+    init_mongo_run_op,
+)
 
 
 @job(
@@ -17,15 +22,17 @@ from ..ops import load_to_postgis, spatial_transform, export_to_datalake
 def ingest_job():
     """
     Main ingestion job triggered by manifest sensor.
-    
+
     Pipeline flow:
     1. load_to_postgis: Loads spatial data from MinIO landing zone to PostGIS ephemeral schema
     2. spatial_transform: Executes spatial transformations using recipe-based architecture
-    3. export_to_datalake: Exports processed data to MinIO data lake and registers in MongoDB
-    
+    3. init_mongo_run_op: Creates run document in MongoDB (must run before export)
+    4. export_to_datalake: Exports processed data to MinIO data lake and registers in MongoDB
+
     The manifest is passed as an op input to load_to_postgis via run config.
     """
     schema_info = load_to_postgis()
     transform_result = spatial_transform(schema_info)
-    export_to_datalake(transform_result)
-
+    # init_mongo_run_op creates the run doc; passes transform_result through unchanged
+    initialized_result = init_mongo_run_op(transform_result)
+    export_to_datalake(initialized_result)
