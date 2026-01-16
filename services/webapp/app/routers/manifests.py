@@ -80,7 +80,7 @@ class ManifestCreateRequest(BaseModel):
     license: str = ""  # Required but can be empty
     attribution: str = ""  # Required but can be empty
 
-    # Optional project (demoted from required in M1)
+    # Optional project
     project: Optional[str] = None
 
     # Processing configuration

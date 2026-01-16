@@ -93,7 +93,7 @@ def build_manifest(
     license_field = form_data.get("license", "")
     attribution = form_data.get("attribution", "")
 
-    # Optional project (demoted from required in M1)
+    # Optional project
     project = form_data.get("project")
 
     # Extract tags

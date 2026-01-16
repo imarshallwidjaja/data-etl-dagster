@@ -256,7 +256,7 @@ class ManifestMetadata(HumanMetadataMixin):
     affiliation and queryable tags.
 
     Attributes:
-        project: Optional project identifier (demoted from required in M1)
+        project: Optional project identifier
         tags: Arbitrary queryable tags (primitive scalars only)
         join_config: Optional join instructions for downstream matching
     """

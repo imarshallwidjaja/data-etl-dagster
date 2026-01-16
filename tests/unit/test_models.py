@@ -990,12 +990,12 @@ class TestAssetMetadataFactory:
 
 
 # =============================================================================
-# Milestone 3 - Tabular Schema Capture Enforcement tests
+# Tabular Schema Capture Enforcement tests
 # =============================================================================
 
 
 class TestTabularAssetSchemaEnforcement:
-    """Test that tabular assets require column_schema after M3."""
+    """Test that tabular assets require column_schema."""
 
     def test_tabular_asset_requires_column_schema(self):
         """Test that tabular assets raise error without column_schema."""
@@ -1069,12 +1069,12 @@ class TestTabularAssetSchemaEnforcement:
 
 
 # =============================================================================
-# Milestone 2 - Spatial Geometry Type Enforcement tests
+# Spatial Geometry Type Enforcement tests
 # =============================================================================
 
 
 class TestSpatialGeometryTypeEnforcement:
-    """Test that spatial/joined assets require geometry_type after M2."""
+    """Test that spatial/joined assets require geometry_type."""
 
     def test_spatial_asset_requires_geometry_type(self):
         """Test that spatial assets raise error without geometry_type."""

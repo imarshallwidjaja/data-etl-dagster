@@ -391,19 +391,19 @@ class Asset(BaseModel):
         Validate kind-specific metadata requirements.
 
         Rules:
-        - kind == SPATIAL or JOINED → metadata.geometry_type MUST be set (ERROR - M2)
-        - kind in {TABULAR, SPATIAL, JOINED} → metadata.column_schema MUST be set (ERROR - M3)
+        - kind == SPATIAL or JOINED → metadata.geometry_type MUST be set
+        - kind in {TABULAR, SPATIAL, JOINED} → metadata.column_schema MUST be set
 
         This enforces that system-derived metadata is populated based on asset kind.
         """
-        # Spatial and joined assets MUST have geometry_type (enforced in M2)
+        # Spatial and joined assets MUST have geometry_type
         if self.kind in {AssetKind.SPATIAL, AssetKind.JOINED}:
             if self.metadata.geometry_type is None:
                 raise ValueError(
                     f"Asset with kind '{self.kind.value}' requires metadata.geometry_type"
                 )
 
-        # ALL columnar assets MUST have column_schema (enforced in M3)
+        # ALL columnar assets MUST have column_schema
         if self.kind in {AssetKind.TABULAR, AssetKind.SPATIAL, AssetKind.JOINED}:
             if self.metadata.column_schema is None:
                 raise ValueError(

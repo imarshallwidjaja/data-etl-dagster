@@ -19,9 +19,9 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 - **Geometry Type Capture**: Spatial and joined assets automatically capture geometry type (POINT, POLYGON, MULTIPOLYGON, etc.) from PostGIS during processing. Stored in `metadata.geometry_type` for catalog introspection. Enforced as required for spatial/joined assets.
 - **Header Cleaning**: Headers in tabular CSVs are cleaned to valid Postgres identifiers for reliable downstream joins.
 
-## Metadata Contract (M1-M4)
+## Metadata Contract
 
-The metadata restructuring (Milestones 1-4) established the following invariants:
+The metadata restructuring established the following invariants:
 
 ### Human Metadata Fields (Required on All Assets/Manifests)
 
