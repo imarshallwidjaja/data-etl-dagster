@@ -156,13 +156,13 @@ def mongo_password() -> str:
 
 
 @pytest.fixture
-def mongo_database() -> str:
+def mongo_database_name() -> str:
     return os.getenv("MONGO_DATABASE", "spatial_etl")
 
 
 @pytest.fixture
-def mongo_settings(mongo_database: str) -> MongoSettingsData:
-    return MongoSettingsData(database=mongo_database)
+def mongo_settings(mongo_database_name: str) -> MongoSettingsData:
+    return MongoSettingsData(database=mongo_database_name)
 
 
 @pytest.fixture

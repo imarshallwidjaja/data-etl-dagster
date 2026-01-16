@@ -119,7 +119,7 @@ class TestSpatialAssetE2E:
         minio_landing_bucket,
         minio_lake_bucket,
         mongo_client,
-        mongo_database,
+        mongo_database_name,
         postgis_connection,
     ):
         batch_id = f"e2e_spatial_asset_{uuid4().hex[:12]}"
@@ -166,7 +166,7 @@ class TestSpatialAssetE2E:
                 )
 
             asset_doc = assert_mongodb_asset_exists(
-                mongo_client, mongo_database, run_id
+                mongo_client, mongo_database_name, run_id
             )
             assert asset_doc.get("kind") == "spatial", (
                 f"Expected kind=spatial, got {asset_doc.get('kind')}"
@@ -221,7 +221,9 @@ class TestSpatialAssetE2E:
                 cleanup_minio_object(
                     minio_client, minio_lake_bucket, asset_doc.get("s3_key", "")
                 )
-                cleanup_mongodb_asset_by_id(mongo_client, mongo_database, asset_doc)
+                cleanup_mongodb_asset_by_id(
+                    mongo_client, mongo_database_name, asset_doc
+                )
 
             cleanup_dynamic_partitions(
                 dagster_client, created_partitions, original_error=test_error
@@ -229,21 +231,21 @@ class TestSpatialAssetE2E:
 
 
 def cleanup_mongodb_asset_by_id(
-    mongo_client, mongo_database: str, asset_doc: dict | None
+    mongo_client, mongo_database_name: str, asset_doc: dict | None
 ) -> None:
     if asset_doc is None:
         return
     try:
-        db = mongo_client[mongo_database]
+        db = mongo_client[mongo_database_name]
         db["assets"].delete_one({"_id": asset_doc["_id"]})
     except Exception:
         pass
 
 
 def assert_mongodb_asset_exists(
-    mongo_client, mongo_database: str, dagster_run_id: str
+    mongo_client, mongo_database_name: str, dagster_run_id: str
 ) -> dict:
-    db = mongo_client[mongo_database]
+    db = mongo_client[mongo_database_name]
     run_doc = db["runs"].find_one({"dagster_run_id": dagster_run_id})
     assert run_doc is not None, (
         f"No run document found in MongoDB for dagster_run_id: {dagster_run_id}"

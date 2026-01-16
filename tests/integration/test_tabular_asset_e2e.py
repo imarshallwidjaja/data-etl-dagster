@@ -107,7 +107,7 @@ def _cleanup_minio_mongo(
     minio_client,
     minio_settings,
     mongo_client,
-    mongo_database: str,
+    mongo_database_name: str,
     landing_key: str,
     asset_doc: dict | None,
 ) -> None:
@@ -118,16 +118,16 @@ def _cleanup_minio_mongo(
             minio_client, minio_settings.lake_bucket, asset_doc.get("s3_key", "")
         )
         try:
-            db = mongo_client[mongo_database]
+            db = mongo_client[mongo_database_name]
             db["assets"].delete_one({"_id": asset_doc["_id"]})
         except Exception:
             pass
 
 
 def _assert_mongodb_asset_exists(
-    mongo_client, mongo_database: str, dagster_run_id: str
+    mongo_client, mongo_database_name: str, dagster_run_id: str
 ) -> dict:
-    db = mongo_client[mongo_database]
+    db = mongo_client[mongo_database_name]
     run_doc = db["runs"].find_one({"dagster_run_id": dagster_run_id})
     assert run_doc is not None, (
         f"No run document found in MongoDB for dagster_run_id: {dagster_run_id}"
@@ -148,7 +148,7 @@ class TestTabularAssetJobE2E:
         minio_client,
         minio_settings,
         mongo_client,
-        mongo_database,
+        mongo_database_name,
     ):
         batch_id = f"e2e_tabular_{uuid4().hex[:12]}"
         object_key = f"e2e/{batch_id}/data.csv"
@@ -189,7 +189,7 @@ class TestTabularAssetJobE2E:
 
             asset_doc = _assert_mongodb_asset_exists(
                 mongo_client,
-                mongo_database,
+                mongo_database_name,
                 run_id,
             )
 
@@ -248,7 +248,7 @@ class TestTabularAssetJobE2E:
                 minio_client,
                 minio_settings,
                 mongo_client,
-                mongo_database,
+                mongo_database_name,
                 object_key,
                 asset_doc,
             )
@@ -262,7 +262,7 @@ class TestTabularAssetJobE2E:
         minio_client,
         minio_settings,
         mongo_client,
-        mongo_database,
+        mongo_database_name,
     ):
         batch_id = f"e2e_tabular_join_{uuid4().hex[:12]}"
         object_key = f"e2e/{batch_id}/data.csv"
@@ -310,7 +310,7 @@ class TestTabularAssetJobE2E:
 
             asset_doc = _assert_mongodb_asset_exists(
                 mongo_client,
-                mongo_database,
+                mongo_database_name,
                 run_id,
             )
             metadata = asset_doc.get("metadata") or {}
@@ -326,7 +326,7 @@ class TestTabularAssetJobE2E:
                 minio_client,
                 minio_settings,
                 mongo_client,
-                mongo_database,
+                mongo_database_name,
                 object_key,
                 asset_doc,
             )
