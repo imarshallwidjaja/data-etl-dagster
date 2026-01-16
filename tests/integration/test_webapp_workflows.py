@@ -93,9 +93,9 @@ def test_workflow_full_submission(client, minio_client):
         follow_redirects=False,
     )
 
-    # Should redirect to manifest detail page
     assert response.status_code == 303
-    assert "/manifests/" in response.headers["location"]
+    assert "/workflows/ingest-vector/success" in response.headers["location"]
+    assert "batch_id=" in response.headers["location"]
 
     # Verify in MinIO
     objects = list(minio_client.list_objects("landing-zone", prefix="manifests/"))
