@@ -180,7 +180,6 @@ class TestSensorPartitionCreation:
         manifest_key = f"manifests/{batch_id}.json"
         csv_key = f"test/{batch_id}/data.csv"
 
-        # Create manifest with explicit dataset_id
         manifest = {
             "batch_id": batch_id,
             "uploader": "sensor_test",
@@ -193,11 +192,15 @@ class TestSensorPartitionCreation:
                 }
             ],
             "metadata": {
-                "project": "SENSOR_TEST",
+                "title": "Test Tabular Dataset",
                 "description": "Test sensor partition creation",
+                "keywords": [],
+                "source": "sensor_test",
+                "license": "MIT",
+                "attribution": "Test Suite",
+                "project": "SENSOR_TEST",
                 "tags": {
                     "dataset_id": dataset_id,
-                    "source": "sensor_test",
                 },
             },
         }
@@ -319,7 +322,6 @@ class TestSensorPartitionCreation:
             ],
         }
 
-        # Create manifest with explicit dataset_id
         manifest = {
             "batch_id": batch_id,
             "uploader": "sensor_test",
@@ -332,11 +334,15 @@ class TestSensorPartitionCreation:
                 }
             ],
             "metadata": {
-                "project": "SENSOR_TEST",
+                "title": "Test Spatial Dataset",
                 "description": "Test spatial sensor partition creation",
+                "keywords": [],
+                "source": "sensor_test",
+                "license": "MIT",
+                "attribution": "Test Suite",
+                "project": "SENSOR_TEST",
                 "tags": {
                     "dataset_id": dataset_id,
-                    "source": "sensor_test",
                 },
             },
         }
