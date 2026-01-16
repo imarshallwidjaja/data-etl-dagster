@@ -21,7 +21,7 @@ from libs.spatial_utils import RunIdSchemaMapping
 
 from .helpers import (
     assert_datalake_object_exists,
-    assert_mongodb_asset_exists_legacy,
+    assert_mongodb_asset_exists,
     cleanup_minio_object,
     format_error_details,
     poll_run_to_completion,
@@ -197,7 +197,7 @@ class TestIngestJobE2E:
 
             print(f"Job completed successfully: {run_id}")
 
-            asset_doc = assert_mongodb_asset_exists_legacy(
+            asset_doc = assert_mongodb_asset_exists(
                 mongo_client,
                 mongo_settings,
                 run_id,

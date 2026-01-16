@@ -54,12 +54,14 @@ def minio_endpoint() -> str:
 
 @pytest.fixture
 def minio_access_key() -> str:
-    return os.getenv("MINIO_ACCESS_KEY", "minioadmin")
+    return os.getenv("MINIO_ROOT_USER") or os.getenv("MINIO_ACCESS_KEY", "minio")
 
 
 @pytest.fixture
 def minio_secret_key() -> str:
-    return os.getenv("MINIO_SECRET_KEY", "minioadmin")
+    return os.getenv("MINIO_ROOT_PASSWORD") or os.getenv(
+        "MINIO_SECRET_KEY", "minio_password"
+    )
 
 
 @pytest.fixture
@@ -141,17 +143,21 @@ def mongo_port() -> int:
 
 @pytest.fixture
 def mongo_username() -> str:
-    return os.getenv("MONGO_USERNAME", "admin")
+    return os.getenv("MONGO_INITDB_ROOT_USERNAME") or os.getenv(
+        "MONGO_USERNAME", "mongo"
+    )
 
 
 @pytest.fixture
 def mongo_password() -> str:
-    return os.getenv("MONGO_PASSWORD", "admin")
+    return os.getenv("MONGO_INITDB_ROOT_PASSWORD") or os.getenv(
+        "MONGO_PASSWORD", "mongo_password"
+    )
 
 
 @pytest.fixture
 def mongo_database() -> str:
-    return os.getenv("MONGO_DATABASE", "etl_metadata")
+    return os.getenv("MONGO_DATABASE", "spatial_etl")
 
 
 @pytest.fixture
@@ -188,27 +194,29 @@ def mongo_client(mongo_connection_string: str) -> MongoClient[dict[str, object]]
 
 @pytest.fixture
 def postgis_host() -> str:
-    return os.getenv("POSTGIS_HOST", "localhost")
+    return os.getenv("POSTGRES_HOST", os.getenv("POSTGIS_HOST", "localhost"))
 
 
 @pytest.fixture
 def postgis_port() -> int:
-    return int(os.getenv("POSTGIS_PORT", "5432"))
+    return int(os.getenv("POSTGRES_PORT", os.getenv("POSTGIS_PORT", "5432")))
 
 
 @pytest.fixture
 def postgis_user() -> str:
-    return os.getenv("POSTGIS_USER", "postgres")
+    return os.getenv("POSTGRES_USER", os.getenv("POSTGIS_USER", "postgis"))
 
 
 @pytest.fixture
 def postgis_password() -> str:
-    return os.getenv("POSTGIS_PASSWORD", "postgres")
+    return os.getenv(
+        "POSTGRES_PASSWORD", os.getenv("POSTGIS_PASSWORD", "postgis_password")
+    )
 
 
 @pytest.fixture
 def postgis_database() -> str:
-    return os.getenv("POSTGIS_DATABASE", "etl_db")
+    return os.getenv("POSTGRES_DB", os.getenv("POSTGIS_DATABASE", "spatial_compute"))
 
 
 @pytest.fixture
