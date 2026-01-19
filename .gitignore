@@ -239,3 +239,10 @@ temp/
 
 # MCPs
 .serena/
+.ignore
+/.sisyphus
+/.hive
+
+.hive/
+
+.sisyphus/

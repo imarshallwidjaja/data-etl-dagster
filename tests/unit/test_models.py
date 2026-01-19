@@ -13,17 +13,15 @@ from libs.models import (
     Bounds,
     FileEntry,
     Manifest,
+    ManifestMetadata,
     ManifestStatus,
     ManifestRecord,
     Asset,
     AssetKind,
     AssetMetadata,
-    ContentHash,
-    S3Path,
-    S3Key,
+    ColumnInfo,
     FileType,
     OutputFormat,
-    MinIOSettings,
     MongoSettings,
     PostGISSettings,
     DagsterPostgresSettings,
@@ -210,7 +208,15 @@ class TestManifestValidation:
                 valid_file_entry_dict,
                 {**valid_file_entry_dict},  # Same path
             ],
-            "metadata": {"project": "ALPHA", "description": "Test"},
+            "metadata": {
+                "title": "Test",
+                "description": "Test",
+                "keywords": [],
+                "source": "Test",
+                "license": "MIT",
+                "attribution": "Test",
+                "project": "ALPHA",
+            },
         }
         with pytest.raises(ValueError, match="Duplicate file paths"):
             Manifest(**data)
@@ -282,7 +288,15 @@ class TestManifestValidation:
                     "format": "CSV",
                 }
             ],
-            metadata={"project": "ALPHA", "description": "Test tabular data"},
+            metadata={
+                "title": "Test",
+                "description": "Test tabular data",
+                "keywords": [],
+                "source": "Test",
+                "license": "MIT",
+                "attribution": "Test",
+                "project": "ALPHA",
+            },
         )
         assert manifest.intent == "ingest_tabular"
         assert all(f.type == FileType.TABULAR for f in manifest.files)
@@ -300,7 +314,15 @@ class TestManifestValidation:
                         "format": "GeoJSON",
                     }
                 ],
-                metadata={"project": "ALPHA", "description": "Test"},
+                metadata={
+                    "title": "Test",
+                    "description": "Test",
+                    "keywords": [],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                },
             )
 
     def test_non_tabular_intent_forbids_tabular_files(self):
@@ -318,7 +340,15 @@ class TestManifestValidation:
                         "format": "CSV",
                     }
                 ],
-                metadata={"project": "ALPHA", "description": "Test"},
+                metadata={
+                    "title": "Test",
+                    "description": "Test",
+                    "keywords": [],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                },
             )
 
 
@@ -409,17 +439,28 @@ class TestAssetValidation:
             Asset(**data)
 
     def test_missing_optional_metadata_fields_allowed(self, valid_asset_dict):
-        """Test that missing optional metadata fields are allowed."""
+        """Test that optional metadata fields have defaults."""
         data = valid_asset_dict.copy()
-        # Remove optional fields
+        # Minimal required fields only
         data["metadata"] = {
-            "title": "Test Dataset"
-            # description, source, license are optional
+            "title": "Test Dataset",
+            "description": "Test description",
+            "keywords": [],
+            "source": "Test source",
+            "license": "MIT",
+            "attribution": "Test team",
+            "geometry_type": "MULTIPOLYGON",
+            "column_schema": {
+                "geom": {
+                    "title": "geom",
+                    "type_name": "GEOMETRY",
+                    "logical_type": "geometry",
+                }
+            },
         }
         asset = Asset(**data)
-        assert asset.metadata.description is None
-        assert asset.metadata.source is None
-        assert asset.metadata.license is None
+        assert asset.metadata.tags == {}
+        assert asset.metadata.header_mapping is None
 
     def test_asset_methods(self, valid_asset):
         """Test Asset helper methods."""
@@ -444,6 +485,13 @@ class TestAssetValidation:
         data["bounds"] = None
         data["metadata"]["tags"] = {"project": "ALPHA"}
         data["metadata"]["header_mapping"] = {"Original Name": "original_name"}
+        data["metadata"]["column_schema"] = {
+            "original_name": {
+                "title": "Original Name",
+                "type_name": "STRING",
+                "logical_type": "string",
+            }
+        }
 
         asset = Asset(**data)
         assert asset.kind == AssetKind.TABULAR
@@ -487,10 +535,22 @@ class TestAssetValidation:
         """Test that AssetMetadata supports tags and header_mapping."""
         metadata = AssetMetadata(
             title="Test Dataset",
+            description="Test description",
+            keywords=["test"],
+            source="Test source",
+            license="MIT",
+            attribution="Test team",
             tags={"project": "ALPHA", "period": "2021-01-01/2021-12-31"},
             header_mapping={
                 "Original Name": "original_name",
                 "Age (years)": "age_years",
+            },
+            column_schema={
+                "original_name": {
+                    "title": "Original Name",
+                    "type_name": "STRING",
+                    "logical_type": "string",
+                }
             },
         )
         assert metadata.tags == {"project": "ALPHA", "period": "2021-01-01/2021-12-31"}
@@ -500,7 +560,15 @@ class TestAssetValidation:
         }
 
         # Test with None header_mapping (for spatial assets)
-        metadata2 = AssetMetadata(title="Spatial Dataset", tags={"project": "BETA"})
+        metadata2 = AssetMetadata(
+            title="Spatial Dataset",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            tags={"project": "BETA"},
+        )
         assert metadata2.header_mapping is None
 
 
@@ -529,7 +597,20 @@ class TestContentHashValidation:
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
             bounds=Bounds(minx=-180, miny=-90, maxx=180, maxy=90),
-            metadata=AssetMetadata(title="Test"),
+            metadata=AssetMetadata(
+                title="Test",
+                description="Test",
+                keywords=[],
+                source="Test",
+                license="MIT",
+                attribution="Test",
+                geometry_type="POINT",
+                column_schema={
+                    "geom": ColumnInfo(
+                        title="geom", type_name="GEOMETRY", logical_type="binary"
+                    )
+                },
+            ),
             created_at=datetime.now(),
         )
         assert asset.content_hash == hash_str.lower()
@@ -691,7 +772,20 @@ class TestS3KeyValidation:
             format=OutputFormat.GEOPARQUET,
             crs="EPSG:4326",
             bounds=Bounds(minx=-180, miny=-90, maxx=180, maxy=90),
-            metadata=AssetMetadata(title="Test"),
+            metadata=AssetMetadata(
+                title="Test",
+                description="Test",
+                keywords=[],
+                source="Test",
+                license="MIT",
+                attribution="Test",
+                geometry_type="POINT",
+                column_schema={
+                    "geom": ColumnInfo(
+                        title="geom", type_name="GEOMETRY", logical_type="binary"
+                    )
+                },
+            ),
             created_at=datetime.now(),
         )
         assert asset.s3_key == "data-lake/file.parquet"
@@ -709,3 +803,440 @@ class TestS3KeyValidation:
         # Trailing slash
         with pytest.raises(ValueError, match="cannot end with"):
             validate_s3_key("data-lake/file.ext/")
+
+
+# =============================================================================
+# HumanMetadataMixin Tests (Milestone 1)
+# =============================================================================
+
+
+class TestHumanMetadataMixin:
+    """Test HumanMetadataMixin functionality."""
+
+    def test_mixin_requires_all_fields(self):
+        """Test that HumanMetadataMixin requires all 6 fields."""
+        with pytest.raises(ValidationError):
+            ManifestMetadata(
+                title="Test",
+                description="Test",
+                # Missing keywords, source, license, attribution
+            )
+
+    def test_mixin_allows_empty_strings(self):
+        """Test that empty string values are allowed for required fields."""
+        metadata = ManifestMetadata(
+            title="",
+            description="",
+            keywords=[],
+            source="",
+            license="",
+            attribution="",
+        )
+        assert metadata.title == ""
+        assert metadata.description == ""
+        assert metadata.source == ""
+        assert metadata.license == ""
+        assert metadata.attribution == ""
+
+    def test_keywords_cleaned_and_deduplicated(self):
+        """Test that keywords are cleaned, trimmed, and deduplicated."""
+        metadata = ManifestMetadata(
+            title="Test",
+            description="Test",
+            keywords=["  test  ", "test", "  ", "", "unique", "UNIQUE"],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+        )
+        # Should be: ['test', 'unique', 'UNIQUE'] - trimmed, empty removed, dupes removed
+        assert metadata.keywords == ["test", "unique", "UNIQUE"]
+
+    def test_keywords_preserves_order(self):
+        """Test that keywords preserve insertion order after deduplication."""
+        metadata = ManifestMetadata(
+            title="Test",
+            description="Test",
+            keywords=["z", "a", "m", "a", "z"],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+        )
+        # First occurrence of each should be preserved
+        assert metadata.keywords == ["z", "a", "m"]
+
+
+# =============================================================================
+# ColumnInfo Tests (Milestone 1)
+# =============================================================================
+
+
+class TestColumnInfo:
+    """Test ColumnInfo model."""
+
+    def test_column_info_requires_type_fields(self):
+        """Test that ColumnInfo requires title, type_name, logical_type."""
+        with pytest.raises(ValidationError):
+            ColumnInfo(title="Test")  # Missing type_name and logical_type
+
+    def test_column_info_with_all_fields(self):
+        """Test ColumnInfo with all fields."""
+        col = ColumnInfo(
+            title="Population",
+            description="Total population count",
+            type_name="INTEGER",
+            logical_type="int64",
+            nullable=False,
+        )
+        assert col.title == "Population"
+        assert col.description == "Total population count"
+        assert col.type_name == "INTEGER"
+        assert col.logical_type == "int64"
+        assert col.nullable is False
+
+    def test_column_info_defaults(self):
+        """Test ColumnInfo default values."""
+        col = ColumnInfo(
+            title="Test Column",
+            type_name="STRING",
+            logical_type="string",
+        )
+        assert col.description == ""  # Default empty string
+        assert col.nullable is True  # Default True
+
+
+# =============================================================================
+# AssetMetadata Factory Method Tests (Milestone 1)
+# =============================================================================
+
+
+class TestAssetMetadataFactory:
+    """Test AssetMetadata.from_manifest_metadata factory method."""
+
+    def test_factory_propagates_all_fields(self):
+        """Test that factory propagates all mixin fields correctly."""
+        manifest_meta = ManifestMetadata(
+            title="Source Title",
+            description="Source Description",
+            keywords=["kw1", "kw2"],
+            source="Source Provenance",
+            license="MIT",
+            attribution="Source Author",
+            tags={"key": "value"},
+        )
+
+        asset_meta = AssetMetadata.from_manifest_metadata(
+            manifest_meta,
+            geometry_type="POINT",
+        )
+
+        assert asset_meta.title == "Source Title"
+        assert asset_meta.description == "Source Description"
+        assert asset_meta.keywords == ["kw1", "kw2"]
+        assert asset_meta.source == "Source Provenance"
+        assert asset_meta.license == "MIT"
+        assert asset_meta.attribution == "Source Author"
+        assert asset_meta.tags == {"key": "value"}
+        assert asset_meta.geometry_type == "POINT"
+
+    def test_factory_creates_defensive_copies(self):
+        """Test that factory creates defensive copies of mutable fields."""
+        manifest_meta = ManifestMetadata(
+            title="Test",
+            description="Test",
+            keywords=["original"],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            tags={"original": "value"},
+        )
+
+        asset_meta = AssetMetadata.from_manifest_metadata(manifest_meta)
+
+        # Modify original
+        manifest_meta.keywords.append("modified")
+        manifest_meta.tags["modified"] = "new"
+
+        # Asset should not be affected (defensive copies)
+        assert asset_meta.keywords == ["original"]
+        assert "modified" not in asset_meta.tags
+
+    def test_factory_accepts_additional_fields(self):
+        """Test that factory accepts additional system-derived fields."""
+        manifest_meta = ManifestMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+        )
+
+        col_info = ColumnInfo(
+            title="Col1",
+            type_name="STRING",
+            logical_type="string",
+        )
+
+        asset_meta = AssetMetadata.from_manifest_metadata(
+            manifest_meta,
+            geometry_type="MULTIPOLYGON",
+            column_schema={"col1": col_info},
+            header_mapping={"Original": "cleaned"},
+        )
+
+        assert asset_meta.geometry_type == "MULTIPOLYGON"
+        assert asset_meta.column_schema == {"col1": col_info}
+        assert asset_meta.header_mapping == {"Original": "cleaned"}
+
+
+# =============================================================================
+# Tabular Schema Capture Enforcement tests
+# =============================================================================
+
+
+class TestTabularAssetSchemaEnforcement:
+    """Test that tabular assets require column_schema."""
+
+    def test_tabular_asset_requires_column_schema(self):
+        """Test that tabular assets raise error without column_schema."""
+        from datetime import datetime, timezone
+        from libs.models import Asset, AssetKind, AssetMetadata, OutputFormat
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema=None,  # Missing!
+        )
+
+        with pytest.raises(ValueError, match="requires metadata.column_schema"):
+            Asset(
+                s3_key="dataset_001/v1/data.parquet",
+                dataset_id="dataset_001",
+                version=1,
+                content_hash="sha256:" + "a" * 64,
+                run_id="507f1f77bcf86cd799439011",
+                kind=AssetKind.TABULAR,
+                format=OutputFormat.PARQUET,
+                crs=None,
+                bounds=None,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_tabular_asset_with_column_schema_valid(self):
+        """Test that tabular assets with column_schema are valid."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "col1": ColumnInfo(
+                    title="col1", type_name="STRING", logical_type="string"
+                )
+            },
+        )
+
+        asset = Asset(
+            s3_key="dataset_001/v1/data.parquet",
+            dataset_id="dataset_001",
+            version=1,
+            content_hash="sha256:" + "a" * 64,
+            run_id="507f1f77bcf86cd799439011",
+            kind=AssetKind.TABULAR,
+            format=OutputFormat.PARQUET,
+            crs=None,
+            bounds=None,
+            metadata=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert asset.metadata.column_schema is not None
+
+
+# =============================================================================
+# Spatial Geometry Type Enforcement tests
+# =============================================================================
+
+
+class TestSpatialGeometryTypeEnforcement:
+    """Test that spatial/joined assets require geometry_type."""
+
+    def test_spatial_asset_requires_geometry_type(self):
+        """Test that spatial assets raise error without geometry_type."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+            CRS,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "geom": ColumnInfo(
+                    title="geom", type_name="GEOMETRY", logical_type="binary"
+                )
+            },
+            geometry_type=None,  # Missing!
+        )
+
+        with pytest.raises(ValueError, match="requires metadata.geometry_type"):
+            Asset(
+                s3_key="dataset_001/v1/data.parquet",
+                dataset_id="dataset_001",
+                version=1,
+                content_hash="sha256:" + "a" * 64,
+                run_id="507f1f77bcf86cd799439011",
+                kind=AssetKind.SPATIAL,
+                format=OutputFormat.GEOPARQUET,
+                crs=CRS("EPSG:4326"),
+                bounds=None,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_spatial_asset_with_geometry_type_valid(self):
+        """Test that spatial assets with geometry_type are valid."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+            CRS,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "geom": ColumnInfo(
+                    title="geom", type_name="GEOMETRY", logical_type="binary"
+                )
+            },
+            geometry_type="MULTIPOLYGON",  # Provided
+        )
+
+        asset = Asset(
+            s3_key="dataset_001/v1/data.parquet",
+            dataset_id="dataset_001",
+            version=1,
+            content_hash="sha256:" + "a" * 64,
+            run_id="507f1f77bcf86cd799439011",
+            kind=AssetKind.SPATIAL,
+            format=OutputFormat.GEOPARQUET,
+            crs=CRS("EPSG:4326"),
+            bounds=None,
+            metadata=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert asset.metadata.geometry_type == "MULTIPOLYGON"
+
+    def test_joined_asset_requires_geometry_type(self):
+        """Test that joined assets raise error without geometry_type."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+            CRS,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "id": ColumnInfo(title="id", type_name="INTEGER", logical_type="int64")
+            },
+            geometry_type=None,  # Missing!
+        )
+
+        with pytest.raises(ValueError, match="requires metadata.geometry_type"):
+            Asset(
+                s3_key="dataset_001/v1/data.parquet",
+                dataset_id="dataset_001",
+                version=1,
+                content_hash="sha256:" + "a" * 64,
+                run_id="507f1f77bcf86cd799439011",
+                kind=AssetKind.JOINED,
+                format=OutputFormat.GEOPARQUET,
+                crs=CRS("EPSG:4326"),
+                bounds=None,
+                metadata=metadata,
+                created_at=datetime.now(timezone.utc),
+            )
+
+    def test_tabular_asset_does_not_require_geometry_type(self):
+        """Test that tabular assets don't require geometry_type."""
+        from datetime import datetime, timezone
+        from libs.models import (
+            Asset,
+            AssetKind,
+            AssetMetadata,
+            ColumnInfo,
+            OutputFormat,
+        )
+
+        metadata = AssetMetadata(
+            title="Test",
+            description="Test",
+            keywords=[],
+            source="Test",
+            license="MIT",
+            attribution="Test",
+            column_schema={
+                "col1": ColumnInfo(
+                    title="col1", type_name="STRING", logical_type="string"
+                )
+            },
+            geometry_type=None,  # OK for tabular
+        )
+
+        asset = Asset(
+            s3_key="dataset_001/v1/data.parquet",
+            dataset_id="dataset_001",
+            version=1,
+            content_hash="sha256:" + "a" * 64,
+            run_id="507f1f77bcf86cd799439011",
+            kind=AssetKind.TABULAR,
+            format=OutputFormat.PARQUET,
+            crs=None,
+            bounds=None,
+            metadata=metadata,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert asset.metadata.geometry_type is None  # OK for tabular

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block title %}Workflows - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <hgroup>
+            <h1>🚀 Guided Workflows</h1>
+            <p>Step-by-step wizards for common data operations.</p>
+        </hgroup>
+    </header>
+
+    <div class="grid">
+        {% for workflow in workflows %}
+        <article>
+            <header>
+                <hgroup>
+                    <h3>
+                        {% if workflow.icon == 'map' %}🗺️
+                        {% elif workflow.icon == 'table' %}📊
+                        {% elif workflow.icon == 'link' %}🔗
+                        {% elif workflow.icon == 'building' %}🏢
+                        {% else %}📦{% endif %}
+                        {{ workflow.name }}
+                    </h3>
+                </hgroup>
+            </header>
+            <p>{{ workflow.description }}</p>
+            <footer>
+                <a href="/workflows/{{ workflow.id }}" role="button">Start Workflow</a>
+            </footer>
+        </article>
+        {% endfor %}
+    </div>
+</article>
+{% endblock %}

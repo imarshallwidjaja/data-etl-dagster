@@ -7,15 +7,25 @@
 
 import hashlib
 import tempfile
-import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Any
 
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Asset, AssetKind, AssetMetadata, Bounds, OutputFormat, CRS
+import pyarrow.parquet as pq
+from libs.models import (
+    Asset,
+    AssetKind,
+    AssetMetadata,
+    Bounds,
+    OutputFormat,
+    CRS,
+    Manifest,
+)
 from libs.spatial_utils import RunIdSchemaMapping
+from libs.normalization import extract_column_schema
+from ..partitions import extract_partition_key
 from ..resources.gdal_resource import GDALResult
 
 
@@ -55,10 +65,12 @@ def _export_to_datalake(
     manifest = transform_result["manifest"]
     bounds_dict = transform_result["bounds"]
     crs = transform_result["crs"]
+    geometry_type = transform_result.get("geometry_type")  # Milestone 2
 
-    # Generate dataset_id
-    dataset_id = f"dataset_{uuid.uuid4().hex[:12]}"
-    log.info(f"Generated dataset_id: {dataset_id}")
+    # Extract dataset_id from manifest tags or generate if not provided
+    # Uses metadata.tags.dataset_id if present, otherwise generates UUID
+    dataset_id = extract_partition_key(manifest)
+    log.info(f"Using dataset_id: {dataset_id}")
 
     # Get next version number
     version = mongodb.get_next_version(dataset_id)
@@ -113,15 +125,18 @@ def _export_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded to MinIO data lake: {s3_key}")
 
-        # Create Asset model
-        # Populate tags from manifest metadata.tags
-        manifest_tags = manifest["metadata"].get("tags", {})
-        asset_metadata = AssetMetadata(
-            title=manifest["metadata"].get("project", dataset_id),
-            description=manifest["metadata"].get("description"),
-            source=None,
-            license=None,
-            tags=manifest_tags,
+        # Extract column schema from exported GeoParquet
+        log.info("Extracting column schema from exported GeoParquet")
+        parquet_schema = pq.read_schema(temp_file_path)
+        column_schema = extract_column_schema(parquet_schema)
+        log.info(f"Captured column schema with {len(column_schema)} columns")
+
+        # Create Asset model using factory method for consistent metadata propagation
+        validated_manifest = Manifest(**manifest)
+        asset_metadata = AssetMetadata.from_manifest_metadata(
+            validated_manifest.metadata,
+            geometry_type=geometry_type,  # Milestone 2: spatial metadata capture
+            column_schema=column_schema,
         )
 
         # Handle optional bounds

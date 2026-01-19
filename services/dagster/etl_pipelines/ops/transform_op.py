@@ -8,7 +8,6 @@ import re
 from typing import Dict, Any
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Bounds
 from libs.transformations import RecipeRegistry, CreateSpatialIndexStep
 
 
@@ -51,7 +50,7 @@ def _spatial_transform(
         # Get recipe from registry
         recipe = RecipeRegistry.get_vector_recipe(intent, geom_column=geom_column)
         log.info(f"Using recipe with {len(recipe)} steps for intent: {intent}")
-        
+
         # Execute steps with table chaining
         current_table = "raw_data"
         for i, step in enumerate(recipe):
@@ -66,17 +65,27 @@ def _spatial_transform(
                 postgis.execute_sql(sql, schema)
                 log.info(f"Step {i}: {current_table} -> {next_table}")
                 current_table = next_table
-        
+
         # Rename final table to "processed"
         # Validate and quote current_table for safety
-        if not re.match(r'^(raw_data|step_\d+)$', current_table):
+        if not re.match(r"^(raw_data|step_\d+)$", current_table):
             raise ValueError(f"Invalid table name for rename: {current_table}")
         rename_sql = f'ALTER TABLE "{current_table}" RENAME TO "processed";'
         postgis.execute_sql(rename_sql, schema)
         log.info(f"Renamed {current_table} to processed")
-        
+
         # Compute spatial bounds
         bounds = postgis.get_table_bounds(schema, "processed", geom_column=geom_column)
+
+        # Extract geometry type for spatial metadata capture (Milestone 2)
+        try:
+            geometry_type = postgis.get_geometry_type(
+                schema, "processed", geom_column=geom_column
+            )
+            log.info(f"Captured geometry type: {geometry_type}")
+        except Exception as e:
+            log.warning(f"Failed to extract geometry type: {e}. Using UNKNOWN.")
+            geometry_type = "UNKNOWN"
 
         # Return transform result
         bounds_dict = None
@@ -95,6 +104,7 @@ def _spatial_transform(
             "bounds": bounds_dict,
             "crs": "EPSG:4326",
             "run_id": run_id,
+            "geometry_type": geometry_type,  # Milestone 2: spatial metadata capture
         }
     except Exception:
         # Clean up schema on failure to maintain architectural law
@@ -145,4 +155,3 @@ def spatial_transform(context: OpExecutionContext, schema_info: dict) -> dict:
         schema_info=schema_info,
         log=context.log,
     )
-

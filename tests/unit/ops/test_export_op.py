@@ -34,8 +34,13 @@ SAMPLE_TRANSFORM_RESULT = {
             }
         ],
         "metadata": {
-            "project": "TEST_PROJECT",
+            "title": "TEST_PROJECT",
             "description": "Test dataset",
+            "keywords": ["test"],
+            "source": "Unit Test",
+            "license": "MIT",
+            "attribution": "Test Team",
+            "project": "TEST_PROJECT",
             "tags": {},
             "join_config": None,
         },
@@ -48,6 +53,7 @@ SAMPLE_TRANSFORM_RESULT = {
     },
     "crs": "EPSG:4326",
     "run_id": "abc12345-def6-7890-abcd-ef1234567890",
+    "geometry_type": "MULTIPOLYGON",  # Required for spatial assets
 }
 
 
@@ -56,10 +62,19 @@ SAMPLE_TRANSFORM_RESULT = {
 # =============================================================================
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_success(mock_path, mock_tempfile):
+def test_export_to_datalake_success(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test successful export and registration."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     # Setup mocks
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
@@ -151,10 +166,19 @@ def test_export_to_datalake_success(mock_path, mock_tempfile):
     mock_path_instance.unlink.assert_called_once_with(missing_ok=True)
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_none_bounds(mock_path, mock_tempfile):
+def test_export_to_datalake_none_bounds(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test export with None bounds (empty geometry)."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     # Setup mocks
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
@@ -220,10 +244,19 @@ def test_export_to_datalake_none_bounds(mock_path, mock_tempfile):
     assert asset_arg.bounds is None
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_dataset_id_generation(mock_path, mock_tempfile):
+def test_export_to_datalake_dataset_id_generation(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test dataset_id generation (UUID format)."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
     mock_temp_file.close = Mock()
@@ -283,10 +316,19 @@ def test_export_to_datalake_dataset_id_generation(mock_path, mock_tempfile):
         pytest.fail("dataset_id suffix is not valid hex")
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_version_numbering(mock_path, mock_tempfile):
+def test_export_to_datalake_version_numbering(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test version number retrieval (new vs existing dataset)."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
     mock_temp_file.close = Mock()
@@ -341,10 +383,19 @@ def test_export_to_datalake_version_numbering(mock_path, mock_tempfile):
     assert result["s3_key"].endswith("/v3/data.parquet")
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_s3_key_generation(mock_path, mock_tempfile):
+def test_export_to_datalake_s3_key_generation(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test S3 key generation pattern."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
     mock_temp_file.close = Mock()
@@ -399,10 +450,19 @@ def test_export_to_datalake_s3_key_generation(mock_path, mock_tempfile):
     assert f"/v{result['version']}/data.parquet" in s3_key
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_sha256_hash_calculation(mock_path, mock_tempfile):
+def test_export_to_datalake_sha256_hash_calculation(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test SHA256 hash calculation."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
     mock_temp_file.close = Mock()
@@ -461,10 +521,19 @@ def test_export_to_datalake_sha256_hash_calculation(mock_path, mock_tempfile):
     assert len(result["content_hash"]) == 71  # "sha256:" + 64 hex chars
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_asset_model_creation(mock_path, mock_tempfile):
+def test_export_to_datalake_asset_model_creation(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test Asset model creation with correct fields."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
     mock_temp_file.close = Mock()
@@ -651,10 +720,19 @@ def test_export_to_datalake_temp_file_cleanup_on_error(mock_path, mock_tempfile)
 # =============================================================================
 
 
+@patch("services.dagster.etl_pipelines.ops.export_op.extract_column_schema")
+@patch("services.dagster.etl_pipelines.ops.export_op.pq.read_schema")
 @patch("services.dagster.etl_pipelines.ops.export_op.tempfile.NamedTemporaryFile")
 @patch("services.dagster.etl_pipelines.ops.export_op.Path")
-def test_export_to_datalake_op(mock_path, mock_tempfile):
+def test_export_to_datalake_op(
+    mock_path, mock_tempfile, mock_read_schema, mock_extract_schema
+):
     """Test the Dagster op wrapper."""
+    mock_read_schema.return_value = Mock()
+    mock_extract_schema.return_value = {
+        "geom": {"title": "geom", "type_name": "GEOMETRY", "logical_type": "geometry"}
+    }
+
     mock_temp_file = Mock()
     mock_temp_file.name = "/tmp/test_export.parquet"
     mock_temp_file.close = Mock()

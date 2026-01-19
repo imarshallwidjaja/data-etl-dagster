@@ -68,8 +68,13 @@ def valid_tabular_manifest_dict(valid_tabular_file_entry_dict):
         "intent": "ingest_tabular",
         "files": [valid_tabular_file_entry_dict],
         "metadata": {
+            "title": "Test Tabular Dataset",
+            "description": "Test tabular data for validation",
+            "keywords": ["tabular", "test"],
+            "source": "Unit Test Suite",
+            "license": "MIT",
+            "attribution": "Test Contributors",
             "project": "ALPHA",
-            "description": "Test tabular data",
             "tags": {"priority": 1, "source": "unit-test", "published": False},
         },
     }
@@ -127,7 +132,23 @@ def valid_spatial_asset(valid_bounds_dict):
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=Bounds(**valid_bounds_dict),
-        metadata=AssetMetadata(title="Test Spatial Dataset"),
+        metadata=AssetMetadata(
+            title="Test Spatial Dataset",
+            description="Spatial dataset for testing",
+            keywords=["spatial", "test"],
+            source="Test Source",
+            license="MIT",
+            attribution="Test Team",
+            geometry_type="MULTIPOLYGON",
+            column_schema={
+                "geom": {
+                    "title": "geom",
+                    "type_name": "GEOMETRY",
+                    "logical_type": "geometry",
+                    "nullable": False,
+                }
+            },
+        ),
         created_at=datetime(2024, 1, 1, 12, 0, 0),
     )
 
@@ -146,8 +167,13 @@ def valid_manifest_dict(valid_file_entry_dict):
         "intent": "ingest_satellite_raster",
         "files": [valid_file_entry_dict],
         "metadata": {
+            "title": "Test Satellite Dataset",
+            "description": "Test satellite imagery for validation",
+            "keywords": ["satellite", "test"],
+            "source": "Unit Test Suite",
+            "license": "MIT",
+            "attribution": "Test Contributors",
             "project": "ALPHA",
-            "description": "Test satellite imagery",
             "tags": {"priority": 1, "source": "unit-test", "published": False},
         },
     }
@@ -210,9 +236,20 @@ def valid_asset_dict(valid_bounds_dict):
         "metadata": {
             "title": "Test Dataset",
             "description": "A test dataset for validation",
+            "keywords": ["test", "spatial"],
             "source": "Test Source",
             "license": "CC-BY-4.0",
+            "attribution": "Test Team",
             "tags": {},
+            "geometry_type": "MULTIPOLYGON",
+            "column_schema": {
+                "geom": {
+                    "title": "geom",
+                    "type_name": "GEOMETRY",
+                    "logical_type": "geometry",
+                    "nullable": False,
+                }
+            },
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
         "updated_at": None,
@@ -235,12 +272,26 @@ def valid_tabular_asset_dict():
         "metadata": {
             "title": "Test Tabular Dataset",
             "description": "A test tabular dataset",
+            "keywords": ["tabular", "test"],
             "source": "Test Source",
             "license": "CC-BY-4.0",
+            "attribution": "Test Team",
             "tags": {"project": "ALPHA"},
             "header_mapping": {
                 "Original Name": "original_name",
                 "Age (years)": "age_years",
+            },
+            "column_schema": {
+                "original_name": {
+                    "title": "Original Name",
+                    "type_name": "STRING",
+                    "logical_type": "string",
+                },
+                "age_years": {
+                    "title": "Age (years)",
+                    "type_name": "INTEGER",
+                    "logical_type": "int64",
+                },
             },
         },
         "created_at": datetime(2024, 1, 1, 12, 0, 0),
@@ -266,8 +317,10 @@ def valid_asset_metadata_dict():
     return {
         "title": "Test Dataset",
         "description": "A test dataset",
+        "keywords": ["test"],
         "source": "Test Source",
         "license": "CC-BY-4.0",
+        "attribution": "Test Team",
     }
 
 
@@ -307,3 +360,91 @@ def sample_wkt_crs():
 def sample_proj_crs():
     """Example PROJ string for CRS tests."""
     return "+proj=utm +zone=55 +south +ellps=GRS80 +datum=GDA94 +units=m +no_defs"
+
+
+# =============================================================================
+# MongoDB Test Isolation Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def mongo_database():
+    """Get MongoDB database for tests that need direct database access.
+
+    Includes connectivity verification to fail fast with clear error message.
+    """
+    from pymongo import MongoClient
+    from pymongo.errors import ServerSelectionTimeoutError
+
+    from libs.models import MongoSettings
+
+    settings = MongoSettings()
+    client = MongoClient(settings.connection_string, serverSelectionTimeoutMS=5000)
+
+    # Force connection verification - fail fast with clear message
+    try:
+        client.admin.command("ping")
+    except ServerSelectionTimeoutError as e:
+        pytest.skip(f"MongoDB not available: {e}")
+
+    yield client[settings.database]
+    client.close()
+
+
+@pytest.fixture
+def clean_mongodb(mongo_database):
+    """Provide clean MongoDB state by clearing all non-system collections.
+
+    This fixture preserves schema validators and indexes (created by migrations)
+    while clearing all business data for test isolation.
+
+    Uses pre-cleanup only pattern: relies on next test's pre-cleanup to handle
+    any data left behind. This exposes test pollution issues rather than hiding them.
+    """
+    # Exclude system/special collections from cleanup
+    EXCLUDED_COLLECTIONS = {"system.indexes", "schema_migrations"}
+
+    # Get all collections and clean them BEFORE the test
+    all_collections = set(mongo_database.list_collection_names())
+    collections_to_clean = all_collections - EXCLUDED_COLLECTIONS
+
+    for coll in collections_to_clean:
+        mongo_database[coll].delete_many({})
+
+    yield mongo_database
+    # NO post-cleanup - rely on next test's pre-cleanup
+
+
+# =============================================================================
+# MinIO Test Isolation Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def clean_minio(minio_client):
+    """Ensure MinIO buckets used in tests are empty before test.
+
+    WARNING: Destructive! Only clears test buckets.
+
+    Uses pre-cleanup only pattern with specific error handling:
+    - NoSuchBucket/NoSuchKey are expected for fresh environments
+    - Other S3 errors are re-raised to surface real issues
+    """
+    from minio.error import S3Error
+
+    buckets = ["landing-zone", "data-lake", "archive"]
+
+    def _clean():
+        for bucket in buckets:
+            try:
+                objects = list(minio_client.list_objects(bucket, recursive=True))
+                for obj in objects:
+                    minio_client.remove_object(bucket, obj.object_name)
+            except S3Error as e:
+                if e.code in ("NoSuchBucket", "NoSuchKey"):
+                    continue  # Expected for fresh/empty buckets
+                raise  # Unexpected errors should fail the test
+
+    _clean()
+    yield minio_client
+    # NO post-cleanup - rely on next test's pre-cleanup

@@ -15,6 +15,7 @@ from libs.models import (
     AssetKind,
     AssetMetadata,
     Bounds,
+    ColumnInfo,
     FileEntry,
     FileType,
     Manifest,
@@ -64,7 +65,15 @@ def manifest_record():
         uploader="test_user",
         intent="ingest_vector",
         files=files,
-        metadata=ManifestMetadata(project="ALPHA", description="Test batch"),
+        metadata=ManifestMetadata(
+            title="Test Batch",
+            description="Test batch for unit tests",
+            keywords=["test", "vector"],
+            source="Unit test source",
+            license="MIT",
+            attribution="Test User",
+            project="ALPHA",
+        ),
     )
     return ManifestRecord.from_manifest(manifest)
 
@@ -81,7 +90,23 @@ def asset():
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
         bounds=Bounds(minx=0.0, miny=0.0, maxx=1.0, maxy=1.0),
-        metadata=AssetMetadata(title="Test Dataset"),
+        metadata=AssetMetadata(
+            title="Test Dataset",
+            description="Test asset for unit tests",
+            keywords=["test", "spatial"],
+            source="Unit test source",
+            license="MIT",
+            attribution="Test User",
+            geometry_type="POLYGON",
+            column_schema={
+                "id": ColumnInfo(
+                    title="id",
+                    type_name="INTEGER",
+                    logical_type="int64",
+                    nullable=False,
+                )
+            },
+        ),
         created_at=datetime.now(timezone.utc),
     )
 
@@ -145,21 +170,38 @@ def test_get_latest_asset_returns_highest_version(mongo_resource, asset):
     assert latest.version == 2
 
 
-def test_insert_asset_excludes_none_bounds(mongo_resource):
-    """Test that insert_asset excludes None bounds from MongoDB document."""
+def test_insert_asset_includes_none_bounds(mongo_resource):
+    """Test that insert_asset includes None bounds in MongoDB document.
+
+    With mode='json' serialization, None values are explicitly included.
+    MongoDB schema allows null for bounds, so this is valid behavior.
+    """
     asset_with_none_bounds = Asset(
         s3_key="data-lake/test/v1/data.parquet",
         dataset_id="test_dataset_none_bounds",
         version=1,
-        content_hash="sha256:abc123def4567890abcdef1234567890abcdef1234567890abcdef1234567890",
+        content_hash=f"sha256:{'a' * 64}",
         run_id="507f1f77bcf86cd799439011",
         kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
         crs="EPSG:4326",
-        bounds=None,  # None bounds should be excluded
+        bounds=None,  # None bounds should be included as null
         metadata=AssetMetadata(
             title="Test Asset",
             description="Test asset with None bounds",
+            keywords=["test"],
+            source="Unit test source",
+            license="MIT",
+            attribution="Test User",
+            geometry_type="POLYGON",
+            column_schema={
+                "id": ColumnInfo(
+                    title="id",
+                    type_name="INTEGER",
+                    logical_type="int64",
+                    nullable=False,
+                )
+            },
         ),
         created_at=datetime.now(timezone.utc),
         updated_at=None,
@@ -168,18 +210,19 @@ def test_insert_asset_excludes_none_bounds(mongo_resource):
     inserted_id = mongo_resource.insert_asset(asset_with_none_bounds)
     assert inserted_id is not None
 
-    # Retrieve the document and verify bounds field is not present
+    # Retrieve the document and verify bounds field is present but None
     retrieved = mongo_resource.get_asset("test_dataset_none_bounds", 1)
     assert retrieved is not None
     assert retrieved.bounds is None  # Model should have None bounds
 
-    # Verify the underlying document doesn't contain the bounds field
+    # Verify the underlying document contains bounds field with None value
     collection = mongo_resource._get_collection(mongo_resource.ASSETS)
     document = collection.find_one(
         {"dataset_id": "test_dataset_none_bounds", "version": 1}
     )
     assert document is not None
-    assert "bounds" not in document  # bounds field should be excluded when None
+    assert "bounds" in document  # bounds field should be present
+    assert document["bounds"] is None  # but value should be None
 
 
 def test_get_asset_by_id_returns_asset(mongo_resource, asset):

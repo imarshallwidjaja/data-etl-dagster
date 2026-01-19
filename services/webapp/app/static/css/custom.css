@@ -49,6 +49,30 @@ nav a[aria-current="page"] {
     border: 1px solid rgba(56, 139, 253, 0.4);
 }
 
+.badge-unknown {
+    background-color: rgba(138, 56, 253, 0.2);
+    color: #a371f7;
+    border: 1px solid rgba(138, 56, 253, 0.4);
+}
+
+.badge-kind-spatial {
+    background-color: rgba(56, 178, 172, 0.2);
+    color: #2dd4bf;
+    border: 1px solid rgba(56, 178, 172, 0.4);
+}
+
+.badge-kind-tabular {
+    background-color: rgba(100, 116, 139, 0.2);
+    color: #94a3b8;
+    border: 1px solid rgba(100, 116, 139, 0.4);
+}
+
+.badge-kind-joined {
+    background-color: rgba(99, 102, 241, 0.2);
+    color: #818cf8;
+    border: 1px solid rgba(99, 102, 241, 0.4);
+}
+
 /* File browser */
 .file-list td {
     vertical-align: middle;
@@ -70,9 +94,18 @@ fieldset legend {
     margin-bottom: 0.5rem;
 }
 
-/* Global scale adjustment - reduce size by 25% for better information density */
 html {
-    font-size: 75%;
+    font-size: 87.5%;
+}
+
+table th,
+table td {
+    padding: 0.4rem 0.6rem;
+}
+
+article > header,
+article > section {
+    margin-bottom: 1rem;
 }
 
 .file-entry,
@@ -186,3 +219,28 @@ article>header hgroup {
 details>summary {
     margin-bottom: 1rem;
 }
+
+figure {
+    overflow-x: auto;
+}
+
+@media (max-width: 768px) {
+    header nav ul {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    article {
+        padding: 0.75rem;
+    }
+}
+
+.skip-link { position: absolute; top: -40px; left: 0; padding: 8px 16px; background: var(--pico-primary); color: var(--pico-primary-inverse); z-index: 1000; text-decoration: none; border-radius: 0 0 4px 0; }
+.skip-link:focus { top: 0; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+
+.btn-sm { padding: 0.25rem 0.5rem !important; font-size: 0.8rem !important; }

@@ -19,9 +19,16 @@ import pyarrow.parquet as pq
 
 from dagster import op, OpExecutionContext, In, Out
 
-from libs.models import Asset, AssetKind, AssetMetadata, OutputFormat, Manifest
+from libs.models import (
+    Asset,
+    AssetKind,
+    AssetMetadata,
+    OutputFormat,
+    Manifest,
+)
 from libs.s3_utils import extract_s3_key
 from libs.spatial_utils import normalize_headers
+from libs.normalization import extract_column_schema
 
 
 def _download_tabular_from_landing(
@@ -239,7 +246,7 @@ def _export_tabular_parquet_to_datalake(
         # Write Arrow Table to Parquet
         log.info(f"Writing Parquet file: {temp_file_path}")
         pq.write_table(table, temp_file_path)
-        log.info(f"Successfully wrote Parquet file")
+        log.info("Successfully wrote Parquet file")
 
         # Calculate SHA256 content hash
         sha256_hash = hashlib.sha256()
@@ -253,19 +260,23 @@ def _export_tabular_parquet_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded to MinIO data lake: {s3_key}")
 
-        # Create Asset model
+        # Create Asset model using factory method for consistent metadata propagation
         manifest_tags = validated_manifest.metadata.tags.copy()
         if join_key_clean:
             manifest_tags["join_key_clean"] = join_key_clean
 
-        asset_metadata = AssetMetadata(
-            title=validated_manifest.metadata.project or dataset_id,
-            description=validated_manifest.metadata.description,
-            source=None,
-            license=None,
-            tags=manifest_tags,
+        # Build column_schema from Arrow table schema
+        column_schema = extract_column_schema(table.schema)
+        log.info(f"Captured column schema with {len(column_schema)} columns")
+
+        asset_metadata = AssetMetadata.from_manifest_metadata(
+            validated_manifest.metadata,
             header_mapping=header_mapping,
+            column_schema=column_schema,
         )
+        # Add the join_key_clean to tags if present (post-factory adjustment)
+        if join_key_clean:
+            asset_metadata.tags["join_key_clean"] = join_key_clean
 
         asset = Asset(
             s3_key=s3_key,

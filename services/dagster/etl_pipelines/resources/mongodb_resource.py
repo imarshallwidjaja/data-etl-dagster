@@ -13,6 +13,8 @@ from pymongo.collection import Collection
 from pymongo.database import Database
 from bson import ObjectId
 
+from pymongo.errors import OperationFailure
+
 from libs.models import Asset, ManifestRecord, ManifestStatus, Run, RunStatus
 
 __all__ = ["MongoDBResource"]
@@ -202,9 +204,14 @@ class MongoDBResource(ConfigurableResource):
     def insert_asset(self, asset: Asset) -> str:
         """
         Register a processed asset in MongoDB.
+
+        Note: Uses model_dump() WITHOUT mode="json" to preserve datetime objects
+        as native Python datetime, which pymongo converts to BSON date type.
+        Using mode="json" would convert datetime to ISO strings, causing
+        MongoDB schema validation to fail (bsonType: "date" requires actual dates).
         """
         collection = self._get_collection(self.ASSETS)
-        result = collection.insert_one(asset.model_dump(exclude_none=True))
+        result = collection.insert_one(asset.model_dump())
         return str(result.inserted_id)
 
     def get_asset_by_id(self, asset_id: str) -> Asset | None:
@@ -323,3 +330,58 @@ class MongoDBResource(ConfigurableResource):
         if not latest:
             return 1
         return latest.version + 1
+
+    def search_assets_by_keywords(
+        self,
+        search_text: str,
+        kind: str | None = None,
+        limit: int = 20,
+    ) -> list[Asset]:
+        """
+        Search assets by keywords using MongoDB text search.
+
+        Uses text index on metadata.keywords (created by migration 002).
+
+        Text search supports:
+        - Multiple words (OR): "climate water" matches either term
+        - Phrases: '"climate change"' matches exact phrase
+        - Exclusions: "climate -water" excludes water
+
+        Args:
+            search_text: Text to search for in keywords.
+            kind: Optional filter by asset kind.
+            limit: Maximum results (default 20).
+
+        Returns:
+            List of matching Asset models, ordered by relevance.
+
+        Example:
+            >>> mongo.search_assets_by_keywords("population census")
+            [Asset(dataset_id="sa2_population", ...), ...]
+        """
+        query: dict = {"$text": {"$search": search_text}}
+        if kind:
+            query["kind"] = kind
+
+        try:
+            cursor = (
+                self._get_collection(self.ASSETS)
+                .find(query, {"score": {"$meta": "textScore"}})
+                .sort([("score", {"$meta": "textScore"})])
+                .limit(limit)
+            )
+        except OperationFailure as e:
+            if "text index required" in str(e).lower():
+                raise RuntimeError(
+                    "Text search index not found. "
+                    "Ensure migration 002_add_text_search has been applied."
+                ) from e
+            raise
+
+        assets = []
+        for doc in cursor:
+            doc = self._strip_object_id(doc)
+            doc.pop("score", None)
+            assets.append(Asset.model_validate(doc))
+
+        return assets

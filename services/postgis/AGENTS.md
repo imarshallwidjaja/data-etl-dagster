@@ -31,6 +31,13 @@ All persistent data must live in MinIO (files) + MongoDB (ledger).
 | `list_processing_schemas()` | Lists all `proc_%` schemas (monitoring) |
 | `cleanup_all_processing_schemas()` | Emergency cleanup - drops ALL processing schemas |
 
+### PostGISResource Methods
+
+| Method | Description |
+|--------|-------------|
+| `get_table_bounds(schema, table, geom_column)` | Computes spatial bounding box (ST_Extent) |
+| `get_geometry_type(schema, table, geom_column)` | Extracts OGC geometry type using two-tier strategy: geometry_columns catalog first, sample-based fallback. Returns normalized type (POINT, POLYGON, etc.) or UNKNOWN for empty tables |
+
 ## How to work here
 
 - The pipeline creates schemas like `proc_<run_id_sanitized>` and drops them after export.

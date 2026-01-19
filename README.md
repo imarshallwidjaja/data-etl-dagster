@@ -11,6 +11,7 @@ This platform processes spatial data through a strict manifest-based ingestion p
 3. **Transform** data using PostGIS as a compute engine with recipe-based transformations (geometry column standardized to `geom`)
 4. **Store** processed GeoParquet in the data lake
 5. **Track** lineage in MongoDB ledger
+6. **Audit** all actions in activity log
 
 ### Sensors (legacy + asset-based)
 
@@ -62,6 +63,7 @@ docker compose up -d
 |---------|-----|-------------|
 | Dagster UI | http://localhost:3000 | - |
 | Tooling Webapp | http://localhost:8080 | admin:admin |
+| Activity Log | http://localhost:8080/activity | admin:admin |
 | MinIO Console | http://localhost:9001 | See .env |
 | MinIO API | http://localhost:9000 | See .env |
 | MongoDB | localhost:27017 | See .env |
@@ -105,19 +107,16 @@ Create a `manifest.json` file describing your data. The manifest format is curre
     }
   ],
   "metadata": {
+    "title": "Urban Building Footprints 2024",
+    "description": "High-resolution building outlines from aerial survey",
+    "keywords": ["buildings", "urban", "footprints"],
+    "source": "City Planning Department Aerial Survey 2024",
+    "license": "CC-BY-4.0",
+    "attribution": "City Planning Department",
     "project": "BUILDINGS_DEMO",
-    "description": "Building footprints with intent-driven heavy simplification",
     "tags": {
       "dataset_id": "dataset_ab12cd34ef56",
-      "source": "survey",
       "priority": 1
-    },
-    "join_config": {
-      "spatial_asset_id": "507f1f77bcf86cd799439011",
-      "tabular_asset_id": "507f1f77bcf86cd799439012",
-      "left_key": "parcel_id",
-      "right_key": "parcel_id",
-      "how": "left"
     }
   }
 }
@@ -137,8 +136,13 @@ Create a `manifest.json` file describing your data. The manifest format is curre
     }
   ],
   "metadata": {
+    "title": "Sample Vector Dataset",
+    "description": "User-supplied context about the data",
+    "keywords": ["vector", "sample"],
+    "source": "Data Provider Name",
+    "license": "MIT",
+    "attribution": "Data Team",
     "project": "ALPHA",
-    "description": "User supplied context",
     "tags": {
       "source": "user"
     }
@@ -164,12 +168,17 @@ Create a `manifest.json` file describing your data. The manifest format is curre
 - For spatial files: CRS is inferred from the data during processing; manifests must not include a `crs` field in `files`.
 - For tabular files: No CRS is required (tabular data is non-spatial).
 - `metadata` (required): User-supplied metadata with explicit shape:
-  - `project`: Project identifier
-  - `description`: Optional description
-  - `tags`: Optional dictionary of primitive scalars only (`str`/`int`/`float`/`bool`)
-  - `join_config`: Required for `join_datasets` intent:
-    - `spatial_asset_id` (required): MongoDB `_id` of the spatial asset (geometry source)
-    - `tabular_asset_id` (required): MongoDB `_id` of the tabular asset (attribute source)
+  - `title` (required): Human-readable title for the dataset
+  - `description` (required): Detailed description (can be empty string)
+  - `keywords` (optional): Array of subject keywords for discovery (default: `[]`)
+  - `source` (required): Data lineage/provenance statement (can be empty string)
+  - `license` (required): License identifier or statement (can be empty string)
+  - `attribution` (required): Credit/attribution statement (can be empty string)
+  - `project` (optional): Project identifier
+  - `tags` (optional): Dictionary of primitive scalars only (`str`/`int`/`float`/`bool`)
+  - `join_config` (required for `join_datasets` intent):
+    - `spatial_dataset_id` (required): Dataset ID of the spatial asset (geometry source)
+    - `tabular_dataset_id` (required): Dataset ID of the tabular asset (attribute source)
     - `left_key` (required): Field in the tabular asset to join on
     - `right_key` (optional): Field in the spatial asset (defaults to `left_key`)
     - `how` (optional): Join strategy (`left`|`inner`|`right`|`outer`, default `left`)
@@ -319,7 +328,7 @@ ops:
 - Check Dagster logs for validation error details
 - Verify all required fields are present
 - Ensure S3 paths are correct and files exist
-- Ensure metadata only contains `project`, `description`, `tags`, and `join_config` (tags must be primitive scalars)
+- Ensure metadata contains all required fields: `title`, `description`, `keywords`, `source`, `license`, `attribution` (plus optional `project`, `tags`, `join_config`)
 
 **Job not executing:**
 - Check Dagster UI for run status
@@ -496,7 +505,7 @@ pytest -m "integration and e2e" tests/integration -v
 
 #### Test Coverage
 
-**Unit Tests** (`tests/unit/`) - No external dependencies required (189 tests):
+**Unit Tests** (`tests/unit/`) - No external dependencies required (524 tests):
 
 - **Models & Validation** (`test_models.py` - 55 tests):
   - CRS validation (EPSG, WKT, PROJ formats)
@@ -554,7 +563,7 @@ pytest -m "integration and e2e" tests/integration -v
   - Run ID extraction from schema names
   - Round-trip validation
 
-**Integration Tests** (`tests/integration/`) - Requires Docker stack (27 tests):
+**Integration Tests** (`tests/integration/`) - Requires Docker stack (75 tests):
 
 Integration tests include:
 - **Connectivity/health** tests (MinIO/MongoDB/PostGIS/Dagster GraphQL + schema cleanup)
@@ -577,7 +586,23 @@ Integration tests include:
 - `test_tabular_asset_e2e.py` (E2E) - `tabular_asset_job` end-to-end run launched via GraphQL (partitioned; CSV → Parquet → Mongo)
 - `test_join_asset_e2e.py` (E2E) - `join_asset_job` end-to-end run (spatial parent via spatial_asset_job + tabular CSV → joined GeoParquet + lineage)
 
-**Total Coverage:** 205 unit tests + 27 integration tests = 232 tests
+**Total Coverage:**
+
+To verify the current test count, run:
+
+```bash
+pytest --collect-only -q
+```
+
+Example output:
+```text
+============================= test session starts ==============================
+...
+collected 599 items
+========================= 599 tests collected in 2.43s =========================
+```
+
+*Verified metrics (Jan 2026): 524 unit tests + 75 integration tests = 599 tests total.*
 
 #### Continuous Integration
 

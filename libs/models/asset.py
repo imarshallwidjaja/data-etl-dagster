@@ -10,16 +10,21 @@
 import re
 from datetime import datetime
 from enum import Enum
-from typing import Annotated
+from typing import Annotated, TYPE_CHECKING
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
+
+if TYPE_CHECKING:
+    from .manifest import ManifestMetadata
 
 from .spatial import CRS, Bounds, OutputFormat
 from .manifest import TagValue
+from .base import HumanMetadataMixin
 
 __all__ = [
     "S3Key",
     "ContentHash",
     "AssetKind",
+    "ColumnInfo",
     "AssetMetadata",
     "Asset",
 ]
@@ -154,50 +159,150 @@ class AssetKind(str, Enum):
 
 
 # =============================================================================
+# Column Info Model (for Columnar Assets)
+# =============================================================================
+
+
+class ColumnInfo(BaseModel):
+    """
+    Metadata for a single column in a columnar asset (tabular or joined).
+
+    Captures both type information (for schema introspection) and human
+    metadata (for cataloging and documentation).
+
+    Attributes:
+        title: Human-readable column title (defaults to column name)
+        description: Optional detailed description of the column
+        type_name: Canonical type category (STRING, INTEGER, FLOAT, etc.)
+        logical_type: Detailed type from PyArrow (int64, float32, timestamp[ns])
+        nullable: Whether the column can contain null values
+    """
+
+    title: str = Field(..., description="Human-readable column title")
+    description: str = Field(default="", description="Optional column description")
+    type_name: str = Field(
+        ...,
+        description="Canonical type category (STRING, INTEGER, FLOAT, BOOLEAN, etc.)",
+    )
+    logical_type: str = Field(
+        ..., description="Detailed type (int64, float32, timestamp[ns])"
+    )
+    nullable: bool = Field(
+        default=True, description="Whether the column can contain null values"
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "Population Count",
+                "description": "Total resident population as of census date",
+                "type_name": "INTEGER",
+                "logical_type": "int64",
+                "nullable": False,
+            }
+        }
+    )
+
+
+# =============================================================================
 # Asset Metadata Model
 # =============================================================================
 
 
-class AssetMetadata(BaseModel):
+class AssetMetadata(HumanMetadataMixin):
     """
     Metadata for an asset.
 
-    Provides descriptive information about the asset, including title,
-    description, source attribution, license information, and queryable tags.
+    Inherits human semantic fields from HumanMetadataMixin:
+    - title, description, keywords, source, license, attribution
+
+    Provides descriptive information about the asset, including queryable tags,
+    columnar schema information (for tabular/joined), and spatial type
+    information (for spatial/joined).
 
     Attributes:
-        title: Asset title (required)
-        description: Optional description of the asset
-        source: Optional source attribution
-        license: Optional license information
         tags: Queryable tags for matching (primitive scalars only)
         header_mapping: Optional header mapping for tabular assets (original → cleaned)
+        column_schema: Optional column schema for tabular/joined assets
+        geometry_type: Optional OGC geometry type for spatial/joined assets
     """
 
-    title: str = Field(..., description="Asset title")
-    description: str | None = Field(
-        None, description="Optional description of the asset"
-    )
-    source: str | None = Field(None, description="Optional source attribution")
-    license: str | None = Field(None, description="Optional license information")
+    # Inherited from HumanMetadataMixin:
+    # title, description, keywords, source, license, attribution
+
+    # Asset-specific fields
     tags: dict[str, TagValue] = Field(
         default_factory=dict,
         description="Queryable tags for matching (str/int/float/bool values only)",
     )
+
+    # Columnar asset fields (tabular and joined)
     header_mapping: dict[str, str] | None = Field(
         None,
         description="Header mapping for tabular assets (original → cleaned column names)",
     )
+    column_schema: dict[str, ColumnInfo] | None = Field(
+        None,
+        description="Column schema for tabular/joined assets (column_name → ColumnInfo)",
+    )
+
+    # Spatial asset fields (spatial and joined)
+    geometry_type: str | None = Field(
+        None,
+        description="OGC geometry type (POINT, POLYGON, MULTIPOLYGON, etc.) for spatial/joined assets",
+    )
+
+    @classmethod
+    def from_manifest_metadata(
+        cls, manifest_meta: "ManifestMetadata", **additional_fields
+    ) -> "AssetMetadata":
+        """
+        Create AssetMetadata from ManifestMetadata with safe field propagation.
+
+        This factory method ensures consistent propagation of human semantic
+        metadata from manifests to assets, with defensive copies for mutable fields.
+
+        Args:
+            manifest_meta: Source manifest metadata
+            **additional_fields: System-derived fields (geometry_type, column_schema, etc.)
+
+        Returns:
+            AssetMetadata instance with propagated human metadata + system fields
+
+        Example:
+            >>> asset_meta = AssetMetadata.from_manifest_metadata(
+            ...     manifest.metadata,
+            ...     geometry_type="POINT",
+            ...     column_schema={"col1": ColumnInfo(...)}
+            ... )
+        """
+        return cls(
+            # Propagate human metadata from mixin
+            title=manifest_meta.title,
+            description=manifest_meta.description,
+            keywords=manifest_meta.keywords.copy(),  # Defensive copy
+            source=manifest_meta.source,
+            license=manifest_meta.license,
+            attribution=manifest_meta.attribution,
+            # Propagate asset tags (defensive copy)
+            tags=manifest_meta.tags.copy(),
+            # Add system-derived fields
+            **additional_fields,
+        )
 
     model_config = ConfigDict(
         json_schema_extra={
             "example": {
                 "title": "Urban Land Use Dataset",
                 "description": "High-resolution land use classification for metropolitan area",
+                "keywords": ["landuse", "urban", "classification"],
                 "source": "City Planning Department",
                 "license": "CC-BY-4.0",
+                "attribution": "City Planning Department",
                 "tags": {"project": "ALPHA", "period": "2021-01-01/2021-12-31"},
                 "header_mapping": None,
+                "column_schema": None,
+                "geometry_type": "MULTIPOLYGON",
             }
         }
     )
@@ -278,6 +383,33 @@ class Asset(BaseModel):
                 raise ValueError(
                     f"Asset with kind '{self.kind.value}' must have crs set, got crs=None"
                 )
+        return self
+
+    @model_validator(mode="after")
+    def validate_metadata_completeness(self) -> "Asset":
+        """
+        Validate kind-specific metadata requirements.
+
+        Rules:
+        - kind == SPATIAL or JOINED → metadata.geometry_type MUST be set
+        - kind in {TABULAR, SPATIAL, JOINED} → metadata.column_schema MUST be set
+
+        This enforces that system-derived metadata is populated based on asset kind.
+        """
+        # Spatial and joined assets MUST have geometry_type
+        if self.kind in {AssetKind.SPATIAL, AssetKind.JOINED}:
+            if self.metadata.geometry_type is None:
+                raise ValueError(
+                    f"Asset with kind '{self.kind.value}' requires metadata.geometry_type"
+                )
+
+        # ALL columnar assets MUST have column_schema
+        if self.kind in {AssetKind.TABULAR, AssetKind.SPATIAL, AssetKind.JOINED}:
+            if self.metadata.column_schema is None:
+                raise ValueError(
+                    f"Asset with kind '{self.kind.value}' requires metadata.column_schema"
+                )
+
         return self
 
     def get_full_s3_path(self, bucket: str) -> str:

@@ -38,11 +38,15 @@ from .manifest import (
     TagValue,
 )
 
+# Base models
+from .base import HumanMetadataMixin
+
 # Asset models
 from .asset import (
     S3Key,
     ContentHash,
     AssetKind,
+    ColumnInfo,
     AssetMetadata,
     Asset,
 )
@@ -51,6 +55,13 @@ from .asset import (
 from .run import (
     Run,
     RunStatus,
+)
+
+# Activity models
+from .activity import (
+    ActivityLog,
+    ActivityAction,
+    ActivityResourceType,
 )
 
 # Configuration models
@@ -78,15 +89,22 @@ __all__ = [
     "ManifestRecord",
     "S3Path",
     "TagValue",
+    # Base models
+    "HumanMetadataMixin",
     # Asset models
     "S3Key",
     "ContentHash",
     "AssetKind",
+    "ColumnInfo",
     "AssetMetadata",
     "Asset",
     # Run models
     "Run",
     "RunStatus",
+    # Activity models
+    "ActivityLog",
+    "ActivityAction",
+    "ActivityResourceType",
     # Configuration models
     "MinIOSettings",
     "MongoSettings",

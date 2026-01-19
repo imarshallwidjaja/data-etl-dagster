@@ -10,6 +10,8 @@ It is split into **unit tests** (fast, mocked) and **integration tests** (live s
 - **Unit tests must not require Docker** (mock external services and subprocess calls).
 - **Integration tests must be explicit**: use `@pytest.mark.integration` and assume Docker is running.
 - **E2E tests must be explicit**: use `@pytest.mark.e2e` (these are still integration tests and require Docker).
+- **Test isolation for MongoDB**: Use `clean_mongodb` fixture for tests that need clean database state. This clears documents but preserves schemas and indexes.
+- **Test isolation for MinIO**: Use `clean_minio` fixture for tests that need clean object storage state.
 
 ## Entry points / key files
 
@@ -29,7 +31,7 @@ It is split into **unit tests** (fast, mocked) and **integration tests** (live s
 | `libs/` | Libs module tests (registry, s3_utils, transformations) |
 | `ops/` | Dagster ops tests (cleanup, export, join, load, transform) |
 | `sensors/` | Sensor tests (asset_sensors, manifest_sensor) |
-| `webapp/` | Webapp unit tests (auth, manifest_builder, folder_router) |
+| `webapp/` | Webapp unit tests (auth, manifest_builder, activity_router, activity_service) |
 
 ### Integration tests (`integration/`)
 
@@ -62,6 +64,19 @@ docker compose up -d
 python scripts/wait_for_services.py
 pytest -m "integration and not e2e" tests/integration
 pytest -m "integration and e2e" tests/integration
+```
+
+- **Run full E2E suite** (after metadata restructuring):
+
+```bash
+docker compose -f docker-compose.yaml up -d --build dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+python scripts/wait_for_services.py
+
+# Run all integration tests
+pytest tests/integration -v -m "integration"
+
+# Run just E2E tests
+pytest tests/integration -v -m "e2e"
 ```
 
 - **Run webapp tests**:

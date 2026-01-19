@@ -35,8 +35,13 @@ SAMPLE_JOIN_MANIFEST: dict = {
     "intent": "join_datasets",
     "files": [],
     "metadata": {
-        "project": "TEST_PROJECT",
+        "title": "Test Join Dataset",
         "description": "Test join",
+        "keywords": ["test", "join"],
+        "source": "Unit Test",
+        "license": "MIT",
+        "attribution": "Test Team",
+        "project": "TEST_PROJECT",
         "tags": {"dataset_id": "joined_dataset_001"},
         "join_config": {
             "spatial_dataset_id": "spatial_001",
@@ -50,6 +55,8 @@ SAMPLE_JOIN_MANIFEST: dict = {
 
 
 def make_spatial_asset() -> Asset:
+    from libs.models import ColumnInfo
+
     return Asset(
         s3_key="data-lake/spatial_001/v1/data.parquet",
         dataset_id="spatial_001",
@@ -60,13 +67,31 @@ def make_spatial_asset() -> Asset:
         format=OutputFormat.GEOPARQUET,
         crs=CRS("EPSG:4326"),
         bounds=Bounds(minx=0.0, miny=0.0, maxx=1.0, maxy=1.0),
-        metadata=AssetMetadata(title="Test Spatial Dataset"),
+        metadata=AssetMetadata(
+            title="Test Spatial Dataset",
+            description="Test spatial dataset for joins",
+            keywords=["test", "spatial"],
+            source="Unit Test",
+            license="MIT",
+            attribution="Test Team",
+            geometry_type="POLYGON",
+            column_schema={
+                "geom": ColumnInfo(
+                    title="geom", type_name="GEOMETRY", logical_type="geometry"
+                ),
+                "parcel_id": ColumnInfo(
+                    title="parcel_id", type_name="STRING", logical_type="string"
+                ),
+            },
+        ),
         created_at=datetime.now(timezone.utc),
         updated_at=None,
     )
 
 
 def make_tabular_asset() -> Asset:
+    from libs.models import ColumnInfo
+
     return Asset(
         s3_key="data-lake/tabular_001/v1/data.parquet",
         dataset_id="tabular_001",
@@ -77,7 +102,17 @@ def make_tabular_asset() -> Asset:
         format=OutputFormat.PARQUET,
         crs=None,
         bounds=None,
-        metadata=AssetMetadata(title="Test Tabular Dataset"),
+        metadata=AssetMetadata(
+            title="Test Tabular Dataset",
+            description="Test tabular dataset for joins",
+            keywords=["test", "tabular"],
+            source="Unit Test",
+            license="MIT",
+            attribution="Test Team",
+            column_schema={
+                "id": ColumnInfo(title="ID", type_name="STRING", logical_type="string")
+            },
+        ),
         created_at=datetime.now(timezone.utc),
         updated_at=None,
     )

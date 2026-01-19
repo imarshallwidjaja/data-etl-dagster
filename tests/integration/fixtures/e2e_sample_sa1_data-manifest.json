@@ -10,8 +10,13 @@
     }
   ],
   "metadata": {
-    "project": "ALPHA",
+    "title": "E2E Sample SA1 Data",
     "description": "User supplied context",
+    "keywords": ["sample", "sa1", "e2e"],
+    "source": "ABS SA1 boundaries, NSW subset",
+    "license": "Creative Commons Attribution 4.0 International",
+    "attribution": "Australian Bureau of Statistics",
+    "project": "ALPHA",
     "tags": {
       "priority": 1,
       "source": "integration-fixture",

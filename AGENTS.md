@@ -1,5 +1,7 @@
 # data-etl-dagster — Agent Guide
 
+> **Generated**: 2026-01-07 | **Commit**: f7dcb0c | **Branch**: feature/harden-metadata-models-CL
+
 ## What this repo is / owns
 
 This repo implements an offline-first Spatial Data ETL platform orchestrated by Dagster.
@@ -8,11 +10,63 @@ It ingests raw spatial and tabular files via a manifest protocol, uses PostGIS f
 ## Key invariants / non-negotiables
 
 - **Offline-first**: no public cloud dependencies at runtime.
-- **Ledger**: MongoDB is the Source of Truth. No Mongo record = data doesn’t exist.
+- **Ledger**: MongoDB is the Source of Truth. No Mongo record = data doesn't exist.
 - **Persistence**: PostGIS is transient compute only. Never store permanent data there.
 - **Isolation**: GDAL/heavy spatial libs live only in the `user-code` container.
 - **Ingestion contract**: write to `landing-zone` → process → write to `data-lake`. No direct writes to the lake.
-- **Tabular processing**: Tabular data (CSV) is processed directly to Parquet without PostGIS. Headers are cleaned to valid Postgres identifiers for reliable joins.
+- **Audit & Observability**: All platform actions (manifest creation, run lifecycle, asset access) are recorded in the `activity_logs` collection. Runs are tagged with `operator` for traceability.
+- **Tabular & Columnar Registry**: Tabular (CSV) and Spatial (GeoParquet) data automatically capture column schemas (names, types, nullability) during export to the data-lake. Types are normalized to a canonical vocabulary (STRING, INTEGER, GEOMETRY, etc.) and stored in MongoDB for UI/API introspection.
+- **Geometry Type Capture**: Spatial and joined assets automatically capture geometry type (POINT, POLYGON, MULTIPOLYGON, etc.) from PostGIS during processing. Stored in `metadata.geometry_type` for catalog introspection. Enforced as required for spatial/joined assets.
+- **Header Cleaning**: Headers in tabular CSVs are cleaned to valid Postgres identifiers for reliable downstream joins.
+
+## Metadata Contract
+
+The metadata restructuring established the following invariants:
+
+### Human Metadata Fields (Required on All Assets/Manifests)
+
+All manifests and assets require these human-readable metadata fields:
+- `title` - Human-readable dataset title
+- `description` - Abstract/summary (empty string allowed)
+- `keywords` - Subject keywords as list (empty list allowed)
+- `source` - Data lineage/provenance statement
+- `license` - License identifier or statement
+- `attribution` - Credit/attribution statement
+
+Captured from manifest at ingestion, stored in asset metadata. Enforced by Pydantic at runtime, MongoDB validators at rest.
+
+### Kind-Specific Metadata
+
+| Asset Kind | Required Metadata |
+|------------|-------------------|
+| `tabular` | `column_schema` (from PyArrow) |
+| `spatial` | `geometry_type` (from PostGIS), `column_schema` (from GeoParquet) |
+| `joined` | Both `geometry_type` and `column_schema` |
+
+### Type Normalization
+
+- Column types normalized via `libs/normalization.py`
+- Canonical vocabulary: STRING, INTEGER, FLOAT, BOOLEAN, TIMESTAMP, DATE, TIME, DECIMAL, BINARY, ARRAY, STRUCT, MAP, GEOMETRY, UNKNOWN
+- Geometry type normalized to OGC uppercase: POINT, POLYGON, MULTIPOLYGON, etc.
+
+### Schema Management
+
+- MongoDB schemas defined in `services/mongodb/migrations/` as frozen constants
+- Use `scripts/generate_migration_schema.py` to generate from Pydantic (write-time only)
+- Schema drift detected by `tests/unit/test_schema_parity.py`
+
+### Model Usage Patterns
+
+Always use `AssetMetadata.from_manifest_metadata()` factory method to propagate human metadata from manifest to asset:
+
+```python
+asset_metadata = AssetMetadata.from_manifest_metadata(
+    manifest.metadata,
+    geometry_type="MULTIPOLYGON",  # For spatial/joined
+    column_schema=column_schema,    # For tabular/spatial/joined
+    header_mapping=header_mapping,  # For tabular
+)
+```
 
 ## Entry points / key files
 
@@ -45,6 +99,7 @@ graph TD
         CodeLoc -->|6b. Tabular Ops - Direct| CodeLoc
         CodeLoc -->|7. Write GeoParquet/Parquet| Lake
         CodeLoc -->|8. Log Lineage| Mongo
+        CodeLoc -->|9. Audit Activity| Mongo
     end
 ```
 
@@ -167,7 +222,7 @@ Both `ManifestStatus` and `RunStatus` use: `running`, `success`, `failure`, `can
 
 ### Pinned Dagster versions
 
-Current pinned versions (as of Phase 5):
+Current pinned versions:
 
 - **Core packages** (same patch version):
   - `dagster==1.12.5`
@@ -199,6 +254,7 @@ See `services/dagster/requirements.txt` and `services/dagster/requirements-user-
 
 **Services:**
 - `services/dagster/AGENTS.md`
+- `services/dagster/etl_pipelines/AGENTS.md`
 - `services/minio/AGENTS.md`
 - `services/mongodb/AGENTS.md`
 - `services/postgis/AGENTS.md`

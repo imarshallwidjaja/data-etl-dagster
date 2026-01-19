@@ -1,8 +1,10 @@
 {% extends "base.html" %}
+{% import 'macros/forms.html' as forms %}
 
 {% block title %}New Spatial Manifest - Data ETL Tooling{% endblock %}
 
 {% block content %}
+{{ forms.field_error_styles() }}
 <article>
     <header>
         <hgroup>
@@ -11,99 +13,159 @@
         </hgroup>
     </header>
 
-    <form id="manifest-form" method="post">
-        <fieldset>
-            <legend>Basic Information</legend>
+    <div class="grid" style="margin-bottom: 2rem;">
+        <button type="button" id="form-mode-btn" class="active">Form Mode</button>
+        <button type="button" id="json-mode-btn" class="secondary outline">JSON Mode</button>
+    </div>
 
-            <label>
-                Batch ID (optional)
-                <input type="text" name="batch_id" placeholder="{{ suggested_batch_id }}" value="">
-                <small>Leave blank to auto-generate</small>
-            </label>
+    <div id="form-mode">
+        <form id="manifest-form" method="post">
+            <fieldset>
+                <legend>Dataset Information</legend>
 
-            <label>
-                Project *
-                <input type="text" name="project" required placeholder="e.g., BUILDINGS_DEMO">
-            </label>
+                {{ forms.render_text_field('title', 'Title', required=True, placeholder='Human-readable dataset title') }}
 
-            <label>
-                Description
-                <textarea name="description" rows="2" placeholder="Optional description"></textarea>
-            </label>
-        </fieldset>
+                {{ forms.render_textarea_field('description', 'Description', rows=2, placeholder='Abstract or summary of the dataset') }}
 
-        <fieldset>
-            <legend>Processing</legend>
+                {{ forms.render_text_field('keywords', 'Keywords (comma-separated)', placeholder='buildings, urban, footprints', description='Subject keywords for discovery') }}
 
-            <label>
-                Intent *
-                <select name="intent" id="intent-select" required>
-                    <option value="ingest_vector">ingest_vector (Default recipe)</option>
-                    <option value="ingest_raster">ingest_raster</option>
-                    <option value="ingest_building_footprints">ingest_building_footprints (Heavy simplification)
-                    </option>
-                    <option value="ingest_road_network">ingest_road_network</option>
-                </select>
-            </label>
-        </fieldset>
+                {{ forms.render_text_field('source', 'Source', placeholder='Data lineage/provenance statement') }}
 
-        <fieldset>
-            <legend>Files</legend>
+                <div class="grid">
+                    {% set license_options = [
+                        {'value': '', 'label': 'Select license...'},
+                        {'value': 'CC-BY-4.0', 'label': 'CC-BY-4.0'},
+                        {'value': 'CC-BY-SA-4.0', 'label': 'CC-BY-SA-4.0'},
+                        {'value': 'CC0-1.0', 'label': 'CC0 (Public Domain)'},
+                        {'value': 'MIT', 'label': 'MIT'},
+                        {'value': 'proprietary', 'label': 'Proprietary'}
+                    ] %}
+                    {{ forms.render_select_field('license', 'License', license_options) }}
 
-            <label>
-                Dataset ID (optional)
-                <input type="text" name="dataset_id" placeholder="Auto-generated if blank">
-            </label>
+                    {{ forms.render_text_field('attribution', 'Attribution', placeholder='Credit statement') }}
+                </div>
+            </fieldset>
 
-            <div id="files-container">
-                <div class="file-entry">
-                    <label>
-                        File Path *
-                        <input type="text" name="file_path" required
-                            placeholder="s3://landing-zone/batch_001/data.geojson">
-                    </label>
-                    <div class="grid">
+            <fieldset>
+                <legend>Basic Information</legend>
+
+                {{ forms.render_text_field('batch_id', 'Batch ID (optional)', placeholder=suggested_batch_id, description='Leave blank to auto-generate', value='') }}
+
+                {{ forms.render_text_field('project', 'Project', placeholder='e.g., BUILDINGS_DEMO', description='Optional project identifier') }}
+            </fieldset>
+
+            <fieldset>
+                <legend>Processing</legend>
+
+                {% set intent_options = [
+                    {'value': 'ingest_vector', 'label': 'ingest_vector (Default recipe)'},
+                    {'value': 'ingest_raster', 'label': 'ingest_raster'},
+                    {'value': 'ingest_building_footprints', 'label': 'ingest_building_footprints (Heavy simplification)'},
+                    {'value': 'ingest_road_network', 'label': 'ingest_road_network'}
+                ] %}
+                {{ forms.render_select_field('intent', 'Intent', intent_options, required=True) }}
+            </fieldset>
+
+            <fieldset>
+                <legend>Files</legend>
+
+                {{ forms.render_text_field('dataset_id', 'Dataset ID (optional)', placeholder='Auto-generated if blank') }}
+
+                <div id="files-container">
+                    <div class="file-entry">
                         <label>
-                            Format
-                            <select name="file_format">
-                                <option value="GeoJSON">GeoJSON</option>
-                                <option value="SHP">Shapefile</option>
-                                <option value="GPKG">GeoPackage</option>
-                                <option value="GTiff">GeoTIFF</option>
-                            </select>
+                            File Path *
+                            <input type="text" name="file_path" required
+                                placeholder="s3://landing-zone/batch_001/data.geojson">
                         </label>
-                        <label>
-                            Type
-                            <select name="file_type">
-                                <option value="vector">Vector</option>
-                                <option value="raster">Raster</option>
-                            </select>
-                        </label>
+                        <div class="grid">
+                            <label>
+                                Format
+                                <select name="file_format">
+                                    <option value="GeoJSON">GeoJSON</option>
+                                    <option value="SHP">Shapefile</option>
+                                    <option value="GPKG">GeoPackage</option>
+                                    <option value="GTiff">GeoTIFF</option>
+                                </select>
+                            </label>
+                            <label>
+                                Type
+                                <select name="file_type">
+                                    <option value="vector">Vector</option>
+                                    <option value="raster">Raster</option>
+                                </select>
+                            </label>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <button type="button" id="add-file-btn" class="secondary outline">+ Add Another File</button>
-        </fieldset>
+                <button type="button" id="add-file-btn" class="secondary outline">+ Add Another File</button>
+            </fieldset>
 
-        <fieldset>
-            <legend>Tags (Optional)</legend>
-            <div id="tags-container">
-                <div class="tag-entry grid">
-                    <input type="text" name="tag_key" placeholder="Key">
-                    <input type="text" name="tag_value" placeholder="Value">
+            <fieldset>
+                <legend>Tags (Optional)</legend>
+                <div id="tags-container">
+                    <div class="tag-entry grid">
+                        <input type="text" name="tag_key" placeholder="Key">
+                        <input type="text" name="tag_value" placeholder="Value">
+                    </div>
                 </div>
-            </div>
-            <button type="button" id="add-tag-btn" class="secondary outline">+ Add Tag</button>
-        </fieldset>
+                <button type="button" id="add-tag-btn" class="secondary outline">+ Add Tag</button>
+            </fieldset>
 
-        <div id="submit-status"></div>
-        <button type="submit">Create Manifest</button>
-    </form>
+            <div id="submit-status"></div>
+            <button type="submit">Create Manifest</button>
+        </form>
+    </div>
+
+    <div id="json-mode" style="display: none;">
+        <label for="json-input">Manifest JSON (ManifestCreateRequest format)</label>
+        <textarea id="json-input" rows="15" placeholder='{
+    "title": "My Dataset",
+    "intent": "ingest_vector",
+    "files": [
+        {
+            "path": "s3://landing-zone/batch_001/data.geojson",
+            "type": "vector",
+            "format": "GeoJSON"
+        }
+    ]
+}'></textarea>
+        <div id="json-status"></div>
+        <button type="button" id="json-submit-btn">Validate & Submit JSON</button>
+    </div>
 </article>
 
 <script src="/static/js/forms.js"></script>
+<script src="/static/js/validation.js"></script>
 <script>
+    // Initialize form validator for schema-driven validation
+    const validator = new ManifestFormValidator('manifest-form', 'spatial');
+
+    // Mode toggle
+    const formModeBtn = document.getElementById('form-mode-btn');
+    const jsonModeBtn = document.getElementById('json-mode-btn');
+    const formDiv = document.getElementById('form-mode');
+    const jsonDiv = document.getElementById('json-mode');
+
+    formModeBtn.addEventListener('click', () => {
+        formDiv.style.display = 'block';
+        jsonDiv.style.display = 'none';
+        formModeBtn.classList.remove('secondary', 'outline');
+        formModeBtn.classList.add('active');
+        jsonModeBtn.classList.add('secondary', 'outline');
+        jsonModeBtn.classList.remove('active');
+    });
+
+    jsonModeBtn.addEventListener('click', () => {
+        formDiv.style.display = 'none';
+        jsonDiv.style.display = 'block';
+        jsonModeBtn.classList.remove('secondary', 'outline');
+        jsonModeBtn.classList.add('active');
+        formModeBtn.classList.add('secondary', 'outline');
+        formModeBtn.classList.remove('active');
+    });
+    
     document.getElementById('manifest-form').addEventListener('submit', async function (e) {
         e.preventDefault();
         const status = document.getElementById('submit-status');
@@ -112,8 +174,13 @@
         const formData = new FormData(e.target);
         const data = {
             batch_id: formData.get('batch_id') || null,
-            project: formData.get('project'),
-            description: formData.get('description') || null,
+            title: formData.get('title'),
+            description: formData.get('description') || '',
+            keywords: (formData.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean),
+            source: formData.get('source') || '',
+            license: formData.get('license') || '',
+            attribution: formData.get('attribution') || '',
+            project: formData.get('project') || null,
             dataset_id: formData.get('dataset_id') || null,
             intent: formData.get('intent'),
             files: [{
@@ -124,7 +191,6 @@
             tags: {}
         };
 
-        // Collect tags
         const tagKeys = formData.getAll('tag_key');
         const tagValues = formData.getAll('tag_value');
         tagKeys.forEach((key, i) => {
@@ -142,25 +208,67 @@
 
             if (response.ok) {
                 const result = await response.json();
-                status.innerHTML = '<p class="success">✅ ' + result.message + '</p>';
+                status.innerHTML = '<p class="success">Manifest created: ' + result.batch_id + '</p>';
                 setTimeout(() => window.location.href = '/manifests/', 1500);
             } else {
                 const error = await response.json();
-                status.innerHTML = '<p class="error">❌ ' + (error.detail || 'Creation failed') + '</p>';
+                status.innerHTML = '<p class="error">' + (error.detail || 'Creation failed') + '</p>';
             }
         } catch (err) {
-            status.innerHTML = '<p class="error">❌ ' + err.message + '</p>';
+            status.innerHTML = '<p class="error">' + err.message + '</p>';
+        }
+    });
+
+    // JSON Submit
+    document.getElementById('json-submit-btn').addEventListener('click', async function() {
+        const textarea = document.getElementById('json-input');
+        const status = document.getElementById('json-status');
+        status.innerHTML = '<p aria-busy="true">Validating JSON...</p>';
+
+        let data;
+        try {
+            data = JSON.parse(textarea.value);
+        } catch (e) {
+            status.innerHTML = '<p class="error">Invalid JSON: ' + e.message + '</p>';
+            return;
+        }
+
+        // Fetch schema and validate with Ajv
+        try {
+            const schemaRes = await fetch('/manifests/schemas/spatial');
+            const schema = await schemaRes.json();
+            const ajv = new Ajv({allErrors: true, strict: false});
+            const validate = ajv.compile(schema);
+            
+            if (!validate(data)) {
+                const errors = validate.errors.map(e => (e.instancePath || 'root') + ': ' + e.message).join('; ');
+                status.innerHTML = '<p class="error">Validation failed: ' + errors + '</p>';
+                return;
+            }
+
+            status.innerHTML = '<p aria-busy="true">Submitting...</p>';
+            const response = await fetch('/manifests/new/spatial', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                status.innerHTML = '<p class="success">Manifest created: ' + result.batch_id + '</p>';
+                setTimeout(() => window.location.href = '/manifests/', 1500);
+            } else {
+                const error = await response.json();
+                status.innerHTML = '<p class="error">' + (error.detail || 'Submission failed') + '</p>';
+            }
+        } catch (err) {
+            status.innerHTML = '<p class="error">' + err.message + '</p>';
         }
     });
 </script>
 
 <style>
-    .success {
-        color: var(--pico-color-green-550);
-    }
-
-    .error {
-        color: var(--pico-color-red-550);
-    }
+    .success { color: var(--pico-color-green-550); }
+    .error { color: var(--pico-color-red-550); }
 </style>
 {% endblock %}

@@ -15,25 +15,30 @@ __all__ = ["init_mongo_run_op"]
 
 
 @op(required_resource_keys={"mongodb"})
-def init_mongo_run_op(context: OpExecutionContext, manifest_json: dict) -> dict:
+def init_mongo_run_op(context: OpExecutionContext, payload: dict) -> dict:
     """
     Synchronously create the run document in MongoDB at job start.
 
-    This op MUST be the first step in every job to ensure the run document
-    exists before any assets attempt to link to it. It also ensures the
-    manifest is persisted with status=RUNNING.
+    This op MUST run before any ops that need to link to the run document
+    (e.g., export_to_datalake). It ensures the manifest is persisted with
+    status=RUNNING.
+
+    Accepts either:
+    - A raw manifest dict (legacy usage from sensors)
+    - A dict containing a "manifest" key (e.g., transform_result from spatial_transform)
 
     Flow:
-    1. Extract batch_id, job_name, partition_key from run tags
-    2. Upsert manifest with status=RUNNING (if not already persisted)
-    3. Create run document with status=RUNNING
+    1. Extract manifest dict from payload (either directly or via "manifest" key)
+    2. Extract batch_id, job_name, partition_key from run tags
+    3. Upsert manifest with status=RUNNING (if not already persisted)
+    4. Create run document with status=RUNNING
 
     Args:
         context: Dagster op execution context
-        manifest_json: Validated manifest dict from upstream op
+        payload: Either a manifest dict directly, or a dict containing a "manifest" key
 
     Returns:
-        The manifest_json unchanged (passthrough for downstream ops)
+        The payload unchanged (passthrough for downstream ops)
 
     Side effects:
         - Creates/updates manifest document in MongoDB
@@ -42,6 +47,14 @@ def init_mongo_run_op(context: OpExecutionContext, manifest_json: dict) -> dict:
     mongodb = context.resources.mongodb
     tags = context.run.tags
     dagster_run_id = context.run_id
+
+    # Extract manifest from payload - supports both raw manifest and wrapped formats
+    if "manifest" in payload:
+        # Wrapped format (e.g., transform_result dict containing "manifest" key)
+        manifest_json = payload["manifest"]
+    else:
+        # Raw manifest dict (legacy usage)
+        manifest_json = payload
 
     batch_id = tags.get("batch_id", "unknown")
     job_name = context.job_name
@@ -77,4 +90,5 @@ def init_mongo_run_op(context: OpExecutionContext, manifest_json: dict) -> dict:
     )
     context.log.info(f"Created run document: {run_id}")
 
-    return manifest_json
+    # Return the original payload unchanged for downstream ops
+    return payload

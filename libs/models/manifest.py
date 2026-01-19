@@ -15,6 +15,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
 
 from .spatial import FileType
+from .base import HumanMetadataMixin
 
 __all__ = [
     "FileEntry",
@@ -244,24 +245,27 @@ class JoinConfig(BaseModel):
 # =============================================================================
 
 
-class ManifestMetadata(BaseModel):
+class ManifestMetadata(HumanMetadataMixin):
     """
     User-supplied metadata for a manifest.
 
+    Inherits human semantic fields from HumanMetadataMixin:
+    - title, description, keywords, source, license, attribution
+
     Provides context about the data being ingested, such as project
-    affiliation and description.
+    affiliation and queryable tags.
 
     Attributes:
-        project: Project identifier or name
-        description: Optional description of the data
+        project: Optional project identifier
         tags: Arbitrary queryable tags (primitive scalars only)
         join_config: Optional join instructions for downstream matching
     """
 
-    project: str = Field(..., description="Project identifier or name")
-    description: str | None = Field(
-        None, description="Optional description of the data"
-    )
+    # Inherited from HumanMetadataMixin:
+    # title, description, keywords, source, license, attribution
+
+    # Manifest-specific fields
+    project: str | None = Field(None, description="Optional project identifier or name")
     tags: dict[str, TagValue] = Field(
         default_factory=dict,
         description="User-supplied tags (str/int/float/bool values only)",
@@ -275,16 +279,15 @@ class ManifestMetadata(BaseModel):
         extra="forbid",
         json_schema_extra={
             "example": {
-                "project": "ALPHA",
-                "description": "Satellite imagery for urban analysis",
-                "tags": {"priority": 1, "source": "user"},
-                "join_config": {
-                    "spatial_dataset_id": "sa1_spatial_001",
-                    "tabular_dataset_id": "sa1_tabular_001",
-                    "left_key": "parcel_id",
-                    "right_key": "parcel_id",
-                    "how": "left",
-                },
+                "title": "Urban Building Footprints 2024",
+                "description": "High-resolution building outlines from aerial survey",
+                "keywords": ["buildings", "urban", "footprints"],
+                "source": "City Planning Department Aerial Survey",
+                "license": "CC-BY-4.0",
+                "attribution": "City Planning Department",
+                "project": "URBAN_ANALYSIS",
+                "tags": {"priority": 1, "source": "survey"},
+                "join_config": None,
             }
         },
     )

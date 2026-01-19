@@ -1,0 +1,28 @@
+<hgroup>
+    <h2>Workflow Submitted</h2>
+    <p>Your manifest has been successfully queued for processing.</p>
+</hgroup>
+
+<p>
+    The system is now processing your request. You can track the status of your run or view the created manifest details.
+</p>
+
+<article>
+    <header><strong>Submission Details</strong></header>
+    <dl>
+        <dt>Batch ID</dt>
+        <dd><code>{{ batch_id }}</code></dd>
+        {% if manifest_key %}
+        <dt>Manifest Key</dt>
+        <dd><code>{{ manifest_key }}</code></dd>
+        {% endif %}
+    </dl>
+</article>
+
+<footer class="grid">
+    <a href="/manifests/" role="button" class="secondary">View All Manifests</a>
+    <a href="/runs/" role="button" class="primary">View Runs</a>
+</footer>
+<p>
+    <a href="/workflows/" class="secondary">Start Another Workflow</a>
+</p>

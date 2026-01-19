@@ -9,7 +9,8 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 
 - **Ledger law**: MongoDB is canonical for manifests/assets/lineage.
 - **Schema validation lives in migrations**: keep them aligned with `libs/models/`.
-- **Manifest metadata is disciplined**: only `project`, `description`, `tags` (primitive scalars), and `join_config` (structured join fields) are allowed; everything else is rejected.
+- **Schema management**: Migrations contain frozen schema constants. Use `scripts/generate_migration_schema.py` to generate from Pydantic, then paste as immutable constant. Never modify existing migration schemas.
+- **Manifest metadata is disciplined**: Human metadata fields (title, description, keywords, source, license, attribution) are required; `project` is optional; `tags` allows only primitive scalars.
 
 ## Entry points / key files
 
@@ -20,10 +21,12 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 
 ### Migrations
 
-- `migrations/001_baseline_schema.py`: Baseline schema (collections, indexes, validation for spatial/tabular/joined)
-- `migrations/002_add_tabular_contracts.py`: Tabular contracts migration (no-op for fresh installs)
-- `migrations/003_add_runs_collection.py`: Adds runs collection, unifies status values (running/success/failure/canceled), updates asset/lineage to use run_id ObjectId
-- `migrations/README.md`: Migration system documentation
+- `migrations/001_baseline_schema.py`: Squashed baseline (assets, manifests, runs, lineage collections with frozen schemas)
+- `migrations/002_add_text_search.py`: Text index for keyword search
+- `migrations/003_activity_logs.py`: Audit logging collection and indexes
+- `migrations/README.md`: Migration system and schema management documentation
+
+> **Note**: Migration files use `importlib` in parity tests since filenames start with digits.
 
 ## How to work here
 
@@ -46,7 +49,15 @@ MongoDB is the Source of Truth: if it's not recorded in Mongo, it doesn't exist 
 | `runs` | Dagster run tracking (links manifests to assets) |
 | `assets` | Asset registry (spatial, tabular, joined) - uses `run_id` ObjectId |
 | `lineage` | Parent→child asset relationships - uses `run_id` ObjectId |
+| `activity_logs` | Audit trail of user and system actions |
 | `schema_migrations` | Applied migration tracking |
+
+### Activity Log Indexes
+
+- `timestamp` desc
+- `user` + `timestamp` (-1)
+- `action` + `timestamp` (-1)
+- `resource_type` + `resource_id` (1)
 
 ### Status Values (Unified)
 
@@ -65,7 +76,7 @@ The migration system (`scripts/migrate_db.py`) handles schema evolution.
 - Migrations run automatically on container startup via `mongo-migration` service
 - Applied migrations are tracked in `schema_migrations` collection
 - Failed migrations are NOT recorded (will retry on next startup)
-- Migration `001_baseline_schema.py` includes tabular support, making `002_add_tabular_contracts.py` a no-op for fresh installs
+- Parity tests (`tests/unit/test_schema_parity.py`) detect drift between Pydantic and MongoDB schemas
 
 ### Adding New Migrations
 

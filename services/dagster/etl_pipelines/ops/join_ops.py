@@ -14,22 +14,21 @@ import re
 import tempfile
 import uuid
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Dict, Literal
 
-import pandas as pd
 import pyarrow as pa
 
+import pyarrow.parquet as pq
 from libs.models import (
     Asset,
     AssetKind,
     AssetMetadata,
     Bounds,
     CRS,
-    JoinConfig,
     Manifest,
     OutputFormat,
 )
+from libs.normalization import extract_column_schema
 from libs.s3_utils import s3_to_vsis3
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -319,6 +318,14 @@ def _execute_spatial_join(
     }
     join_clause = join_type_map[how]
 
+    # Warn about potential column name collision
+    # The join SELECT uses t.* and adds s.geom. If tabular already has a 'geom' column,
+    # PostgreSQL will not raise an error but the output will have ambiguous meaning.
+    log.warning(
+        "Join output uses 't.*' from tabular + 's.geom' from spatial. "
+        "If the tabular asset already contains a 'geom' column, consider renaming it before joining."
+    )
+
     sql = f"""
     CREATE TABLE "{schema}"."{output_table}" AS
     SELECT
@@ -341,11 +348,22 @@ def _execute_spatial_join(
             "maxy": bounds.maxy,
         }
 
+    # Extract geometry type for joined output (Milestone 2)
+    try:
+        geometry_type = postgis.get_geometry_type(
+            schema, output_table, geom_column="geom"
+        )
+        log.info(f"Captured geometry type for joined asset: {geometry_type}")
+    except Exception as e:
+        log.warning(f"Failed to extract geometry type: {e}. Using UNKNOWN.")
+        geometry_type = "UNKNOWN"
+
     return {
         "schema": schema,
         "table": output_table,
         "bounds": bounds_dict,
         "geom_column": "geom",
+        "geometry_type": geometry_type,  # Milestone 2: spatial metadata capture
     }
 
 
@@ -360,6 +378,7 @@ def _export_joined_to_datalake(
     manifest: Dict[str, Any],
     crs: str,
     bounds_dict: dict[str, float] | None,
+    geometry_type: str | None,  # Milestone 2: spatial metadata capture
     dataset_id: str,
     dagster_run_id: str,
     run_id: str,
@@ -411,13 +430,18 @@ def _export_joined_to_datalake(
         minio.upload_to_lake(temp_file_path, s3_key)
         log.info(f"Uploaded joined output to data lake: {s3_key}")
 
-        manifest_tags = manifest["metadata"].get("tags", {})
-        asset_metadata = AssetMetadata(
-            title=manifest["metadata"].get("project", dataset_id),
-            description=manifest["metadata"].get("description"),
-            source=None,
-            license=None,
-            tags=manifest_tags,
+        # Extract column schema from joined GeoParquet
+        log.info("Extracting column schema from joined GeoParquet")
+        parquet_schema = pq.read_schema(temp_file_path)
+        column_schema = extract_column_schema(parquet_schema)
+        log.info(f"Captured column schema with {len(column_schema)} columns")
+
+        # Create Asset model using factory method for consistent metadata propagation
+        validated_manifest = Manifest(**manifest)
+        asset_metadata = AssetMetadata.from_manifest_metadata(
+            validated_manifest.metadata,
+            geometry_type=geometry_type,  # Milestone 2: spatial metadata capture
+            column_schema=column_schema,
         )
 
         bounds = None
