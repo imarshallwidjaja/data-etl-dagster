@@ -30,6 +30,11 @@ from libs.models import (
 )
 from libs.normalization import extract_column_schema
 from libs.s3_utils import s3_to_vsis3
+from services.dagster.etl_pipelines.ops.duckdb_settings import (
+    DEFAULT_DUCKDB_MEMORY_LIMIT,
+    DEFAULT_DUCKDB_TEMP_SUBDIR,
+    DuckDBJoinSettings,
+)
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -367,6 +372,141 @@ def _execute_spatial_join(
     }
 
 
+def _parse_duckdb_extent(extent_value: Any) -> dict[str, float] | None:
+    if extent_value is None:
+        return None
+
+    if isinstance(extent_value, dict):
+        return {
+            "minx": float(extent_value["minx"]),
+            "miny": float(extent_value["miny"]),
+            "maxx": float(extent_value["maxx"]),
+            "maxy": float(extent_value["maxy"]),
+        }
+
+    for attribute in ("minx", "miny", "maxx", "maxy"):
+        if not hasattr(extent_value, attribute):
+            break
+    else:
+        return {
+            "minx": float(extent_value.minx),
+            "miny": float(extent_value.miny),
+            "maxx": float(extent_value.maxx),
+            "maxy": float(extent_value.maxy),
+        }
+
+    match = re.match(
+        r"BOX\(([-0-9.eE]+) ([-0-9.eE]+),([-0-9.eE]+) ([-0-9.eE]+)\)",
+        str(extent_value),
+    )
+    if match is None:
+        return None
+
+    minx, miny, maxx, maxy = map(float, match.groups())
+    return {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
+
+
+def _execute_duckdb_join(
+    *,
+    tabular_path: str,
+    spatial_path: str,
+    left_key: str,
+    right_key: str,
+    how: Literal["left", "inner", "right", "outer"],
+    output_path: str,
+    temp_dir: str,
+    memory_limit: str | None = None,
+    s3_settings: DuckDBJoinSettings | None = None,
+    log=None,
+) -> Dict[str, Any]:
+    """
+    Execute a DuckDB join between tabular and spatial Parquet sources.
+
+    Uses t.* from the tabular source plus s.geom from the spatial source to
+    standardize geometry output.
+    """
+
+    _require_identifier(left_key, label="left_key")
+    _require_identifier(right_key, label="right_key")
+
+    join_type_map = {
+        "left": "LEFT JOIN",
+        "inner": "INNER JOIN",
+        "right": "RIGHT JOIN",
+        "outer": "FULL OUTER JOIN",
+    }
+    join_clause = join_type_map[how]
+
+    temp_dir_path = Path(temp_dir) / DEFAULT_DUCKDB_TEMP_SUBDIR
+    temp_dir_path.mkdir(parents=True, exist_ok=True)
+    output_path_obj = Path(output_path)
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    memory_limit_value = memory_limit or DEFAULT_DUCKDB_MEMORY_LIMIT
+
+    import duckdb
+
+    con = duckdb.connect(database=":memory:")
+    try:
+        con.execute("INSTALL httpfs;")
+        con.execute("LOAD httpfs;")
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+
+        con.execute(f"PRAGMA temp_directory='{temp_dir_path}';")
+        con.execute(f"PRAGMA memory_limit='{memory_limit_value}';")
+
+        if s3_settings is not None:
+            con.execute(f"SET s3_endpoint='{s3_settings.s3_endpoint}';")
+            con.execute(
+                f"SET s3_access_key_id='{s3_settings.s3_access_key_id}';"
+            )
+            con.execute(
+                f"SET s3_secret_access_key='{s3_settings.s3_secret_access_key}';"
+            )
+            con.execute(f"SET s3_url_style='{s3_settings.s3_url_style}';")
+            con.execute(f"SET s3_use_ssl={str(s3_settings.s3_use_ssl).lower()};")
+
+        if log is not None:
+            log.info("Executing DuckDB join for join_asset")
+
+        join_sql = f"""
+        CREATE OR REPLACE TABLE joined AS
+        SELECT
+            t.*,
+            s.geom AS geom
+        FROM read_parquet('{tabular_path}') t
+        {join_clause} read_parquet('{spatial_path}') s
+        ON CAST(t."{left_key}" AS VARCHAR) = CAST(s."{right_key}" AS VARCHAR);
+        """
+        con.execute(join_sql)
+
+        row_count = con.execute("SELECT COUNT(*) FROM joined").fetchone()[0]
+
+        geometry_row = con.execute(
+            "SELECT ST_GeometryType(geom) FROM joined WHERE geom IS NOT NULL LIMIT 1"
+        ).fetchone()
+        geometry_type = "UNKNOWN"
+        if geometry_row and geometry_row[0]:
+            geometry_type = geometry_row[0]
+
+        extent_row = con.execute(
+            "SELECT ST_Extent(geom) FROM joined WHERE geom IS NOT NULL"
+        ).fetchone()
+        bounds = _parse_duckdb_extent(extent_row[0] if extent_row else None)
+
+        con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT GEOPARQUET)")
+
+        return {
+            "output_path": str(output_path_obj),
+            "row_count": row_count,
+            "bounds": bounds,
+            "geometry_type": geometry_type,
+        }
+    finally:
+        con.close()
+
+
 def _export_joined_to_datalake(
     *,
     gdal,
@@ -461,7 +601,7 @@ def _export_joined_to_datalake(
             run_id=run_id,
             kind=AssetKind.JOINED,
             format=OutputFormat.GEOPARQUET,
-            crs=CRS(crs),
+            crs=crs,
             bounds=bounds,
             metadata=asset_metadata,
             created_at=datetime.now(timezone.utc),
