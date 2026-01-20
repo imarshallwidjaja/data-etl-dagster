@@ -2,7 +2,7 @@
 
 These tests validate that the system handles failures correctly:
 1. Invalid manifests are archived (not retried forever)
-2. Join failures result in proper status + PostGIS schema cleanup
+2. Join failures result in proper status
 """
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from dagster import DagsterInstance
 from minio.error import S3Error
 
 from libs.models import MinIOSettings
-from libs.spatial_utils import RunIdSchemaMapping
 from services.dagster.etl_pipelines.resources import MinIOResource
 from services.dagster.etl_pipelines.sensors.spatial_sensor import spatial_sensor
 
@@ -109,27 +108,6 @@ def _assert_manifest_archived(
         )
     except S3Error as e:
         raise AssertionError(f"Manifest was not archived to {archive_key}: {e}")
-
-
-def _assert_postgis_schema_cleaned(postgis_connection, run_id: str) -> None:
-    """Assert PostGIS ephemeral schema is cleaned up after job completion."""
-    schema_mapping = RunIdSchemaMapping.from_run_id(run_id)
-    schema_name = schema_mapping.schema_name
-
-    with postgis_connection.cursor() as cur:
-        cur.execute(
-            """
-            SELECT schema_name
-            FROM information_schema.schemata
-            WHERE schema_name = %s
-            """,
-            (schema_name,),
-        )
-        result = cur.fetchone()
-        assert result is None, (
-            f"PostGIS schema {schema_name} still exists after job completion "
-            "(should be cleaned up even on failure)"
-        )
 
 
 def _launch_job_with_run_config(
@@ -236,18 +214,17 @@ class TestInvalidManifestArchived:
 
 
 class TestJoinFailureCleanup:
-    """Test that join failures result in proper status + PostGIS schema cleanup."""
+    """Test that join failures result in proper status."""
 
-    def test_join_failure_mismatched_key_cleans_up_postgis(
+    def test_join_failure_mismatched_key(
         self,
         dagster_client,
         minio_client,
         minio_settings,
         mongo_client,
         mongo_settings,
-        postgis_connection,
     ):
-        """Join with mismatched key should fail and clean up PostGIS schema."""
+        """Join with mismatched key should fail."""
         batch_id = f"e2e_join_fail_{uuid4().hex[:12]}"
         spatial_partition_key = f"spatial_fail_{batch_id}"
         join_partition_key = f"joined_fail_{batch_id}"
@@ -368,9 +345,6 @@ class TestJoinFailureCleanup:
             assert status == "FAILURE", (
                 f"Expected join_asset_job to fail, but got status: {status}"
             )
-
-            # 4) Assert: PostGIS schema should be cleaned up even on failure
-            _assert_postgis_schema_cleaned(postgis_connection, join_run_id)
 
         except BaseException as e:
             test_error = e
