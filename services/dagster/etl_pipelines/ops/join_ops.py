@@ -507,6 +507,54 @@ def _execute_duckdb_join(
         con.close()
 
 
+def _rewrite_parquet_with_metadata(
+    *,
+    input_path: str,
+    output_path: str,
+    metadata: dict[bytes, bytes],
+) -> None:
+    parquet_file = pq.ParquetFile(input_path)
+    schema = parquet_file.schema_arrow.with_metadata(metadata)
+    writer = pq.ParquetWriter(output_path, schema)
+    try:
+        for batch in parquet_file.iter_batches():
+            writer.write_table(pa.Table.from_batches([batch], schema=schema))
+    finally:
+        writer.close()
+
+
+def _merge_geoparquet_metadata(
+    *,
+    source_path: str,
+    target_path: str,
+    log=None,
+) -> bool:
+    source_metadata = pq.ParquetFile(source_path).metadata.metadata or {}
+    target_metadata = pq.ParquetFile(target_path).metadata.metadata or {}
+
+    if b"geo" in target_metadata:
+        return False
+    if b"geo" not in source_metadata:
+        if log is not None:
+            log.warning("GeoParquet metadata missing from spatial source")
+        return False
+
+    merged_metadata = dict(target_metadata)
+    merged_metadata[b"geo"] = source_metadata[b"geo"]
+
+    temp_path = f"{target_path}.tmp"
+    _rewrite_parquet_with_metadata(
+        input_path=target_path,
+        output_path=temp_path,
+        metadata=merged_metadata,
+    )
+    Path(temp_path).replace(target_path)
+
+    if log is not None:
+        log.info("Merged GeoParquet metadata into join output")
+    return True
+
+
 def _export_joined_to_datalake(
     *,
     gdal,
