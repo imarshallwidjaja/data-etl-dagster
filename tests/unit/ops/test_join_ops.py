@@ -7,10 +7,13 @@ These tests must not require Docker.
 
 from __future__ import annotations
 
+import builtins
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
 import pytest
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from libs.models import (
     Asset,
@@ -54,6 +57,67 @@ SAMPLE_JOIN_MANIFEST: dict = {
 }
 
 
+def _require_duckdb():
+    try:
+        import duckdb
+    except ModuleNotFoundError as exc:
+        pytest.fail(
+            "DuckDB dependency is required for join helper tests.",
+            pytrace=False,
+        )
+    return duckdb
+
+
+def _require_duckdb_join_helper():
+    import services.dagster.etl_pipelines.ops.join_ops as join_ops
+
+    helper = getattr(join_ops, "_execute_duckdb_join", None)
+    if helper is None:
+        pytest.fail("Missing join helper: _execute_duckdb_join", pytrace=False)
+    return helper
+
+
+def _block_pandas_import(monkeypatch) -> None:
+    real_import = builtins.__import__
+
+    def guarded_import(name, *args, **kwargs):
+        if name == "pandas" or name.startswith("pandas."):
+            raise AssertionError("pandas import not allowed in join helper")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", guarded_import)
+
+
+def _write_tabular_parquet(path, rows, *, key_name: str = "parcel_id") -> None:
+    table = pa.table(
+        {
+            key_name: [row[0] for row in rows],
+            "value": [row[1] for row in rows],
+        }
+    )
+    pq.write_table(table, path)
+
+
+def _write_spatial_geoparquet(path, rows, *, key_name: str = "parcel_id") -> None:
+    duckdb = _require_duckdb()
+    con = duckdb.connect()
+    con.execute("INSTALL spatial;")
+    con.execute("LOAD spatial;")
+    table = pa.table(
+        {
+            key_name: [row[0] for row in rows],
+            "wkt": [row[1] for row in rows],
+        }
+    )
+    con.register("input_rows", table)
+    con.execute(
+        f"CREATE TABLE spatial AS "
+        f"SELECT {key_name}, ST_GeomFromText(wkt) AS geom FROM input_rows"
+    )
+    con.execute(f"COPY spatial TO '{path}' (FORMAT GEOPARQUET)")
+    con.close()
+
+
 def make_spatial_asset() -> Asset:
     from libs.models import ColumnInfo
 
@@ -65,7 +129,7 @@ def make_spatial_asset() -> Asset:
         run_id="507f1f77bcf86cd799439011",
         kind=AssetKind.SPATIAL,
         format=OutputFormat.GEOPARQUET,
-        crs=CRS("EPSG:4326"),
+        crs="EPSG:4326",
         bounds=Bounds(minx=0.0, miny=0.0, maxx=1.0, maxy=1.0),
         metadata=AssetMetadata(
             title="Test Spatial Dataset",
@@ -344,3 +408,99 @@ class TestChooseDatasetId:
         m = Manifest(**SAMPLE_JOIN_MANIFEST)
         m.metadata.tags["dataset_id"] = "  my_id  "
         assert _choose_dataset_id(m) == "my_id"
+
+
+class TestDuckdbJoinHelper:
+    def test_left_join_outputs_metadata(self, tmp_path, monkeypatch):
+        helper = _require_duckdb_join_helper()
+        _block_pandas_import(monkeypatch)
+
+        tabular_path = tmp_path / "tabular.parquet"
+        spatial_path = tmp_path / "spatial.parquet"
+        output_path = tmp_path / "joined.parquet"
+
+        _write_tabular_parquet(tabular_path, [("A", 1), ("B", 2)])
+        _write_spatial_geoparquet(
+            spatial_path,
+            [
+                ("A", "POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0))"),
+                ("C", "POLYGON ((5 5, 6 5, 6 6, 5 6, 5 5))"),
+            ],
+        )
+
+        result = helper(
+            tabular_path=str(tabular_path),
+            spatial_path=str(spatial_path),
+            left_key="parcel_id",
+            right_key="parcel_id",
+            how="left",
+            output_path=str(output_path),
+            temp_dir=str(tmp_path),
+        )
+
+        assert result["row_count"] == 2
+        assert result["geometry_type"] == "POLYGON"
+        assert result["bounds"]["minx"] == pytest.approx(0.0)
+        assert result["bounds"]["miny"] == pytest.approx(0.0)
+        assert result["bounds"]["maxx"] == pytest.approx(2.0)
+        assert result["bounds"]["maxy"] == pytest.approx(2.0)
+
+        schema = pq.read_schema(output_path)
+        assert schema.names == ["parcel_id", "value", "geom"]
+
+    @pytest.mark.parametrize(
+        "how, expected_row_count",
+        [("inner", 1), ("right", 2), ("outer", 3)],
+    )
+    def test_join_types_row_counts(self, tmp_path, how, expected_row_count):
+        helper = _require_duckdb_join_helper()
+
+        tabular_path = tmp_path / f"tabular_{how}.parquet"
+        spatial_path = tmp_path / f"spatial_{how}.parquet"
+        output_path = tmp_path / f"joined_{how}.parquet"
+
+        _write_tabular_parquet(tabular_path, [("A", 1), ("B", 2)])
+        _write_spatial_geoparquet(
+            spatial_path,
+            [
+                ("A", "POLYGON ((0 0, 2 0, 2 2, 0 2, 0 0))"),
+                ("C", "POLYGON ((5 5, 6 5, 6 6, 5 6, 5 5))"),
+            ],
+        )
+
+        result = helper(
+            tabular_path=str(tabular_path),
+            spatial_path=str(spatial_path),
+            left_key="parcel_id",
+            right_key="parcel_id",
+            how=how,
+            output_path=str(output_path),
+            temp_dir=str(tmp_path),
+        )
+
+        assert result["row_count"] == expected_row_count
+
+    def test_join_key_casts_to_varchar(self, tmp_path):
+        helper = _require_duckdb_join_helper()
+
+        tabular_path = tmp_path / "tabular_cast.parquet"
+        spatial_path = tmp_path / "spatial_cast.parquet"
+        output_path = tmp_path / "joined_cast.parquet"
+
+        _write_tabular_parquet(tabular_path, [("01", 1)])
+        _write_spatial_geoparquet(
+            spatial_path,
+            [(1, "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")],
+        )
+
+        result = helper(
+            tabular_path=str(tabular_path),
+            spatial_path=str(spatial_path),
+            left_key="parcel_id",
+            right_key="parcel_id",
+            how="inner",
+            output_path=str(output_path),
+            temp_dir=str(tmp_path),
+        )
+
+        assert result["row_count"] == 0
