@@ -5,19 +5,21 @@ Produces a spatialized tabular dataset by joining incoming tabular data (left)
 with an existing spatial asset (right) and exporting GeoParquet to the data lake.
 """
 
+from pathlib import Path
+import tempfile
 from typing import Any, Dict
 
 from dagster import AssetExecutionContext, AssetKey, MetadataValue, asset
+import pyarrow.parquet as pq
 
 from libs.models import Manifest
 from ..partitions import dataset_partitions
 
+from ..ops.duckdb_settings import build_duckdb_join_settings
 from ..ops.join_ops import (
     _choose_dataset_id,
-    _execute_spatial_join,
-    _export_joined_to_datalake,
-    _load_geoparquet_to_postgis,
-    _load_tabular_parquet_to_postgis,
+    _execute_duckdb_join,
+    _export_duckdb_join_to_datalake,
     _resolve_join_assets,
 )
 
@@ -25,7 +27,7 @@ from ..ops.join_ops import (
 @asset(
     group_name="derived",
     compute_kind="join",
-    required_resource_keys={"gdal", "postgis", "minio", "mongodb"},
+    required_resource_keys={"minio", "mongodb"},
     description="Derived asset: joins tabular (primary) with spatial (secondary) datasets.",
     partitions_def=dataset_partitions,
     deps=[AssetKey("raw_spatial_asset"), AssetKey("raw_tabular_asset")],
@@ -41,11 +43,10 @@ def joined_spatial_asset(
 
     Workflow:
     1. Resolve both spatial and tabular assets from MongoDB
-    2. Load tabular asset (data-lake parquet) to PostGIS
-    3. Load spatial asset (data-lake geoparquet) to PostGIS
-    4. Execute SQL JOIN (tabular LEFT JOIN spatial by default)
-    5. Export joined GeoParquet to data lake, register Asset in MongoDB
-    6. Record lineage edges (spatial→joined, tabular→joined)
+    2. Validate join keys against Parquet schemas
+    3. Execute DuckDB join over Parquet/GeoParquet inputs
+    4. Export joined GeoParquet to data lake, register Asset in MongoDB
+    5. Record lineage edges (spatial→joined, tabular→joined)
     """
     # Register dynamic partition key (idempotent)
     partition_key = context.partition_key
@@ -76,57 +77,57 @@ def joined_spatial_asset(
     left_key = join_config.left_key
     right_key = join_config.right_key or join_config.left_key
 
-    with context.resources.postgis.ephemeral_schema(context.run_id) as schema:
-        tabular_postgis = _load_tabular_parquet_to_postgis(
-            minio=context.resources.minio,
-            postgis=context.resources.postgis,
-            s3_key=tabular_asset.s3_key,
-            schema=schema,
-            table_name="tabular_parent",
-            log=context.log,
-        )
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+        minio = context.resources.minio
 
-        if left_key not in tabular_postgis["columns"]:
+        tabular_schema_path = temp_path / "tabular.parquet"
+        spatial_schema_path = temp_path / "spatial.parquet"
+        minio.download_from_lake(tabular_asset.s3_key, tabular_schema_path)
+        minio.download_from_lake(spatial_asset.s3_key, spatial_schema_path)
+
+        tabular_schema = pq.read_schema(tabular_schema_path)
+        if left_key not in tabular_schema.names:
             raise ValueError(
-                f"Join left_key '{left_key}' not found in tabular asset columns: {tabular_postgis['columns']}"
+                "Join left_key "
+                f"'{left_key}' not found in tabular asset columns: {tabular_schema.names}"
             )
 
-        spatial_postgis = _load_geoparquet_to_postgis(
-            gdal=context.resources.gdal,
-            postgis=context.resources.postgis,
-            minio=context.resources.minio,
-            s3_key=spatial_asset.s3_key,
-            schema=schema,
-            table_name="spatial_parent",
-            log=context.log,
-        )
+        spatial_schema = pq.read_schema(spatial_schema_path)
+        if right_key not in spatial_schema.names:
+            raise ValueError(
+                "Join right_key "
+                f"'{right_key}' not found in spatial asset columns: {spatial_schema.names}"
+            )
 
-        join_result = _execute_spatial_join(
-            postgis=context.resources.postgis,
-            schema=schema,
-            tabular_table=tabular_postgis["table"],
-            spatial_table=spatial_postgis["table"],
+        join_settings = build_duckdb_join_settings(
+            minio=minio,
+            temp_dir=temp_path,
+        )
+        output_path = temp_path / "joined.parquet"
+
+        join_result = _execute_duckdb_join(
+            tabular_path=f"s3://{minio.lake_bucket}/{tabular_asset.s3_key}",
+            spatial_path=f"s3://{minio.lake_bucket}/{spatial_asset.s3_key}",
             left_key=left_key,
             right_key=right_key,
             how=join_config.how,
-            output_table="joined",
+            output_path=str(output_path),
+            temp_dir=temp_dir,
+            s3_settings=join_settings,
             log=context.log,
         )
 
-        # run_id already extracted from raw_manifest_json upstream
-
         dataset_id = _choose_dataset_id(validated_manifest)
-        asset_info = _export_joined_to_datalake(
-            gdal=context.resources.gdal,
-            postgis=context.resources.postgis,
+        asset_info = _export_duckdb_join_to_datalake(
             minio=context.resources.minio,
             mongodb=context.resources.mongodb,
-            schema=schema,
-            table=join_result["table"],
             manifest=validated_manifest.model_dump(mode="json"),
+            output_path=join_result["output_path"],
+            spatial_metadata_path=str(spatial_schema_path),
             crs=str(spatial_asset.crs),
             bounds_dict=join_result["bounds"],
-            geometry_type=join_result.get("geometry_type"),  # Milestone 2
+            geometry_type=join_result.get("geometry_type"),
             dataset_id=dataset_id,
             dagster_run_id=dagster_run_id,
             run_id=run_id,

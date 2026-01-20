@@ -24,7 +24,6 @@ from libs.models import (
     AssetKind,
     AssetMetadata,
     Bounds,
-    CRS,
     Manifest,
     OutputFormat,
 )
@@ -553,6 +552,97 @@ def _merge_geoparquet_metadata(
     if log is not None:
         log.info("Merged GeoParquet metadata into join output")
     return True
+
+
+def _export_duckdb_join_to_datalake(
+    *,
+    minio,
+    mongodb,
+    manifest: Dict[str, Any],
+    output_path: str,
+    spatial_metadata_path: str | None,
+    crs: str,
+    bounds_dict: dict[str, float] | None,
+    geometry_type: str | None,
+    dataset_id: str,
+    dagster_run_id: str,
+    run_id: str,
+    log,
+) -> Dict[str, Any]:
+    dataset_id = dataset_id.strip()
+    if not dataset_id:
+        raise ValueError("dataset_id must be a non-empty string")
+
+    version = mongodb.get_next_version(dataset_id)
+    s3_key = f"{dataset_id}/v{version}/data.parquet"
+    log.info(f"Export target: {s3_key}")
+
+    if spatial_metadata_path is not None:
+        _merge_geoparquet_metadata(
+            source_path=spatial_metadata_path,
+            target_path=output_path,
+            log=log,
+        )
+
+    sha256_hash = hashlib.sha256()
+    with open(output_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    content_hash = f"sha256:{sha256_hash.hexdigest()}"
+
+    minio.upload_to_lake(output_path, s3_key)
+    log.info(f"Uploaded joined output to data lake: {s3_key}")
+
+    log.info("Extracting column schema from joined GeoParquet")
+    parquet_schema = pq.read_schema(output_path)
+    column_schema = extract_column_schema(parquet_schema)
+    log.info(f"Captured column schema with {len(column_schema)} columns")
+
+    validated_manifest = Manifest(**manifest)
+    asset_metadata = AssetMetadata.from_manifest_metadata(
+        validated_manifest.metadata,
+        geometry_type=geometry_type,
+        column_schema=column_schema,
+    )
+
+    bounds = None
+    if bounds_dict is not None:
+        bounds = Bounds(
+            minx=bounds_dict["minx"],
+            miny=bounds_dict["miny"],
+            maxx=bounds_dict["maxx"],
+            maxy=bounds_dict["maxy"],
+        )
+
+    asset = Asset(
+        s3_key=s3_key,
+        dataset_id=dataset_id,
+        version=version,
+        content_hash=content_hash,
+        run_id=run_id,
+        kind=AssetKind.JOINED,
+        format=OutputFormat.GEOPARQUET,
+        crs=crs,
+        bounds=bounds,
+        metadata=asset_metadata,
+        created_at=datetime.now(timezone.utc),
+        updated_at=None,
+    )
+
+    inserted_id = mongodb.insert_asset(asset)
+    log.info(f"Registered joined asset in MongoDB: {inserted_id}")
+
+    mongodb.add_asset_to_run(dagster_run_id, inserted_id)
+    log.info(f"Linked asset to run: {dagster_run_id}")
+
+    return {
+        "asset_id": inserted_id,
+        "s3_key": s3_key,
+        "dataset_id": dataset_id,
+        "version": version,
+        "content_hash": content_hash,
+        "run_id": run_id,
+    }
 
 
 def _export_joined_to_datalake(
