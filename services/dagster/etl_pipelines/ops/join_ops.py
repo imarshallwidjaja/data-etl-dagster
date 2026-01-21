@@ -29,7 +29,7 @@ from libs.models import (
 )
 from libs.normalization import extract_column_schema
 from libs.s3_utils import s3_to_vsis3
-from services.dagster.etl_pipelines.ops.duckdb_settings import (
+from .duckdb_settings import (
     DEFAULT_DUCKDB_MEMORY_LIMIT,
     DEFAULT_DUCKDB_TEMP_SUBDIR,
     DuckDBJoinSettings,

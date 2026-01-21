@@ -10,7 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from services.dagster.etl_pipelines.resources.minio_resource import MinIOResource
+from ..resources.minio_resource import MinIOResource
 
 DUCKDB_VERSION_PIN = "1.4.0"
 DEFAULT_DUCKDB_MEMORY_LIMIT = "1GB"
