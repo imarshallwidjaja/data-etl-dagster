@@ -484,11 +484,11 @@ def _execute_duckdb_join(
         SELECT
             t.*,
             s.geom AS geom
-        FROM read_parquet('{tabular_path}') t
-        {join_clause} read_parquet('{spatial_path}') s
+        FROM read_parquet(?) t
+        {join_clause} read_parquet(?) s
         ON CAST(t."{left_key}" AS VARCHAR) = CAST(s."{right_key}" AS VARCHAR);
         """
-        con.execute(join_sql)
+        con.execute(join_sql, [tabular_path, spatial_path])
 
         row_count_row = con.execute("SELECT COUNT(*) FROM joined").fetchone()
         row_count = row_count_row[0] if row_count_row else 0
