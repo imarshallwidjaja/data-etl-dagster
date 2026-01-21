@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
+
 import hashlib
 import re
 import tempfile
@@ -28,6 +30,7 @@ from libs.models import (
     OutputFormat,
 )
 from libs.normalization import extract_column_schema
+from libs.normalization import normalize_arrow_dtype
 from libs.s3_utils import s3_to_vsis3
 from .duckdb_settings import (
     DEFAULT_DUCKDB_MEMORY_LIMIT,
@@ -504,14 +507,7 @@ def _execute_duckdb_join(
         ).fetchone()
         bounds = _parse_duckdb_extent(extent_row[0] if extent_row else None)
 
-        try:
-            con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT GEOPARQUET)")
-        except duckdb.CatalogException:
-            con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT PARQUET)")
-            if log is not None:
-                log.warning(
-                    "DuckDB GeoParquet format unavailable; wrote Parquet output instead"
-                )
+        con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT PARQUET)")
 
         return {
             "output_path": str(output_path_obj),
@@ -523,20 +519,31 @@ def _execute_duckdb_join(
         con.close()
 
 
-def _rewrite_parquet_with_metadata(
+def _rewrite_parquet_with_geo_metadata(
     *,
     input_path: str,
     output_path: str,
-    metadata: dict[bytes, bytes],
+    geo_metadata: bytes,
 ) -> None:
-    parquet_file = pq.ParquetFile(input_path)
-    schema = parquet_file.schema_arrow.with_metadata(metadata)
-    writer = pq.ParquetWriter(output_path, schema)
+    import duckdb
+
+    con = duckdb.connect(database=":memory:")
     try:
-        for batch in parquet_file.iter_batches():
-            writer.write_table(pa.Table.from_batches([batch], schema=schema))
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+        reader = con.execute(
+            "SELECT * FROM read_parquet(?)",
+            [input_path],
+        ).fetch_record_batch()
+        schema = reader.schema.with_metadata({b"geo": geo_metadata})
+        writer = pq.ParquetWriter(output_path, schema)
+        try:
+            for batch in reader:
+                writer.write_batch(batch)
+        finally:
+            writer.close()
     finally:
-        writer.close()
+        con.close()
 
 
 def _merge_geoparquet_metadata(
@@ -545,30 +552,113 @@ def _merge_geoparquet_metadata(
     target_path: str,
     log=None,
 ) -> bool:
-    source_metadata = pq.ParquetFile(source_path).metadata.metadata or {}
-    target_metadata = pq.ParquetFile(target_path).metadata.metadata or {}
-
-    if b"geo" in target_metadata:
+    try:
+        source_file = pq.ParquetFile(source_path)
+    except OSError as exc:
+        if log is not None:
+            log.warning(
+                "Skipping GeoParquet metadata merge due to Parquet read error: %s",
+                exc,
+            )
         return False
-    if b"geo" not in source_metadata:
+
+    source_metadata = source_file.metadata.metadata or {}
+    geo_metadata = source_metadata.get(b"geo")
+    if not geo_metadata:
         if log is not None:
             log.warning("GeoParquet metadata missing from spatial source")
         return False
 
-    merged_metadata = dict(target_metadata)
-    merged_metadata[b"geo"] = source_metadata[b"geo"]
-
     temp_path = f"{target_path}.tmp"
-    _rewrite_parquet_with_metadata(
+    _rewrite_parquet_with_geo_metadata(
         input_path=target_path,
         output_path=temp_path,
-        metadata=merged_metadata,
+        geo_metadata=geo_metadata,
     )
     Path(temp_path).replace(target_path)
 
     if log is not None:
         log.info("Merged GeoParquet metadata into join output")
     return True
+
+
+def _validate_geoparquet_metadata(*, parquet_path: str, log=None) -> None:
+    try:
+        parquet_file = pq.ParquetFile(parquet_path)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to read join output for GeoParquet metadata validation: {exc}"
+        ) from exc
+
+    metadata = parquet_file.metadata.metadata or {}
+    geo_bytes = metadata.get(b"geo")
+    if not geo_bytes:
+        raise RuntimeError("GeoParquet metadata missing from join output")
+
+    try:
+        geo_metadata = json.loads(geo_bytes.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Invalid GeoParquet metadata JSON") from exc
+
+    required_keys = {"primary_column", "columns", "version"}
+    missing_keys = required_keys.difference(geo_metadata.keys())
+    if missing_keys:
+        raise RuntimeError(
+            f"GeoParquet metadata missing keys: {sorted(missing_keys)}"
+        )
+
+    primary_column = geo_metadata["primary_column"]
+    if primary_column not in parquet_file.schema.names:
+        raise RuntimeError(
+            f"GeoParquet primary column '{primary_column}' not found in output schema"
+        )
+
+    columns = geo_metadata["columns"]
+    if primary_column not in columns:
+        raise RuntimeError(
+            f"GeoParquet metadata missing primary column entry: {primary_column}"
+        )
+
+    if log is not None:
+        log.info("Validated GeoParquet metadata for join output")
+
+
+def _read_parquet_schema_with_duckdb(*, parquet_path: str) -> pa.Schema:
+    import duckdb
+
+    con = duckdb.connect(database=":memory:")
+    try:
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+        arrow_table = con.execute(
+            "SELECT * FROM read_parquet(?) LIMIT 0",
+            [parquet_path],
+        ).fetch_arrow_table()
+        return arrow_table.schema
+    finally:
+        con.close()
+
+
+def _extract_column_schema_with_geom(
+    *,
+    schema: pa.Schema,
+    geom_column: str = "geom",
+) -> dict[str, Any]:
+    from libs.models import ColumnInfo
+
+    column_schema: dict[str, ColumnInfo] = {}
+    for field in schema:
+        normalized = normalize_arrow_dtype(
+            field, is_geometry_hint=field.name == geom_column
+        )
+        column_schema[field.name] = ColumnInfo(
+            title=field.name,
+            description="",
+            type_name=normalized["type_name"],
+            logical_type=normalized["logical_type"],
+            nullable=normalized["nullable"],
+        )
+    return column_schema
 
 
 def _export_duckdb_join_to_datalake(
@@ -601,6 +691,8 @@ def _export_duckdb_join_to_datalake(
             log=log,
         )
 
+    _validate_geoparquet_metadata(parquet_path=output_path, log=log)
+
     sha256_hash = hashlib.sha256()
     with open(output_path, "rb") as f:
         for chunk in iter(lambda: f.read(4096), b""):
@@ -611,8 +703,8 @@ def _export_duckdb_join_to_datalake(
     log.info(f"Uploaded joined output to data lake: {s3_key}")
 
     log.info("Extracting column schema from joined GeoParquet")
-    parquet_schema = pq.read_schema(output_path)
-    column_schema = extract_column_schema(parquet_schema)
+    parquet_schema = _read_parquet_schema_with_duckdb(parquet_path=output_path)
+    column_schema = _extract_column_schema_with_geom(schema=parquet_schema)
     log.info(f"Captured column schema with {len(column_schema)} columns")
 
     validated_manifest = Manifest(**manifest)

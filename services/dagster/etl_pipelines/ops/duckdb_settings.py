@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ..resources.minio_resource import MinIOResource
 
@@ -34,8 +35,10 @@ def build_duckdb_join_settings(
     temp_dir: Path,
     memory_limit: str = DEFAULT_DUCKDB_MEMORY_LIMIT,
 ) -> DuckDBJoinSettings:
-    scheme = "https" if minio.use_ssl else "http"
-    endpoint = f"{scheme}://{minio.endpoint}"
+    endpoint = minio.endpoint
+    if "://" in endpoint:
+        parsed = urlparse(endpoint)
+        endpoint = parsed.netloc or parsed.path
 
     return DuckDBJoinSettings(
         s3_endpoint=endpoint,
