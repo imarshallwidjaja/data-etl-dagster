@@ -350,26 +350,6 @@ class TestExecuteSpatialJoin:
         assert 't."parcel_id"::TEXT = s."parcel_id"::TEXT' in sql_call
 
 
-class TestGeoMetadataValidation:
-    def test_validate_geoparquet_metadata_success(self, tmp_path):
-        output_path = tmp_path / "geo.parquet"
-        _write_parquet_with_geo_metadata(output_path)
-
-        _validate_geoparquet_metadata(
-            parquet_path=str(output_path),
-            log=Mock(),
-        )
-
-    def test_validate_geoparquet_metadata_missing(self, tmp_path):
-        output_path = tmp_path / "no_geo.parquet"
-        pq.write_table(pa.table({"id": [1]}), output_path)
-
-        with pytest.raises(RuntimeError):
-            _validate_geoparquet_metadata(
-                parquet_path=str(output_path),
-                log=Mock(),
-            )
-
     def test_inner_join_sql(self):
         mock_postgis = Mock()
         mock_postgis.get_table_bounds.return_value = None
@@ -430,6 +410,27 @@ class TestGeoMetadataValidation:
 
         sql_call = mock_postgis.execute_sql.call_args[0][0]
         assert "FULL OUTER JOIN" in sql_call
+
+
+class TestGeoMetadataValidation:
+    def test_validate_geoparquet_metadata_success(self, tmp_path):
+        output_path = tmp_path / "geo.parquet"
+        _write_parquet_with_geo_metadata(output_path)
+
+        _validate_geoparquet_metadata(
+            parquet_path=str(output_path),
+            log=Mock(),
+        )
+
+    def test_validate_geoparquet_metadata_missing(self, tmp_path):
+        output_path = tmp_path / "no_geo.parquet"
+        pq.write_table(pa.table({"id": [1]}), output_path)
+
+        with pytest.raises(RuntimeError):
+            _validate_geoparquet_metadata(
+                parquet_path=str(output_path),
+                log=Mock(),
+            )
 
 
 class TestChooseDatasetId:
