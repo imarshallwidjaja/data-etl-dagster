@@ -28,6 +28,7 @@ from libs.models import (
 from services.dagster.etl_pipelines.ops.join_ops import (
     _choose_dataset_id,
     _execute_spatial_join,
+    _merge_geoparquet_metadata,
     _require_identifier,
     _resolve_join_assets,
     _validate_geoparquet_metadata,
@@ -133,9 +134,7 @@ def _write_parquet_with_geo_metadata(path) -> None:
         },
     }
     table = pa.table({"geom": [b"\x01"], "id": [1]})
-    table = table.replace_schema_metadata(
-        {b"geo": json.dumps(geo_metadata).encode()}
-    )
+    table = table.replace_schema_metadata({b"geo": json.dumps(geo_metadata).encode()})
     pq.write_table(table, path)
 
 
@@ -505,7 +504,9 @@ class TestDuckdbJoinHelper:
         "how, expected_row_count",
         [("inner", 1), ("right", 2), ("outer", 3)],
     )
-    def test_join_types_row_counts(self, tmp_path, monkeypatch, how, expected_row_count):
+    def test_join_types_row_counts(
+        self, tmp_path, monkeypatch, how, expected_row_count
+    ):
         helper = _require_duckdb_join_helper()
 
         tabular_path = tmp_path / f"tabular_{how}.parquet"
@@ -561,3 +562,53 @@ class TestDuckdbJoinHelper:
         )
 
         assert result["row_count"] == 0
+
+
+class TestMergeGeoparquetMetadata:
+    def test_merge_with_provided_geo_metadata_ignores_invalid_source_path(
+        self, tmp_path
+    ):
+        """When geo_metadata bytes are provided, source_path is not read."""
+        # Create a valid target parquet without geo metadata
+        duckdb = _require_duckdb()
+        con = duckdb.connect()
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+        con.execute(
+            "CREATE TABLE t AS SELECT 1 AS id, ST_GeomFromText('POINT (0 0)') AS geom"
+        )
+        target_path = tmp_path / "target.parquet"
+        con.execute(f"COPY t TO '{target_path}' (FORMAT PARQUET)")
+        con.close()
+
+        # Build valid geo metadata bytes
+        geo_metadata = json.dumps(
+            {
+                "version": "1.0.0",
+                "primary_column": "geom",
+                "columns": {
+                    "geom": {
+                        "encoding": "WKB",
+                        "geometry_types": ["Point"],
+                        "crs": None,
+                    }
+                },
+            }
+        ).encode()
+
+        # Use invalid source_path - should not fail because geo_metadata is provided
+        result = _merge_geoparquet_metadata(
+            source_path="/nonexistent/invalid/path.parquet",
+            target_path=str(target_path),
+            geo_metadata=geo_metadata,
+            log=Mock(),
+        )
+
+        assert result is True
+
+        # Verify geo metadata was written to target
+        merged_file = pq.ParquetFile(target_path)
+        merged_metadata = merged_file.metadata.metadata or {}
+        assert b"geo" in merged_metadata
+        parsed = json.loads(merged_metadata[b"geo"].decode())
+        assert parsed["primary_column"] == "geom"
