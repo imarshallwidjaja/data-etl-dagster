@@ -7,7 +7,7 @@ This test validates the join offline-first ETL loop:
 4. Verify joined GeoParquet exists in data-lake
 5. Verify MongoDB joined asset record exists
 6. Verify MongoDB lineage edge exists (spatial parent -> joined)
-7. Verify PostGIS ephemeral schema is cleaned up
+7. Verify MongoDB lineage edge exists (tabular parent -> joined)
 """
 
 from __future__ import annotations
@@ -19,8 +19,6 @@ from uuid import uuid4
 
 import pytest
 from bson import ObjectId
-
-from libs.spatial_utils import RunIdSchemaMapping
 
 from .helpers import (
     add_dynamic_partition,
@@ -113,25 +111,6 @@ def _launch_job_with_run_config(
     return launch_response["run"]["runId"]
 
 
-def _assert_postgis_schema_cleaned(postgis_connection, run_id: str) -> None:
-    schema_mapping = RunIdSchemaMapping.from_run_id(run_id)
-    schema_name = schema_mapping.schema_name
-
-    with postgis_connection.cursor() as cur:
-        cur.execute(
-            """
-            SELECT schema_name
-            FROM information_schema.schemata
-            WHERE schema_name = %s
-            """,
-            (schema_name,),
-        )
-        result = cur.fetchone()
-        assert result is None, (
-            f"PostGIS schema {schema_name} still exists after job completion (should be cleaned up)"
-        )
-
-
 class TestJoinAssetE2E:
     def test_join_asset_job_full_pipeline(
         self,
@@ -140,7 +119,6 @@ class TestJoinAssetE2E:
         minio_settings,
         mongo_client,
         mongo_settings,
-        postgis_connection,
     ):
         batch_id = f"e2e_join_{uuid4().hex[:12]}"
         spatial_partition_key = f"spatial_{batch_id}"
@@ -357,9 +335,6 @@ class TestJoinAssetE2E:
             )
             assert tabular_lineage is not None, "Tabular parent lineage not found"
             assert tabular_lineage["transformation"] == "spatial_join"
-
-            # 6) Verify PostGIS cleanup
-            _assert_postgis_schema_cleaned(postgis_connection, join_run_id)
 
         except BaseException as e:
             test_error = e

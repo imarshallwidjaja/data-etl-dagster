@@ -11,6 +11,8 @@ This is the **Dagster code location** — the heart of the ETL platform. Contain
 - **Register everything in `definitions.py`**: new assets/jobs/sensors/resources MUST be added here
 - **Assets use dynamic partitions**: all ingestion assets partitioned by `dataset_id`
 - **PostGIS is transient**: ops MUST clean up ephemeral schemas (use `ephemeral_schema` context manager)
+- **Join asset uses DuckDB**: `joined_spatial_asset` runs joins in DuckDB (httpfs + spatial) and does not require PostGIS/GDAL
+- **GeoParquet metadata is enforced**: join outputs must include `geo` JSON metadata; join ops merge from spatial parent and validate output
 - **Sensors are one-shot**: cursor tracks processed manifests; no auto-retry on failure
 - **Audit Logging**: Runs are tagged with `operator` and lifecycle events are logged to the `activity_logs` collection.
 
@@ -53,6 +55,7 @@ etl_pipelines/
 │   ├── export_op.py        # _export_to_datalake
 │   ├── tabular_ops.py      # CSV→Parquet pipeline
 │   ├── join_ops.py         # Spatial+tabular join logic
+│   ├── duckdb_settings.py  # DuckDB join settings (httpfs/spatial)
 │   ├── cleanup_op.py       # Schema cleanup
 │   └── common_ops.py       # Shared utilities
 ├── sensors/            # Manifest detection & routing
@@ -115,6 +118,10 @@ etl_pipelines/
 | `postgis` | `ephemeral_schema()`, `execute_sql`, `get_table_bounds` | `EnvVar("POSTGRES_*")` |
 | `gdal` | `ogr2ogr()`, `gdal_translate()` | `EnvVar("MINIO_*")` |
 
+DuckDB join notes:
+- Canonical join output is `COPY ... (FORMAT PARQUET)` with `spatial` loaded; GeoParquet metadata is injected and validated post-write.
+- `MINIO_ENDPOINT` should be host:port (no scheme). DuckDB settings normalize this if a scheme is present.
+
 ## How to work here
 
 - **Add a new asset**:
@@ -149,6 +156,7 @@ etl_pipelines/
 
 - **Skip registration**: every asset/job/sensor MUST be in `definitions.py`
 - **Store in PostGIS**: transient only; drop schemas after export
+- **Skip GeoParquet validation**: joined outputs must pass `_validate_geoparquet_metadata`
 - **Forget cleanup**: use `ephemeral_schema()` context manager or `try/finally`
 - **Hardcode partition keys**: always use `extract_partition_key()`
 - **Yield RunRequest without partition**: register partition first

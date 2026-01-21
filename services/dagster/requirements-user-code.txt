@@ -31,6 +31,9 @@ pyarrow==14.0.2
 shapely==2.0.3
 pyproj==3.6.1
 
+# DuckDB
+duckdb==1.4.0
+
 # Utilities
 python-dotenv==1.0.1
 structlog==23.3.0
@@ -38,4 +41,3 @@ structlog==23.3.0
 # Natural language processing (for tabular header normalization)
 # Note: After installation, run: python -c "import nltk; nltk.download('stopwords')"
 nltk>=3.8.0
-

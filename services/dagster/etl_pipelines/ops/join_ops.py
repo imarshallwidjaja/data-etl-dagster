@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import json
+
 import hashlib
 import re
 import tempfile
@@ -24,12 +26,17 @@ from libs.models import (
     AssetKind,
     AssetMetadata,
     Bounds,
-    CRS,
     Manifest,
     OutputFormat,
 )
 from libs.normalization import extract_column_schema
+from libs.normalization import normalize_arrow_dtype
 from libs.s3_utils import s3_to_vsis3
+from .duckdb_settings import (
+    DEFAULT_DUCKDB_MEMORY_LIMIT,
+    DEFAULT_DUCKDB_TEMP_SUBDIR,
+    DuckDBJoinSettings,
+)
 
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -367,6 +374,392 @@ def _execute_spatial_join(
     }
 
 
+def _parse_duckdb_extent(extent_value: Any) -> dict[str, float] | None:
+    if extent_value is None:
+        return None
+
+    if isinstance(extent_value, dict):
+        if "minx" in extent_value:
+            return {
+                "minx": float(extent_value["minx"]),
+                "miny": float(extent_value["miny"]),
+                "maxx": float(extent_value["maxx"]),
+                "maxy": float(extent_value["maxy"]),
+            }
+        if "min_x" in extent_value:
+            return {
+                "minx": float(extent_value["min_x"]),
+                "miny": float(extent_value["min_y"]),
+                "maxx": float(extent_value["max_x"]),
+                "maxy": float(extent_value["max_y"]),
+            }
+        return None
+
+    for attribute in ("minx", "miny", "maxx", "maxy"):
+        if not hasattr(extent_value, attribute):
+            break
+    else:
+        return {
+            "minx": float(extent_value.minx),
+            "miny": float(extent_value.miny),
+            "maxx": float(extent_value.maxx),
+            "maxy": float(extent_value.maxy),
+        }
+
+    match = re.match(
+        r"BOX\(([-0-9.eE]+) ([-0-9.eE]+),([-0-9.eE]+) ([-0-9.eE]+)\)",
+        str(extent_value),
+    )
+    if match is None:
+        return None
+
+    minx, miny, maxx, maxy = map(float, match.groups())
+    return {"minx": minx, "miny": miny, "maxx": maxx, "maxy": maxy}
+
+
+def _execute_duckdb_join(
+    *,
+    tabular_path: str,
+    spatial_path: str,
+    left_key: str,
+    right_key: str,
+    how: Literal["left", "inner", "right", "outer"],
+    output_path: str,
+    temp_dir: str,
+    memory_limit: str | None = None,
+    s3_settings: DuckDBJoinSettings | None = None,
+    log=None,
+) -> Dict[str, Any]:
+    """
+    Execute a DuckDB join between tabular and spatial Parquet sources.
+
+    Uses t.* from the tabular source plus s.geom from the spatial source to
+    standardize geometry output.
+    """
+
+    _require_identifier(left_key, label="left_key")
+    _require_identifier(right_key, label="right_key")
+
+    join_type_map = {
+        "left": "LEFT JOIN",
+        "inner": "INNER JOIN",
+        "right": "RIGHT JOIN",
+        "outer": "FULL OUTER JOIN",
+    }
+    join_clause = join_type_map[how]
+
+    temp_dir_path = Path(temp_dir) / DEFAULT_DUCKDB_TEMP_SUBDIR
+    temp_dir_path.mkdir(parents=True, exist_ok=True)
+    output_path_obj = Path(output_path)
+    output_path_obj.parent.mkdir(parents=True, exist_ok=True)
+
+    memory_limit_value = memory_limit or DEFAULT_DUCKDB_MEMORY_LIMIT
+
+    import duckdb
+
+    con = duckdb.connect(database=":memory:")
+    try:
+        con.execute("INSTALL httpfs;")
+        con.execute("LOAD httpfs;")
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+
+        con.execute(f"PRAGMA temp_directory='{temp_dir_path}';")
+        con.execute(f"PRAGMA memory_limit='{memory_limit_value}';")
+
+        if s3_settings is not None:
+            con.execute(f"SET s3_endpoint='{s3_settings.s3_endpoint}';")
+            con.execute(f"SET s3_access_key_id='{s3_settings.s3_access_key_id}';")
+            con.execute(
+                f"SET s3_secret_access_key='{s3_settings.s3_secret_access_key}';"
+            )
+            con.execute(f"SET s3_url_style='{s3_settings.s3_url_style}';")
+            con.execute(f"SET s3_use_ssl={str(s3_settings.s3_use_ssl).lower()};")
+
+        if log is not None:
+            log.info("Executing DuckDB join for join_asset")
+
+        join_sql = f"""
+        CREATE OR REPLACE TABLE joined AS
+        SELECT
+            t.*,
+            s.geom AS geom
+        FROM read_parquet(?) t
+        {join_clause} read_parquet(?) s
+        ON CAST(t."{left_key}" AS VARCHAR) = CAST(s."{right_key}" AS VARCHAR);
+        """
+        con.execute(join_sql, [tabular_path, spatial_path])
+
+        row_count_row = con.execute("SELECT COUNT(*) FROM joined").fetchone()
+        row_count = row_count_row[0] if row_count_row else 0
+
+        geometry_row = con.execute(
+            "SELECT ST_GeometryType(geom) FROM joined WHERE geom IS NOT NULL LIMIT 1"
+        ).fetchone()
+        geometry_type = "UNKNOWN"
+        if geometry_row and geometry_row[0]:
+            geometry_type = geometry_row[0]
+
+        extent_row = con.execute(
+            "SELECT ST_Extent(geom) FROM joined WHERE geom IS NOT NULL"
+        ).fetchone()
+        bounds = _parse_duckdb_extent(extent_row[0] if extent_row else None)
+
+        con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT PARQUET)")
+
+        return {
+            "output_path": str(output_path_obj),
+            "row_count": row_count,
+            "bounds": bounds,
+            "geometry_type": geometry_type,
+        }
+    finally:
+        con.close()
+
+
+def _rewrite_parquet_with_geo_metadata(
+    *,
+    input_path: str,
+    output_path: str,
+    geo_metadata: bytes,
+) -> None:
+    import duckdb
+
+    con = duckdb.connect(database=":memory:")
+    try:
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+        reader = con.execute(
+            "SELECT * FROM read_parquet(?)",
+            [input_path],
+        ).fetch_record_batch()
+        schema = reader.schema.with_metadata({b"geo": geo_metadata})
+        writer = pq.ParquetWriter(output_path, schema)
+        try:
+            for batch in reader:
+                writer.write_batch(batch)
+        finally:
+            writer.close()
+    finally:
+        con.close()
+
+
+def _merge_geoparquet_metadata(
+    *,
+    source_path: str | None,
+    target_path: str,
+    geo_metadata: bytes | None = None,
+    log=None,
+) -> bool:
+    # Use provided geo_metadata bytes if available, otherwise read from source_path
+    if geo_metadata is None:
+        if not source_path:
+            if log is not None:
+                log.warning("GeoParquet metadata source path not provided")
+            return False
+        try:
+            source_file = pq.ParquetFile(source_path)
+        except OSError as exc:
+            if log is not None:
+                log.warning(
+                    "Skipping GeoParquet metadata merge due to Parquet read error: %s",
+                    exc,
+                )
+            return False
+
+        source_metadata = source_file.metadata.metadata or {}
+        geo_metadata = source_metadata.get(b"geo")
+
+    if not geo_metadata:
+        if log is not None:
+            log.warning("GeoParquet metadata missing from spatial source")
+        return False
+
+    temp_path = f"{target_path}.tmp"
+    _rewrite_parquet_with_geo_metadata(
+        input_path=target_path,
+        output_path=temp_path,
+        geo_metadata=geo_metadata,
+    )
+    Path(temp_path).replace(target_path)
+
+    if log is not None:
+        log.info("Merged GeoParquet metadata into join output")
+    return True
+
+
+def _validate_geoparquet_metadata(*, parquet_path: str, log=None) -> None:
+    try:
+        parquet_file = pq.ParquetFile(parquet_path)
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to read join output for GeoParquet metadata validation: {exc}"
+        ) from exc
+
+    metadata = parquet_file.metadata.metadata or {}
+    geo_bytes = metadata.get(b"geo")
+    if not geo_bytes:
+        raise RuntimeError("GeoParquet metadata missing from join output")
+
+    try:
+        geo_metadata = json.loads(geo_bytes.decode())
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise RuntimeError("Invalid GeoParquet metadata JSON") from exc
+
+    required_keys = {"primary_column", "columns", "version"}
+    missing_keys = required_keys.difference(geo_metadata.keys())
+    if missing_keys:
+        raise RuntimeError(f"GeoParquet metadata missing keys: {sorted(missing_keys)}")
+
+    primary_column = geo_metadata["primary_column"]
+    if primary_column not in parquet_file.schema.names:
+        raise RuntimeError(
+            f"GeoParquet primary column '{primary_column}' not found in output schema"
+        )
+
+    columns = geo_metadata["columns"]
+    if primary_column not in columns:
+        raise RuntimeError(
+            f"GeoParquet metadata missing primary column entry: {primary_column}"
+        )
+
+    if log is not None:
+        log.info("Validated GeoParquet metadata for join output")
+
+
+def _read_parquet_schema_with_duckdb(*, parquet_path: str) -> pa.Schema:
+    import duckdb
+
+    con = duckdb.connect(database=":memory:")
+    try:
+        con.execute("INSTALL spatial;")
+        con.execute("LOAD spatial;")
+        arrow_table = con.execute(
+            "SELECT * FROM read_parquet(?) LIMIT 0",
+            [parquet_path],
+        ).fetch_arrow_table()
+        return arrow_table.schema
+    finally:
+        con.close()
+
+
+def _extract_column_schema_with_geom(
+    *,
+    schema: pa.Schema,
+    geom_column: str = "geom",
+) -> dict[str, Any]:
+    from libs.models import ColumnInfo
+
+    column_schema: dict[str, ColumnInfo] = {}
+    for field in schema:
+        normalized = normalize_arrow_dtype(
+            field, is_geometry_hint=field.name == geom_column
+        )
+        column_schema[field.name] = ColumnInfo(
+            title=field.name,
+            description="",
+            type_name=normalized["type_name"],
+            logical_type=normalized["logical_type"],
+            nullable=normalized["nullable"],
+        )
+    return column_schema
+
+
+def _export_duckdb_join_to_datalake(
+    *,
+    minio,
+    mongodb,
+    manifest: Dict[str, Any],
+    output_path: str,
+    spatial_metadata_path: str | None,
+    crs: str,
+    bounds_dict: dict[str, float] | None,
+    geometry_type: str | None,
+    dataset_id: str,
+    dagster_run_id: str,
+    run_id: str,
+    log,
+    geo_metadata: bytes | None = None,
+) -> Dict[str, Any]:
+    dataset_id = dataset_id.strip()
+    if not dataset_id:
+        raise ValueError("dataset_id must be a non-empty string")
+
+    version = mongodb.get_next_version(dataset_id)
+    s3_key = f"{dataset_id}/v{version}/data.parquet"
+    log.info(f"Export target: {s3_key}")
+
+    if spatial_metadata_path is not None or geo_metadata is not None:
+        _merge_geoparquet_metadata(
+            source_path=spatial_metadata_path,
+            target_path=output_path,
+            geo_metadata=geo_metadata,
+            log=log,
+        )
+
+    _validate_geoparquet_metadata(parquet_path=output_path, log=log)
+
+    sha256_hash = hashlib.sha256()
+    with open(output_path, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    content_hash = f"sha256:{sha256_hash.hexdigest()}"
+
+    minio.upload_to_lake(output_path, s3_key)
+    log.info(f"Uploaded joined output to data lake: {s3_key}")
+
+    log.info("Extracting column schema from joined GeoParquet")
+    parquet_schema = _read_parquet_schema_with_duckdb(parquet_path=output_path)
+    column_schema = _extract_column_schema_with_geom(schema=parquet_schema)
+    log.info(f"Captured column schema with {len(column_schema)} columns")
+
+    validated_manifest = Manifest(**manifest)
+    asset_metadata = AssetMetadata.from_manifest_metadata(
+        validated_manifest.metadata,
+        geometry_type=geometry_type,
+        column_schema=column_schema,
+    )
+
+    bounds = None
+    if bounds_dict is not None:
+        bounds = Bounds(
+            minx=bounds_dict["minx"],
+            miny=bounds_dict["miny"],
+            maxx=bounds_dict["maxx"],
+            maxy=bounds_dict["maxy"],
+        )
+
+    asset = Asset(
+        s3_key=s3_key,
+        dataset_id=dataset_id,
+        version=version,
+        content_hash=content_hash,
+        run_id=run_id,
+        kind=AssetKind.JOINED,
+        format=OutputFormat.GEOPARQUET,
+        crs=crs,
+        bounds=bounds,
+        metadata=asset_metadata,
+        created_at=datetime.now(timezone.utc),
+        updated_at=None,
+    )
+
+    inserted_id = mongodb.insert_asset(asset)
+    log.info(f"Registered joined asset in MongoDB: {inserted_id}")
+
+    mongodb.add_asset_to_run(dagster_run_id, inserted_id)
+    log.info(f"Linked asset to run: {dagster_run_id}")
+
+    return {
+        "asset_id": inserted_id,
+        "s3_key": s3_key,
+        "dataset_id": dataset_id,
+        "version": version,
+        "content_hash": content_hash,
+        "run_id": run_id,
+    }
+
+
 def _export_joined_to_datalake(
     *,
     gdal,
@@ -461,7 +854,7 @@ def _export_joined_to_datalake(
             run_id=run_id,
             kind=AssetKind.JOINED,
             format=OutputFormat.GEOPARQUET,
-            crs=CRS(crs),
+            crs=crs,
             bounds=bounds,
             metadata=asset_metadata,
             created_at=datetime.now(timezone.utc),
