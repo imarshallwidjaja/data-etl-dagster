@@ -469,9 +469,7 @@ def _execute_duckdb_join(
 
         if s3_settings is not None:
             con.execute(f"SET s3_endpoint='{s3_settings.s3_endpoint}';")
-            con.execute(
-                f"SET s3_access_key_id='{s3_settings.s3_access_key_id}';"
-            )
+            con.execute(f"SET s3_access_key_id='{s3_settings.s3_access_key_id}';")
             con.execute(
                 f"SET s3_secret_access_key='{s3_settings.s3_secret_access_key}';"
             )
@@ -548,22 +546,30 @@ def _rewrite_parquet_with_geo_metadata(
 
 def _merge_geoparquet_metadata(
     *,
-    source_path: str,
+    source_path: str | None,
     target_path: str,
+    geo_metadata: bytes | None = None,
     log=None,
 ) -> bool:
-    try:
-        source_file = pq.ParquetFile(source_path)
-    except OSError as exc:
-        if log is not None:
-            log.warning(
-                "Skipping GeoParquet metadata merge due to Parquet read error: %s",
-                exc,
-            )
-        return False
+    # Use provided geo_metadata bytes if available, otherwise read from source_path
+    if geo_metadata is None:
+        if not source_path:
+            if log is not None:
+                log.warning("GeoParquet metadata source path not provided")
+            return False
+        try:
+            source_file = pq.ParquetFile(source_path)
+        except OSError as exc:
+            if log is not None:
+                log.warning(
+                    "Skipping GeoParquet metadata merge due to Parquet read error: %s",
+                    exc,
+                )
+            return False
 
-    source_metadata = source_file.metadata.metadata or {}
-    geo_metadata = source_metadata.get(b"geo")
+        source_metadata = source_file.metadata.metadata or {}
+        geo_metadata = source_metadata.get(b"geo")
+
     if not geo_metadata:
         if log is not None:
             log.warning("GeoParquet metadata missing from spatial source")
@@ -603,9 +609,7 @@ def _validate_geoparquet_metadata(*, parquet_path: str, log=None) -> None:
     required_keys = {"primary_column", "columns", "version"}
     missing_keys = required_keys.difference(geo_metadata.keys())
     if missing_keys:
-        raise RuntimeError(
-            f"GeoParquet metadata missing keys: {sorted(missing_keys)}"
-        )
+        raise RuntimeError(f"GeoParquet metadata missing keys: {sorted(missing_keys)}")
 
     primary_column = geo_metadata["primary_column"]
     if primary_column not in parquet_file.schema.names:
@@ -675,6 +679,7 @@ def _export_duckdb_join_to_datalake(
     dagster_run_id: str,
     run_id: str,
     log,
+    geo_metadata: bytes | None = None,
 ) -> Dict[str, Any]:
     dataset_id = dataset_id.strip()
     if not dataset_id:
@@ -684,10 +689,11 @@ def _export_duckdb_join_to_datalake(
     s3_key = f"{dataset_id}/v{version}/data.parquet"
     log.info(f"Export target: {s3_key}")
 
-    if spatial_metadata_path is not None:
+    if spatial_metadata_path is not None or geo_metadata is not None:
         _merge_geoparquet_metadata(
             source_path=spatial_metadata_path,
             target_path=output_path,
+            geo_metadata=geo_metadata,
             log=log,
         )
 

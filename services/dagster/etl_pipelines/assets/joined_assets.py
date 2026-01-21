@@ -100,6 +100,9 @@ def joined_spatial_asset(
                 f"'{right_key}' not found in spatial asset columns: {spatial_schema.names}"
             )
 
+        # Extract geo metadata bytes from spatial schema to avoid re-reading
+        spatial_geo_metadata = (spatial_schema.metadata or {}).get(b"geo")
+
         join_settings = build_duckdb_join_settings(
             minio=minio,
             temp_dir=temp_path,
@@ -132,6 +135,7 @@ def joined_spatial_asset(
             dagster_run_id=dagster_run_id,
             run_id=run_id,
             log=context.log,
+            geo_metadata=spatial_geo_metadata,
         )
 
     joined_asset_id = asset_info["asset_id"]
