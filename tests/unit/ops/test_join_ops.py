@@ -8,6 +8,7 @@ These tests must not require Docker.
 from __future__ import annotations
 
 import builtins
+import json
 from datetime import datetime, timezone
 from unittest.mock import Mock
 
@@ -29,6 +30,7 @@ from services.dagster.etl_pipelines.ops.join_ops import (
     _execute_spatial_join,
     _require_identifier,
     _resolve_join_assets,
+    _validate_geoparquet_metadata,
 )
 
 
@@ -116,6 +118,25 @@ def _write_spatial_geoparquet(path, rows, *, key_name: str = "parcel_id") -> Non
     )
     con.execute(f"COPY spatial TO '{path}' (FORMAT PARQUET)")
     con.close()
+
+
+def _write_parquet_with_geo_metadata(path) -> None:
+    geo_metadata = {
+        "version": "1.0.0",
+        "primary_column": "geom",
+        "columns": {
+            "geom": {
+                "encoding": "WKB",
+                "geometry_types": ["Point"],
+                "crs": None,
+            }
+        },
+    }
+    table = pa.table({"geom": [b"\x01"], "id": [1]})
+    table = table.replace_schema_metadata(
+        {b"geo": json.dumps(geo_metadata).encode()}
+    )
+    pq.write_table(table, path)
 
 
 def make_spatial_asset() -> Asset:
@@ -328,6 +349,27 @@ class TestExecuteSpatialJoin:
         sql_call = mock_postgis.execute_sql.call_args[0][0]
         assert "LEFT JOIN" in sql_call
         assert 't."parcel_id"::TEXT = s."parcel_id"::TEXT' in sql_call
+
+
+class TestGeoMetadataValidation:
+    def test_validate_geoparquet_metadata_success(self, tmp_path):
+        output_path = tmp_path / "geo.parquet"
+        _write_parquet_with_geo_metadata(output_path)
+
+        _validate_geoparquet_metadata(
+            parquet_path=str(output_path),
+            log=Mock(),
+        )
+
+    def test_validate_geoparquet_metadata_missing(self, tmp_path):
+        output_path = tmp_path / "no_geo.parquet"
+        pq.write_table(pa.table({"id": [1]}), output_path)
+
+        with pytest.raises(RuntimeError):
+            _validate_geoparquet_metadata(
+                parquet_path=str(output_path),
+                log=Mock(),
+            )
 
     def test_inner_join_sql(self):
         mock_postgis = Mock()
