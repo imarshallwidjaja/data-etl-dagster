@@ -22,6 +22,10 @@ from libs.spatial_utils import RunIdSchemaMapping
 from .helpers import (
     assert_datalake_object_exists,
     assert_mongodb_asset_exists,
+    build_test_run_tags,
+    cleanup_mongodb_activity_logs,
+    cleanup_mongodb_manifest,
+    cleanup_mongodb_run,
     cleanup_minio_object,
     format_error_details,
     poll_run_to_completion,
@@ -53,6 +57,7 @@ def _launch_ingest_job(dagster_client, manifest: dict) -> str:
         $repositoryName: String!
         $jobName: String!
         $runConfigData: RunConfigData
+        $executionMetadata: ExecutionMetadata
     ) {
         launchRun(
             executionParams: {
@@ -62,6 +67,7 @@ def _launch_ingest_job(dagster_client, manifest: dict) -> str:
                     pipelineName: $jobName
                 }
                 runConfigData: $runConfigData
+                executionMetadata: $executionMetadata
             }
         ) {
             ... on LaunchRunSuccess {
@@ -91,6 +97,12 @@ def _launch_ingest_job(dagster_client, manifest: dict) -> str:
         "jobName": "ingest_job",
         "runConfigData": {
             "ops": {"load_to_postgis": {"inputs": {"manifest": {"value": manifest}}}}
+        },
+        "executionMetadata": {
+            "tags": build_test_run_tags(
+                batch_id=manifest.get("batch_id"),
+                test_run_id=str(manifest.get("batch_id")),
+            )
         },
     }
 
@@ -135,9 +147,16 @@ def _cleanup(
     mongo_client,
     mongo_settings,
     landing_key: str,
+    batch_id: str,
+    run_id: str | None,
     asset_doc: Optional[dict],
 ) -> None:
     cleanup_minio_object(minio_client, minio_settings.landing_bucket, landing_key)
+
+    cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
+    if run_id:
+        cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
+        cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
     if asset_doc is None:
         return
@@ -223,6 +242,8 @@ class TestIngestJobE2E:
                 mongo_client,
                 mongo_settings,
                 object_key,
+                batch_id,
+                run_id,
                 asset_doc,
             )
 

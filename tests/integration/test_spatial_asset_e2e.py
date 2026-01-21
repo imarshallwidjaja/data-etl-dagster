@@ -24,7 +24,11 @@ from .helpers import (
     add_dynamic_partition,
     assert_datalake_object_exists,
     assert_parquet_valid,
+    build_test_run_tags,
     cleanup_dynamic_partitions,
+    cleanup_mongodb_activity_logs,
+    cleanup_mongodb_manifest,
+    cleanup_mongodb_run,
     cleanup_minio_object,
     format_error_details,
     poll_run_to_completion,
@@ -85,7 +89,11 @@ def _launch_spatial_asset_job(
             "ops": {"raw_manifest_json": {"config": {"manifest": manifest}}}
         },
         "executionMetadata": {
-            "tags": [{"key": "dagster/partition", "value": partition_key}]
+            "tags": build_test_run_tags(
+                partition_key=partition_key,
+                batch_id=manifest.get("batch_id"),
+                test_run_id=str(manifest.get("batch_id")),
+            )
         },
     }
     result = dagster_client.query(launch_query, variables=variables, timeout=10)
@@ -119,7 +127,7 @@ class TestSpatialAssetE2E:
         minio_landing_bucket,
         minio_lake_bucket,
         mongo_client,
-        mongo_database_name,
+        mongo_settings,
         postgis_connection,
     ):
         batch_id = f"e2e_spatial_asset_{uuid4().hex[:12]}"
@@ -165,9 +173,7 @@ class TestSpatialAssetE2E:
                     f"spatial_asset_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            asset_doc = assert_mongodb_asset_exists(
-                mongo_client, mongo_database_name, run_id
-            )
+            asset_doc = assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
             assert asset_doc.get("kind") == "spatial", (
                 f"Expected kind=spatial, got {asset_doc.get('kind')}"
             )
@@ -221,9 +227,12 @@ class TestSpatialAssetE2E:
                 cleanup_minio_object(
                     minio_client, minio_lake_bucket, asset_doc.get("s3_key", "")
                 )
-                cleanup_mongodb_asset_by_id(
-                    mongo_client, mongo_database_name, asset_doc
-                )
+                cleanup_mongodb_asset_by_id(mongo_client, mongo_settings, asset_doc)
+
+            cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
+            if run_id:
+                cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
+                cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
             cleanup_dynamic_partitions(
                 dagster_client, created_partitions, original_error=test_error
@@ -231,21 +240,19 @@ class TestSpatialAssetE2E:
 
 
 def cleanup_mongodb_asset_by_id(
-    mongo_client, mongo_database_name: str, asset_doc: dict | None
+    mongo_client, mongo_settings, asset_doc: dict | None
 ) -> None:
     if asset_doc is None:
         return
     try:
-        db = mongo_client[mongo_database_name]
+        db = mongo_client[mongo_settings.database]
         db["assets"].delete_one({"_id": asset_doc["_id"]})
     except Exception:
         pass
 
 
-def assert_mongodb_asset_exists(
-    mongo_client, mongo_database_name: str, dagster_run_id: str
-) -> dict:
-    db = mongo_client[mongo_database_name]
+def assert_mongodb_asset_exists(mongo_client, mongo_settings, dagster_run_id: str) -> dict:
+    db = mongo_client[mongo_settings.database]
     run_doc = db["runs"].find_one({"dagster_run_id": dagster_run_id})
     assert run_doc is not None, (
         f"No run document found in MongoDB for dagster_run_id: {dagster_run_id}"

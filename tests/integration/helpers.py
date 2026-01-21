@@ -12,6 +12,7 @@ This module consolidates common patterns used across E2E tests:
 
 from __future__ import annotations
 
+import os
 import time
 from io import BytesIO
 from typing import TYPE_CHECKING, Callable, Mapping
@@ -97,6 +98,32 @@ def wait_for_graphql_ready(
         f"Dagster GraphQL did not become ready within {timeout}s. "
         f"Last error: {last_error}"
     )
+
+
+def build_test_run_tags(
+    *,
+    partition_key: str | None = None,
+    batch_id: str | None = None,
+    manifest_key: str | None = None,
+    test_run_id: str | None = None,
+    source: str = "integration-test",
+) -> list[dict[str, str]]:
+    tags: list[dict[str, str]] = [
+        {"key": "testing", "value": "true"},
+        {"key": "source", "value": source},
+        {"key": "operator", "value": "integration-test"},
+    ]
+
+    if test_run_id:
+        tags.append({"key": "test_run_id", "value": test_run_id})
+    if batch_id:
+        tags.append({"key": "batch_id", "value": batch_id})
+    if manifest_key:
+        tags.append({"key": "manifest_key", "value": manifest_key})
+    if partition_key:
+        tags.append({"key": "dagster/partition", "value": partition_key})
+
+    return tags
 
 
 # =============================================================================
@@ -678,6 +705,24 @@ def cleanup_minio_object(
         pass
 
 
+def cleanup_minio_manifest(
+    minio_client: "Minio",
+    minio_settings: "MinIOSettings",
+    manifest_key: str,
+) -> None:
+    """Remove manifest and archived manifest objects (best-effort)."""
+    cleanup_minio_object(minio_client, minio_settings.landing_bucket, manifest_key)
+    cleanup_minio_object(
+        minio_client,
+        minio_settings.landing_bucket,
+        f"archive/{manifest_key}",
+    )
+
+
+def _preserve_test_runs() -> bool:
+    return os.getenv("PRESERVE_TEST_RUNS", "").lower() in {"1", "true", "yes"}
+
+
 def cleanup_mongodb_asset(
     mongo_client: "MongoClient[JsonDict]",
     mongo_settings: "MongoSettings",
@@ -699,9 +744,65 @@ def cleanup_mongodb_run(
     dagster_run_id: str,
 ) -> None:
     """Remove run document from MongoDB (best-effort)."""
+    if _preserve_test_runs():
+        return
     try:
         db = mongo_client[mongo_settings.database]
         db["runs"].delete_one({"dagster_run_id": dagster_run_id})
+    except Exception:
+        pass
+
+
+def cleanup_mongodb_runs_by_batch_id(
+    mongo_client: "MongoClient[JsonDict]",
+    mongo_settings: "MongoSettings",
+    batch_id: str,
+) -> None:
+    """Remove run documents for a batch_id (best-effort)."""
+    if _preserve_test_runs():
+        return
+    try:
+        db = mongo_client[mongo_settings.database]
+        run_docs = list(
+            db["runs"].find({"batch_id": batch_id}, {"dagster_run_id": 1})
+        )
+        for run_doc in run_docs:
+            dagster_run_id = run_doc.get("dagster_run_id")
+            if isinstance(dagster_run_id, str):
+                cleanup_mongodb_activity_logs(
+                    mongo_client, mongo_settings, dagster_run_id
+                )
+        db["runs"].delete_many({"batch_id": batch_id})
+    except Exception:
+        pass
+
+
+def cleanup_mongodb_manifest(
+    mongo_client: "MongoClient[JsonDict]",
+    mongo_settings: "MongoSettings",
+    batch_id: str,
+) -> None:
+    """Remove manifest document for a batch_id (best-effort)."""
+    try:
+        db = mongo_client[mongo_settings.database]
+        db["manifests"].delete_one({"batch_id": batch_id})
+    except Exception:
+        pass
+
+
+def cleanup_mongodb_activity_logs(
+    mongo_client: "MongoClient[JsonDict]",
+    mongo_settings: "MongoSettings",
+    dagster_run_id: str,
+) -> None:
+    """Remove activity logs for a run_id (best-effort)."""
+    if _preserve_test_runs():
+        return
+    try:
+        db = mongo_client[mongo_settings.database]
+        db["activity_logs"].delete_many(
+            {"resource_type": "run", "resource_id": dagster_run_id}
+        )
     except Exception:
         pass
 

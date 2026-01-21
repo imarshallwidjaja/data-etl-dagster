@@ -24,10 +24,14 @@ from .helpers import (
     add_dynamic_partition,
     assert_datalake_object_exists,
     assert_mongodb_asset_exists,
+    build_test_run_tags,
     cleanup_dynamic_partitions,
     cleanup_minio_object,
     cleanup_mongodb_asset,
+    cleanup_mongodb_activity_logs,
     cleanup_mongodb_lineage,
+    cleanup_mongodb_manifest,
+    cleanup_mongodb_run,
     format_error_details,
     poll_run_to_completion,
     upload_bytes_to_minio,
@@ -60,7 +64,13 @@ def _load_join_manifest_template() -> dict:
 
 
 def _launch_job_with_run_config(
-    dagster_client, *, job_name: str, run_config: dict, partition_key: str | None = None
+    dagster_client,
+    *,
+    job_name: str,
+    run_config: dict,
+    partition_key: str | None = None,
+    batch_id: str | None = None,
+    test_run_id: str | None = None,
 ) -> str:
     launch_query = """
     mutation LaunchRun(
@@ -89,11 +99,13 @@ def _launch_job_with_run_config(
     }
     """
 
-    execution_metadata: dict = {"tags": []}
-    if partition_key:
-        execution_metadata["tags"].append(
-            {"key": "dagster/partition", "value": partition_key}
+    execution_metadata: dict = {
+        "tags": build_test_run_tags(
+            partition_key=partition_key,
+            batch_id=batch_id,
+            test_run_id=test_run_id,
         )
+    }
 
     variables = {
         "repositoryLocationName": "etl_pipelines",
@@ -174,6 +186,8 @@ class TestJoinAssetE2E:
                     }
                 },
                 partition_key=spatial_partition_key,
+                batch_id=spatial_manifest.get("batch_id"),
+                test_run_id=str(spatial_manifest.get("batch_id")),
             )
             status, error_details = poll_run_to_completion(
                 dagster_client, spatial_run_id
@@ -235,6 +249,8 @@ class TestJoinAssetE2E:
                     }
                 },
                 partition_key=tabular_partition_key,
+                batch_id=tabular_manifest.get("batch_id"),
+                test_run_id=str(tabular_manifest.get("batch_id")),
             )
             status, error_details = poll_run_to_completion(
                 dagster_client, tabular_run_id
@@ -277,6 +293,8 @@ class TestJoinAssetE2E:
                     }
                 },
                 partition_key=join_partition_key,
+                batch_id=join_manifest.get("batch_id"),
+                test_run_id=str(join_manifest.get("batch_id")),
             )
             status, error_details = poll_run_to_completion(dagster_client, join_run_id)
             if status != "SUCCESS":
@@ -347,6 +365,23 @@ class TestJoinAssetE2E:
             cleanup_minio_object(
                 minio_client, minio_settings.landing_bucket, tabular_object_key
             )
+
+            for manifest_batch_id in [
+                batch_id,
+                f"tabular_{batch_id}",
+                f"join_{batch_id}",
+            ]:
+                cleanup_mongodb_manifest(
+                    mongo_client,
+                    mongo_settings,
+                    manifest_batch_id,
+                )
+
+            for run_id in [spatial_run_id, tabular_run_id, join_run_id]:
+                if not run_id:
+                    continue
+                cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
+                cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
             db = mongo_client[mongo_settings.database]
             asset_ids = []

@@ -30,6 +30,10 @@ from .helpers import (
     DagsterGraphQLClient,
     assert_datalake_object_exists,
     assert_mongodb_asset_exists,
+    build_test_run_tags,
+    cleanup_mongodb_activity_logs,
+    cleanup_mongodb_manifest,
+    cleanup_mongodb_run,
     delete_dynamic_partition,
     format_error_details,
     poll_run_to_completion,
@@ -79,6 +83,8 @@ def _load_manifest_template(
     )
     manifest = json.loads(substituted)
     manifest["files"][0]["path"] = f"s3://landing-zone/{data_key}"
+    manifest["metadata"]["tags"] = dict(manifest["metadata"].get("tags", {}))
+    manifest["metadata"]["tags"]["source"] = "integration-test"
     return manifest
 
 
@@ -143,7 +149,11 @@ def _evaluate_sensor(
 
 
 def _launch_job_from_run_request(
-    dagster_client: DagsterGraphQLClient, job_name: str, run_request: RunRequest
+    dagster_client: DagsterGraphQLClient,
+    job_name: str,
+    run_request: RunRequest,
+    *,
+    test_run_id: str | None = None,
 ) -> str:
     mutation = """
     mutation LaunchRun($executionParams: ExecutionParams!) {
@@ -169,6 +179,18 @@ def _launch_job_from_run_request(
     }
     """
 
+    tags = build_test_run_tags(
+        partition_key=run_request.partition_key,
+        batch_id=run_request.tags.get("batch_id"),
+        manifest_key=run_request.tags.get("manifest_key"),
+        test_run_id=test_run_id,
+    )
+    existing_keys = {tag["key"] for tag in tags}
+    for key, value in run_request.tags.items():
+        if key in existing_keys:
+            continue
+        tags.append({"key": key, "value": str(value)})
+
     variables = {
         "executionParams": {
             "selector": {
@@ -177,11 +199,7 @@ def _launch_job_from_run_request(
                 "jobName": job_name,
             },
             "runConfigData": run_request.run_config,
-            "executionMetadata": {
-                "tags": [
-                    {"key": "dagster/partition", "value": run_request.partition_key}
-                ]
-            },
+            "executionMetadata": {"tags": tags},
         }
     }
 
@@ -220,8 +238,10 @@ def _cleanup(
     dagster_client: DagsterGraphQLClient,
     landing_key: str,
     manifest_key: str,
+    batch_id: str,
     partition_key: str,
     asset_doc: Optional[dict],
+    run_id: str | None,
 ) -> None:
     try:
         minio_client.remove_object(minio_settings.landing_bucket, landing_key)
@@ -239,6 +259,11 @@ def _cleanup(
         )
     except Exception:
         pass
+
+    cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
+    if run_id:
+        cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
+        cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
     if asset_doc and asset_doc.get("s3_key"):
         try:
@@ -306,7 +331,10 @@ class TestSensorToJobE2E:
             assert run_request.partition_key == dataset_id
 
             run_id = _launch_job_from_run_request(
-                dagster_client, "tabular_asset_job", run_request
+                dagster_client,
+                "tabular_asset_job",
+                run_request,
+                test_run_id=test_uuid,
             )
 
             status, error_details = poll_run_to_completion(dagster_client, run_id)
@@ -335,8 +363,10 @@ class TestSensorToJobE2E:
                 dagster_client,
                 csv_key,
                 manifest_key,
+                batch_id,
                 dataset_id,
                 asset_doc,
+                run_id,
             )
 
     def test_spatial_sensor_triggers_job_e2e(
@@ -388,7 +418,10 @@ class TestSensorToJobE2E:
             assert run_request.partition_key == dataset_id
 
             run_id = _launch_job_from_run_request(
-                dagster_client, "spatial_asset_job", run_request
+                dagster_client,
+                "spatial_asset_job",
+                run_request,
+                test_run_id=test_uuid,
             )
 
             status, error_details = poll_run_to_completion(dagster_client, run_id)
@@ -417,6 +450,8 @@ class TestSensorToJobE2E:
                 dagster_client,
                 geojson_key,
                 manifest_key,
+                batch_id,
                 dataset_id,
                 asset_doc,
+                run_id,
             )

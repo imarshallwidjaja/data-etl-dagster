@@ -25,10 +25,14 @@ from .helpers import (
     DagsterGraphQLClient,
     add_dynamic_partition,
     assert_mongodb_asset_exists,
+    build_test_run_tags,
     cleanup_dynamic_partitions,
     cleanup_minio_object,
     cleanup_mongodb_asset,
+    cleanup_mongodb_activity_logs,
     cleanup_mongodb_lineage,
+    cleanup_mongodb_manifest,
+    cleanup_mongodb_run,
     format_error_details,
     poll_run_to_completion,
     upload_bytes_to_minio,
@@ -116,6 +120,8 @@ def _launch_job_with_run_config(
     job_name: str,
     run_config: dict,
     partition_key: str | None = None,
+    batch_id: str | None = None,
+    test_run_id: str | None = None,
 ) -> str:
     """Launch a Dagster job via GraphQL and return run_id."""
     launch_query = """
@@ -145,11 +151,13 @@ def _launch_job_with_run_config(
     }
     """
 
-    execution_metadata: dict = {"tags": []}
-    if partition_key:
-        execution_metadata["tags"].append(
-            {"key": "dagster/partition", "value": partition_key}
+    execution_metadata: dict = {
+        "tags": build_test_run_tags(
+            partition_key=partition_key,
+            batch_id=batch_id,
+            test_run_id=test_run_id,
         )
+    }
 
     variables = {
         "repositoryLocationName": "etl_pipelines",
@@ -176,6 +184,8 @@ class TestInvalidManifestArchived:
         minio_client,
         minio_settings,
         minio_resource,
+        mongo_client,
+        mongo_settings,
     ):
         """Invalid manifest should be archived after sensor processes it."""
         test_uuid = uuid4().hex[:8]
@@ -183,6 +193,7 @@ class TestInvalidManifestArchived:
 
         # Create invalid manifest (missing required metadata fields)
         invalid_manifest = _create_invalid_manifest()
+        batch_id = invalid_manifest["batch_id"]
         manifest_bytes = json.dumps(invalid_manifest, indent=2).encode("utf-8")
 
         try:
@@ -211,6 +222,7 @@ class TestInvalidManifestArchived:
             cleanup_minio_object(
                 minio_client, minio_settings.landing_bucket, f"archive/{manifest_key}"
             )
+            cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
 
 
 class TestJoinFailureCleanup:
@@ -284,6 +296,8 @@ class TestJoinFailureCleanup:
                     }
                 },
                 partition_key=spatial_partition_key,
+                batch_id=spatial_manifest.get("batch_id"),
+                test_run_id=str(spatial_manifest.get("batch_id")),
             )
             status, error_details = poll_run_to_completion(
                 dagster_client, spatial_run_id
@@ -336,6 +350,8 @@ class TestJoinFailureCleanup:
                     }
                 },
                 partition_key=join_partition_key,
+                batch_id=join_manifest.get("batch_id"),
+                test_run_id=str(join_manifest.get("batch_id")),
             )
 
             # 3) Poll for completion - expect FAILURE
@@ -355,6 +371,17 @@ class TestJoinFailureCleanup:
             cleanup_minio_object(
                 minio_client, minio_settings.landing_bucket, spatial_object_key
             )
+
+            cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
+            cleanup_mongodb_manifest(
+                mongo_client, mongo_settings, f"join_fail_{batch_id}"
+            )
+
+            for run_id in [spatial_run_id, join_run_id]:
+                if not run_id:
+                    continue
+                cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
+                cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
             db = mongo_client[mongo_settings.database]
             asset_ids = []
