@@ -114,7 +114,7 @@ def _write_spatial_geoparquet(path, rows, *, key_name: str = "parcel_id") -> Non
         f"CREATE TABLE spatial AS "
         f"SELECT {key_name}, ST_GeomFromText(wkt) AS geom FROM input_rows"
     )
-    con.execute(f"COPY spatial TO '{path}' (FORMAT GEOPARQUET)")
+    con.execute(f"COPY spatial TO '{path}' (FORMAT PARQUET)")
     con.close()
 
 
@@ -413,7 +413,6 @@ class TestChooseDatasetId:
 class TestDuckdbJoinHelper:
     def test_left_join_outputs_metadata(self, tmp_path, monkeypatch):
         helper = _require_duckdb_join_helper()
-        _block_pandas_import(monkeypatch)
 
         tabular_path = tmp_path / "tabular.parquet"
         spatial_path = tmp_path / "spatial.parquet"
@@ -427,6 +426,8 @@ class TestDuckdbJoinHelper:
                 ("C", "POLYGON ((5 5, 6 5, 6 6, 5 6, 5 5))"),
             ],
         )
+
+        _block_pandas_import(monkeypatch)
 
         result = helper(
             tabular_path=str(tabular_path),
@@ -445,14 +446,24 @@ class TestDuckdbJoinHelper:
         assert result["bounds"]["maxx"] == pytest.approx(2.0)
         assert result["bounds"]["maxy"] == pytest.approx(2.0)
 
-        schema = pq.read_schema(output_path)
-        assert schema.names == ["parcel_id", "value", "geom"]
+        duckdb = _require_duckdb()
+        con = duckdb.connect()
+        try:
+            rows = con.execute(
+                "DESCRIBE SELECT * FROM read_parquet(?)",
+                [str(output_path)],
+            ).fetchall()
+        finally:
+            con.close()
+
+        column_names = [row[0] for row in rows]
+        assert column_names == ["parcel_id", "value", "geom"]
 
     @pytest.mark.parametrize(
         "how, expected_row_count",
         [("inner", 1), ("right", 2), ("outer", 3)],
     )
-    def test_join_types_row_counts(self, tmp_path, how, expected_row_count):
+    def test_join_types_row_counts(self, tmp_path, monkeypatch, how, expected_row_count):
         helper = _require_duckdb_join_helper()
 
         tabular_path = tmp_path / f"tabular_{how}.parquet"
@@ -468,6 +479,8 @@ class TestDuckdbJoinHelper:
             ],
         )
 
+        _block_pandas_import(monkeypatch)
+
         result = helper(
             tabular_path=str(tabular_path),
             spatial_path=str(spatial_path),
@@ -480,7 +493,7 @@ class TestDuckdbJoinHelper:
 
         assert result["row_count"] == expected_row_count
 
-    def test_join_key_casts_to_varchar(self, tmp_path):
+    def test_join_key_casts_to_varchar(self, tmp_path, monkeypatch):
         helper = _require_duckdb_join_helper()
 
         tabular_path = tmp_path / "tabular_cast.parquet"
@@ -492,6 +505,8 @@ class TestDuckdbJoinHelper:
             spatial_path,
             [(1, "POLYGON ((0 0, 1 0, 1 1, 0 1, 0 0))")],
         )
+
+        _block_pandas_import(monkeypatch)
 
         result = helper(
             tabular_path=str(tabular_path),

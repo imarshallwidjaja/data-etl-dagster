@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import sys
 from pathlib import Path
+from types import ModuleType
 
 
 def test_duckdb_settings_import_without_services_package(monkeypatch) -> None:
@@ -31,13 +32,22 @@ def test_duckdb_settings_import_without_services_package(monkeypatch) -> None:
 
     monkeypatch.setattr(sys, "path", new_sys_path)
 
+    removed_modules: dict[str, ModuleType] = {}
     for key in list(sys.modules):
         if key == "etl_pipelines" or key.startswith("etl_pipelines."):
-            sys.modules.pop(key)
+            removed_modules[key] = sys.modules.pop(key)
         if key == "services" or key.startswith("services."):
-            sys.modules.pop(key)
+            removed_modules[key] = sys.modules.pop(key)
 
     importlib.invalidate_caches()
 
-    module = importlib.import_module("etl_pipelines.ops.duckdb_settings")
-    assert hasattr(module, "build_duckdb_join_settings")
+    try:
+        module = importlib.import_module("etl_pipelines.ops.duckdb_settings")
+        assert hasattr(module, "build_duckdb_join_settings")
+    finally:
+        for key in list(sys.modules):
+            if key == "etl_pipelines" or key.startswith("etl_pipelines."):
+                sys.modules.pop(key)
+            if key == "services" or key.startswith("services."):
+                sys.modules.pop(key)
+        sys.modules.update(removed_modules)

@@ -376,12 +376,21 @@ def _parse_duckdb_extent(extent_value: Any) -> dict[str, float] | None:
         return None
 
     if isinstance(extent_value, dict):
-        return {
-            "minx": float(extent_value["minx"]),
-            "miny": float(extent_value["miny"]),
-            "maxx": float(extent_value["maxx"]),
-            "maxy": float(extent_value["maxy"]),
-        }
+        if "minx" in extent_value:
+            return {
+                "minx": float(extent_value["minx"]),
+                "miny": float(extent_value["miny"]),
+                "maxx": float(extent_value["maxx"]),
+                "maxy": float(extent_value["maxy"]),
+            }
+        if "min_x" in extent_value:
+            return {
+                "minx": float(extent_value["min_x"]),
+                "miny": float(extent_value["min_y"]),
+                "maxx": float(extent_value["max_x"]),
+                "maxy": float(extent_value["max_y"]),
+            }
+        return None
 
     for attribute in ("minx", "miny", "maxx", "maxy"):
         if not hasattr(extent_value, attribute):
@@ -480,7 +489,8 @@ def _execute_duckdb_join(
         """
         con.execute(join_sql)
 
-        row_count = con.execute("SELECT COUNT(*) FROM joined").fetchone()[0]
+        row_count_row = con.execute("SELECT COUNT(*) FROM joined").fetchone()
+        row_count = row_count_row[0] if row_count_row else 0
 
         geometry_row = con.execute(
             "SELECT ST_GeometryType(geom) FROM joined WHERE geom IS NOT NULL LIMIT 1"
@@ -494,7 +504,14 @@ def _execute_duckdb_join(
         ).fetchone()
         bounds = _parse_duckdb_extent(extent_row[0] if extent_row else None)
 
-        con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT GEOPARQUET)")
+        try:
+            con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT GEOPARQUET)")
+        except duckdb.CatalogException:
+            con.execute(f"COPY joined TO '{output_path_obj}' (FORMAT PARQUET)")
+            if log is not None:
+                log.warning(
+                    "DuckDB GeoParquet format unavailable; wrote Parquet output instead"
+                )
 
         return {
             "output_path": str(output_path_obj),
