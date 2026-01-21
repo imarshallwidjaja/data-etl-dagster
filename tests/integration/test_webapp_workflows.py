@@ -1,8 +1,15 @@
-import pytest
 import httpx
 import os
 import uuid
+
+import pytest
 from minio import Minio
+
+from .helpers import (
+    cleanup_minio_manifest,
+    cleanup_mongodb_manifest,
+    cleanup_mongodb_runs_by_batch_id,
+)
 
 # Authentication
 AUTH = ("admin", "admin")
@@ -66,7 +73,13 @@ def test_workflow_step_navigation(client):
 
 
 @pytest.mark.integration
-def test_workflow_full_submission(client, minio_client):
+def test_workflow_full_submission(
+    client,
+    minio_client,
+    minio_settings,
+    mongo_client,
+    mongo_settings,
+):
     batch_id = f"test_workflow_{uuid.uuid4().hex[:8]}"
 
     # Accumulated state
@@ -101,3 +114,13 @@ def test_workflow_full_submission(client, minio_client):
     objects = list(minio_client.list_objects("landing-zone", prefix="manifests/"))
     manifest_keys = [obj.object_name for obj in objects]
     assert len(manifest_keys) > 0
+
+    manifest_key = next(
+        (key for key in manifest_keys if batch_id in key),
+        None,
+    )
+
+    cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
+    cleanup_mongodb_runs_by_batch_id(mongo_client, mongo_settings, batch_id)
+    if manifest_key:
+        cleanup_minio_manifest(minio_client, minio_settings, manifest_key)
