@@ -246,3 +246,5 @@ temp/
 .hive/
 
 .sisyphus/
+
+.worktrees/
