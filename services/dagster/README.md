@@ -218,6 +218,8 @@ pytest -m "integration and not e2e" tests/integration -v
 pytest -m "integration and e2e" tests/integration -v
 ```
 
+Test runs should be tagged with `testing=true` so cleanup can filter correctly. For GraphQL launches, include `executionMetadata.tags` (use `build_test_run_tags` from `tests/integration/helpers.py`). For manifest-driven runs, set `metadata.tags.testing=true` in the manifest.
+
 ---
 
 ## Troubleshooting
