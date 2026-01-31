@@ -88,7 +88,7 @@ def _launch_tabular_asset_job(dagster_client, manifest: dict) -> str:
             "tags": build_test_run_tags(
                 partition_key=manifest["metadata"]["tags"]["dataset_id"],
                 batch_id=manifest.get("batch_id"),
-                test_run_id=str(manifest.get("batch_id")),
+                test_run_id=manifest.get("batch_id"),
             )
         },
     }
@@ -134,7 +134,9 @@ def _cleanup_minio_mongo(
             pass
 
 
-def _assert_mongodb_asset_exists(mongo_client, mongo_settings, dagster_run_id: str) -> dict:
+def _assert_mongodb_asset_exists(
+    mongo_client, mongo_settings, dagster_run_id: str
+) -> dict:
     db = mongo_client[mongo_settings.database]
     run_doc = db["runs"].find_one({"dagster_run_id": dagster_run_id})
     assert run_doc is not None, (
@@ -195,7 +197,9 @@ class TestTabularAssetJobE2E:
                     f"tabular_asset_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            asset_doc = _assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
+            asset_doc = _assert_mongodb_asset_exists(
+                mongo_client, mongo_settings, run_id
+            )
 
             assert asset_doc.get("kind") == "tabular"
             assert asset_doc.get("format") == "parquet"
@@ -314,7 +318,9 @@ class TestTabularAssetJobE2E:
                     f"tabular_asset_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            asset_doc = _assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
+            asset_doc = _assert_mongodb_asset_exists(
+                mongo_client, mongo_settings, run_id
+            )
             metadata = asset_doc.get("metadata") or {}
             tags = metadata.get("tags") or {}
             assert tags.get("join_key_clean") == "sa1_code21"
