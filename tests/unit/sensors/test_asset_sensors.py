@@ -123,6 +123,29 @@ def test_spatial_sensor_includes_operator_and_source_tags(
     assert rr.tags["source"] == "unit-test"
 
 
+def test_spatial_sensor_includes_testing_tag(
+    mock_sensor_context, mock_minio_resource, valid_manifest_dict
+):
+    spatial_manifest = {
+        **valid_manifest_dict,
+        "intent": "ingest_vector",
+        "batch_id": "batch_spatial_testing",
+        "metadata": {
+            **valid_manifest_dict["metadata"],
+            "tags": {**valid_manifest_dict["metadata"]["tags"], "testing": True},
+        },
+    }
+    manifest_key = "manifests/batch_spatial_testing.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = spatial_manifest
+
+    results = list(spatial_sensor._raw_fn(mock_sensor_context, mock_minio_resource))
+
+    assert len(results) == 1
+    rr = results[0]
+    assert rr.tags["testing"] == "true"
+
+
 def test_join_sensor_includes_operator_and_source_tags(
     mock_sensor_context, mock_minio_resource, valid_manifest_dict
 ):
@@ -153,6 +176,37 @@ def test_join_sensor_includes_operator_and_source_tags(
     assert rr.tags["source"] == "unit-test"
 
 
+def test_join_sensor_includes_testing_tag(
+    mock_sensor_context, mock_minio_resource, valid_manifest_dict
+):
+    join_manifest = {
+        **valid_manifest_dict,
+        "intent": "join_datasets",
+        "batch_id": "batch_join_testing",
+        "files": [],
+        "metadata": {
+            **valid_manifest_dict["metadata"],
+            "join_config": {
+                "spatial_dataset_id": "sa1_spatial_001",
+                "tabular_dataset_id": "sa1_tabular_001",
+                "left_key": "parcel_id",
+                "right_key": "parcel_id",
+                "how": "left",
+            },
+            "tags": {**valid_manifest_dict["metadata"]["tags"], "testing": True},
+        },
+    }
+    manifest_key = "manifests/batch_join_testing.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = join_manifest
+
+    results = list(join_sensor._raw_fn(mock_sensor_context, mock_minio_resource))
+
+    assert len(results) == 1
+    rr = results[0]
+    assert rr.tags["testing"] == "true"
+
+
 def test_source_tag_prefers_ingestion_source_over_source(
     mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict
 ):
@@ -174,6 +228,29 @@ def test_source_tag_prefers_ingestion_source_over_source(
     assert len(results) == 1
     rr = results[0]
     assert rr.tags["source"] == "api_upload"
+
+
+def test_tabular_sensor_includes_testing_tag(
+    mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict
+):
+    manifest_with_testing = {
+        **valid_tabular_manifest_dict,
+        "metadata": {
+            **valid_tabular_manifest_dict["metadata"],
+            "tags": {
+                **valid_tabular_manifest_dict["metadata"]["tags"],
+                "testing": True,
+            },
+        },
+    }
+    manifest_key = "manifests/batch_tabular_testing.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = manifest_with_testing
+
+    results = list(tabular_sensor._raw_fn(mock_sensor_context, mock_minio_resource))
+    assert len(results) == 1
+    rr = results[0]
+    assert rr.tags["testing"] == "true"
 
 
 def test_source_tag_defaults_to_unknown_when_no_tags(

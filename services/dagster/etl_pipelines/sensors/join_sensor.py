@@ -23,6 +23,7 @@ from pydantic import ValidationError
 from libs.models import Manifest
 from ..partitions import dataset_partitions, extract_partition_key
 from ..resources import MinIOResource
+from .tag_helpers import derive_testing_tag
 
 
 CURSOR_VERSION = 1
@@ -166,6 +167,11 @@ def join_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     "tabular_dataset_id": join_config.tabular_dataset_id,
                     "operator": manifest.uploader,
                     "source": _derive_source_tag(manifest),
+                    **(
+                        {"testing": testing_tag}
+                        if (testing_tag := derive_testing_tag(manifest))
+                        else {}
+                    ),
                 },
             )
             yield run_request
