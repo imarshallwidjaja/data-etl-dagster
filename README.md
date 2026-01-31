@@ -485,6 +485,12 @@ E2E tests launch jobs via Dagster GraphQL and validate offline-first loops:
 pytest -m "integration and e2e" tests/integration -v
 ```
 
+**Test artifact tagging + cleanup:**
+
+- For GraphQL-launched runs in tests, include `executionMetadata.tags` with `testing=true` (see `tests/integration/helpers.py:build_test_run_tags`).
+- For manifest-driven sensors, set `metadata.tags.testing=true` in the manifest so sensor-triggered runs inherit the tag.
+- Integration/E2E tests must delete artifacts they create in the test/fixture (use `try/finally`). `clean_mongodb` and `clean_minio` only pre-clean.
+
 **6. Stop the Docker stack:**
 
 ```bash
@@ -641,4 +647,3 @@ See `.github/workflows/AGENTS.md` for detailed documentation.
 ## License
 
 [Add license information]
-

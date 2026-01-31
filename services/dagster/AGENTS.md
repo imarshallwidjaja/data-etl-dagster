@@ -10,6 +10,7 @@ images, and the ETL code location wiring.
 - PostGIS schemas are ephemeral and must be cleaned up.
 - Sensors are one-shot and archive manifests after processing.
 - Run status sensors update Mongo `runs` and `manifests` on completion.
+- Test runs should be tagged with `testing=true` (GraphQL executionMetadata tags or manifest metadata tags) so cleanup and filtering behave consistently.
 
 ## Working here
 - After changing `libs/`, rebuild the user-code image: `docker compose build user-code`.
