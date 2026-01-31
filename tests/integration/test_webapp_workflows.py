@@ -1,6 +1,7 @@
 import httpx
 import os
 import uuid
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from minio import Minio
@@ -90,6 +91,7 @@ def test_workflow_full_submission(
         "file_format": "GeoJSON",
         "file_type": "vector",
         "dataset_id": "ds_" + batch_id,
+        "tags": {"testing": True},
     }
 
     import json
@@ -110,17 +112,22 @@ def test_workflow_full_submission(
     assert "/workflows/ingest-vector/success" in response.headers["location"]
     assert "batch_id=" in response.headers["location"]
 
+    location = response.headers["location"]
+    parsed = urlparse(location)
+    params = parse_qs(parsed.query)
+    manifest_batch_id = params.get("batch_id", [None])[0]
+    manifest_key = params.get("manifest_key", [None])[0]
+
+    assert isinstance(manifest_batch_id, str) and manifest_batch_id
+    assert isinstance(manifest_key, str) and manifest_key
+
     # Verify in MinIO
-    objects = list(minio_client.list_objects("landing-zone", prefix="manifests/"))
-    manifest_keys = [obj.object_name for obj in objects]
-    assert len(manifest_keys) > 0
-
-    manifest_key = next(
-        (key for key in manifest_keys if batch_id in key),
-        None,
+    objects = list(minio_client.list_objects("landing-zone", prefix=manifest_key))
+    archived_objects = list(
+        minio_client.list_objects("landing-zone", prefix=f"archive/{manifest_key}")
     )
+    assert objects or archived_objects
 
-    cleanup_mongodb_manifest(mongo_client, mongo_settings, batch_id)
-    cleanup_mongodb_runs_by_batch_id(mongo_client, mongo_settings, batch_id)
-    if manifest_key:
-        cleanup_minio_manifest(minio_client, minio_settings, manifest_key)
+    cleanup_mongodb_manifest(mongo_client, mongo_settings, manifest_batch_id)
+    cleanup_mongodb_runs_by_batch_id(mongo_client, mongo_settings, manifest_batch_id)
+    cleanup_minio_manifest(minio_client, minio_settings, manifest_key)

@@ -116,6 +116,28 @@ def test_valid_manifest_yields_run_request_ingest_lane(
     assert mock_sensor_context.update_cursor.called
 
 
+@patch.dict(os.environ, {}, clear=False)
+def test_manifest_sensor_includes_testing_tag(
+    mock_sensor_context, mock_minio_resource, valid_manifest_dict
+):
+    manifest_key = "manifests/batch_testing.json"
+    manifest_with_testing = {
+        **valid_manifest_dict,
+        "metadata": {
+            **valid_manifest_dict["metadata"],
+            "tags": {**valid_manifest_dict["metadata"]["tags"], "testing": True},
+        },
+    }
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = manifest_with_testing
+
+    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
+
+    assert len(results) == 1
+    run_request = results[0]
+    assert run_request.tags["testing"] == "true"
+
+
 def test_tabular_intent_is_skipped_and_not_archived(
     mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict
 ):

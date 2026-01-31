@@ -25,6 +25,7 @@ from pydantic import ValidationError
 
 from ..resources import MinIOResource
 from ..jobs import ingest_job
+from .tag_helpers import derive_testing_tag
 from libs.models import Manifest
 
 
@@ -281,6 +282,11 @@ def build_run_request(
         "manifest_archive_key": archive_key,
         "operator": manifest.uploader,
         "source": _derive_source_tag(manifest),
+        **(
+            {"testing": testing_tag}
+            if (testing_tag := derive_testing_tag(manifest))
+            else {}
+        ),
     }
 
     return RunRequest(

@@ -24,6 +24,7 @@ from pydantic import ValidationError
 from libs.models import Manifest
 from ..partitions import dataset_partitions, extract_partition_key
 from ..resources import MinIOResource
+from .tag_helpers import derive_testing_tag
 
 
 CURSOR_VERSION = 1
@@ -154,6 +155,11 @@ def spatial_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                     "partition_key": partition_key,
                     "operator": manifest.uploader,
                     "source": _derive_source_tag(manifest),
+                    **(
+                        {"testing": testing_tag}
+                        if (testing_tag := derive_testing_tag(manifest))
+                        else {}
+                    ),
                 },
             )
             yield run_request
