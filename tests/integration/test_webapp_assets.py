@@ -220,7 +220,11 @@ def seeded_tabular_asset(clean_mongodb):
         }
     )
 
-    yield {"dataset_id": "tabular_asset"}
+    try:
+        yield {"dataset_id": "tabular_asset"}
+    finally:
+        clean_mongodb["assets"].delete_one({"_id": tabular_oid})
+        assert clean_mongodb["assets"].count_documents({"_id": tabular_oid}) == 0
 
 
 @pytest.mark.integration
