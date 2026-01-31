@@ -116,7 +116,8 @@ def joined_spatial_asset(
             right_key=right_key,
             how=join_config.how,
             output_path=str(output_path),
-            temp_dir=temp_dir,
+            temp_dir=join_settings.temp_directory,
+            memory_limit=join_settings.memory_limit,
             s3_settings=join_settings,
             log=context.log,
         )

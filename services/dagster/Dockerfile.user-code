@@ -29,6 +29,13 @@ WORKDIR /opt/dagster/app
 COPY services/dagster/requirements-user-code.txt .
 RUN pip install --no-cache-dir -r requirements-user-code.txt
 
+# Pre-install DuckDB extensions for offline/air-gapped operation.
+# Extensions are cached in ~/.duckdb/extensions and only LOAD is needed at runtime.
+RUN python3 -c "import duckdb; con = duckdb.connect(); con.execute('INSTALL httpfs'); con.execute('INSTALL spatial'); con.close()"
+
+# Pre-download NLTK stopwords for offline operation (used by tabular_headers).
+RUN python3 -c "import nltk; nltk.download('stopwords', quiet=True)"
+
 # Copy and install the libs package
 COPY libs /opt/dagster/app/libs
 RUN pip install --no-cache-dir /opt/dagster/app/libs

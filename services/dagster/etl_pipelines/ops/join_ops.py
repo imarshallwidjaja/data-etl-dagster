@@ -459,9 +459,6 @@ def _execute_duckdb_join(
 
     con = duckdb.connect(database=":memory:")
     try:
-        con.execute("INSTALL httpfs;")
-        con.execute("LOAD httpfs;")
-        con.execute("INSTALL spatial;")
         con.execute("LOAD spatial;")
 
         con.execute(f"PRAGMA temp_directory='{temp_dir_path}';")
@@ -527,7 +524,6 @@ def _rewrite_parquet_with_geo_metadata(
 
     con = duckdb.connect(database=":memory:")
     try:
-        con.execute("INSTALL spatial;")
         con.execute("LOAD spatial;")
         reader = con.execute(
             "SELECT * FROM read_parquet(?)",
@@ -632,7 +628,6 @@ def _read_parquet_schema_with_duckdb(*, parquet_path: str) -> pa.Schema:
 
     con = duckdb.connect(database=":memory:")
     try:
-        con.execute("INSTALL spatial;")
         con.execute("LOAD spatial;")
         arrow_table = con.execute(
             "SELECT * FROM read_parquet(?) LIMIT 0",

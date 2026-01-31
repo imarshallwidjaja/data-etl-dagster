@@ -10,5 +10,5 @@ Recipe-based transformation system for manifest intents.
 - Validate identifiers before use.
 
 ## References
-- Root guide: `AGENTS.md`
-- Dagster orchestration: `services/dagster/AGENTS.md`
+- Root guide: `../../AGENTS.md`
+- Dagster orchestration: `../../services/dagster/AGENTS.md`

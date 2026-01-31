@@ -81,7 +81,11 @@ def test_workflow_full_submission(
     mongo_client,
     mongo_settings,
 ):
+    import json
+
     batch_id = f"test_workflow_{uuid.uuid4().hex[:8]}"
+    manifest_batch_id: str | None = None
+    manifest_key: str | None = None
 
     # Accumulated state
     state = {
@@ -94,40 +98,44 @@ def test_workflow_full_submission(
         "tags": {"testing": True},
     }
 
-    import json
+    try:
+        # Submit last step with "submit" nav
+        response = client.post(
+            "/workflows/ingest-vector/step/2",
+            data={
+                "_nav": "submit",
+                "_wizard_state": json.dumps(state),
+                "dataset_id": state["dataset_id"],
+                "project": "TEST",
+            },
+            follow_redirects=False,
+        )
 
-    # Submit last step with "submit" nav
-    response = client.post(
-        "/workflows/ingest-vector/step/2",
-        data={
-            "_nav": "submit",
-            "_wizard_state": json.dumps(state),
-            "dataset_id": state["dataset_id"],
-            "project": "TEST",
-        },
-        follow_redirects=False,
-    )
+        assert response.status_code == 303
+        assert "/workflows/ingest-vector/success" in response.headers["location"]
+        assert "batch_id=" in response.headers["location"]
 
-    assert response.status_code == 303
-    assert "/workflows/ingest-vector/success" in response.headers["location"]
-    assert "batch_id=" in response.headers["location"]
+        location = response.headers["location"]
+        parsed = urlparse(location)
+        params = parse_qs(parsed.query)
+        manifest_batch_id = params.get("batch_id", [None])[0]
+        manifest_key = params.get("manifest_key", [None])[0]
 
-    location = response.headers["location"]
-    parsed = urlparse(location)
-    params = parse_qs(parsed.query)
-    manifest_batch_id = params.get("batch_id", [None])[0]
-    manifest_key = params.get("manifest_key", [None])[0]
+        assert isinstance(manifest_batch_id, str) and manifest_batch_id
+        assert isinstance(manifest_key, str) and manifest_key
 
-    assert isinstance(manifest_batch_id, str) and manifest_batch_id
-    assert isinstance(manifest_key, str) and manifest_key
+        # Verify in MinIO
+        objects = list(minio_client.list_objects("landing-zone", prefix=manifest_key))
+        archived_objects = list(
+            minio_client.list_objects("landing-zone", prefix=f"archive/{manifest_key}")
+        )
+        assert objects or archived_objects
 
-    # Verify in MinIO
-    objects = list(minio_client.list_objects("landing-zone", prefix=manifest_key))
-    archived_objects = list(
-        minio_client.list_objects("landing-zone", prefix=f"archive/{manifest_key}")
-    )
-    assert objects or archived_objects
-
-    cleanup_mongodb_manifest(mongo_client, mongo_settings, manifest_batch_id)
-    cleanup_mongodb_runs_by_batch_id(mongo_client, mongo_settings, manifest_batch_id)
-    cleanup_minio_manifest(minio_client, minio_settings, manifest_key)
+    finally:
+        if manifest_batch_id:
+            cleanup_mongodb_manifest(mongo_client, mongo_settings, manifest_batch_id)
+            cleanup_mongodb_runs_by_batch_id(
+                mongo_client, mongo_settings, manifest_batch_id
+            )
+        if manifest_key:
+            cleanup_minio_manifest(minio_client, minio_settings, manifest_key)
