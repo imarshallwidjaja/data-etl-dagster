@@ -181,13 +181,6 @@ def _cleanup_minio_mongo(
         blob_key = blob_doc.get("key")
         if blob_bucket and blob_key:
             cleanup_minio_object(minio_client, blob_bucket, blob_key)
-        blob_id = blob_doc.get("_id")
-        if blob_id:
-            try:
-                db = mongo_client[mongo_settings.database]
-                db["blobs"].delete_one({"_id": blob_id})
-            except Exception:
-                pass
 
 
 class TestTabularAssetRerunFromBlobsE2E:

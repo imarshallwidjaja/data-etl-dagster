@@ -196,16 +196,7 @@ def _cleanup(
 
     try:
         db = mongo_client[mongo_settings.database]
-        artifacts = list(db["artifacts"].find({"batch_id": batch_id}))
-        blob_ids = {artifact.get("blob_id") for artifact in artifacts}
         db["artifacts"].delete_many({"batch_id": batch_id})
-        for blob_id in blob_ids:
-            if not blob_id:
-                continue
-            try:
-                db["blobs"].delete_one({"_id": ObjectId(blob_id)})
-            except bson_errors.InvalidId:
-                continue
     except Exception as exc:
         logger.warning("Failed to cleanup raw archives for batch %s: %s", batch_id, exc)
 

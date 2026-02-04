@@ -241,3 +241,57 @@ def test_rerun_handles_file_entry_objects(mock_auth):
     assert (
         uploaded_manifest["files"][0]["path"] == "s3://data-lake/blobs/object.parquet"
     )
+
+
+def test_rerun_normalizes_non_prefixed_paths(mock_auth):
+    archived_manifest = {
+        "batch_id": "batch_no_prefix",
+        "files": [
+            {
+                "path": "landing-zone/raw/no_prefix.csv",
+                "type": "tabular",
+                "format": "CSV",
+            }
+        ],
+    }
+
+    artifacts = [
+        {
+            "id": "a1",
+            "blob_id": "b1",
+            "batch_id": "batch_no_prefix",
+            "created_at": datetime(2024, 1, 1),
+            "source_s3_path": "s3://landing-zone/raw/no_prefix.csv",
+        }
+    ]
+
+    blobs_by_id = {
+        "b1": {"_id": "b1", "bucket": "data-lake", "key": "blobs/no_prefix.parquet"}
+    }
+
+    captured, capture_upload = _capture_upload_payload()
+    mock_minio = MagicMock()
+    mock_minio.get_archived_manifest.return_value = archived_manifest
+    mock_minio.upload_if_not_exists.side_effect = capture_upload
+
+    mock_mongodb = MagicMock()
+    mock_mongodb.list_raw_source_artifacts_for_batch.return_value = artifacts
+    mock_mongodb.get_blobs_by_ids.return_value = blobs_by_id
+
+    with (
+        patch("app.routers.manifests.get_minio_service", return_value=mock_minio),
+        patch("app.routers.manifests.get_mongodb_service", return_value=mock_mongodb),
+        patch(
+            "app.routers.manifests.create_rerun_batch_id",
+            return_value="batch_no_prefix_v2",
+        ),
+        patch("app.routers.manifests.get_activity_service"),
+    ):
+        response = client.post("/manifests/batch_no_prefix/rerun")
+
+    assert response.status_code == 200
+    uploaded_manifest = captured["body"]
+    assert (
+        uploaded_manifest["files"][0]["path"]
+        == "s3://data-lake/blobs/no_prefix.parquet"
+    )
