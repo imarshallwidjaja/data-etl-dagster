@@ -34,6 +34,7 @@ ASSETS_SCHEMA_V001 = _baseline.ASSETS_SCHEMA_V001
 MANIFESTS_SCHEMA_V001 = _baseline.MANIFESTS_SCHEMA_V001
 RUNS_SCHEMA_V001 = _baseline.RUNS_SCHEMA_V001
 LINEAGE_SCHEMA_V001 = _baseline.LINEAGE_SCHEMA_V001
+BLOBS_SCHEMA_V001 = _baseline.BLOBS_SCHEMA_V001
 
 _activity = load_migration_schema("003_activity_logs.py")
 ACTIVITY_LOGS_SCHEMA_V003 = _activity.ACTIVITY_LOGS_SCHEMA_V003
@@ -134,6 +135,20 @@ class TestRunSchemaParity:
 
         assert pydantic_values == mongo_values, (
             f"Status enum mismatch. Pydantic: {pydantic_values}, MongoDB: {mongo_values}"
+        )
+
+
+class TestBlobSchemaParity:
+    """Verify Blob model matches latest migration schema."""
+
+    def test_blob_bucket_length_constraints_match(self):
+        """Test that bucket length constraints align with model validation."""
+        bucket_schema = BLOBS_SCHEMA_V001["$jsonSchema"]["properties"]["bucket"]
+        assert bucket_schema.get("minLength") == 3, (
+            "Expected bucket minLength=3 to match S3 bucket validation"
+        )
+        assert bucket_schema.get("maxLength") == 63, (
+            "Expected bucket maxLength=63 to match S3 bucket validation"
         )
 
 
