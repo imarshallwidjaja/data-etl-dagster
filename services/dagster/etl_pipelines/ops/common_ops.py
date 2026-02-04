@@ -48,7 +48,11 @@ def init_mongo_run_op(context: OpExecutionContext, payload: dict) -> dict:
     tags = context.run.tags
     dagster_run_id = context.run_id
 
-    # Extract manifest from payload - supports both raw manifest and wrapped formats
+    # Extract manifest from payload - supports raw manifest, wrapped formats,
+    # and Dagster input config shape (payload: {"value": {...}})
+    if isinstance(payload, dict) and set(payload.keys()) == {"value"}:
+        payload = payload["value"]
+
     if "manifest" in payload:
         # Wrapped format (e.g., transform_result dict containing "manifest" key)
         manifest_json = payload["manifest"]
