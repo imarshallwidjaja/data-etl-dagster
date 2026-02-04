@@ -254,22 +254,6 @@ def test_download_tabular_from_landing_cleanup_on_error():
         )
 
 
-def test_download_tabular_from_landing_cleanup_on_error():
-    """Test that temp file is cleaned up on download error."""
-    mock_minio = Mock()
-    mock_minio.landing_bucket = "landing-zone"
-    mock_minio.lake_bucket = "data-lake"
-    mock_minio.download_from_landing.side_effect = RuntimeError("Download failed")
-    mock_log = Mock()
-
-    with pytest.raises(RuntimeError, match="Failed to download"):
-        _download_tabular_from_landing(
-            minio=mock_minio,
-            manifest=SAMPLE_TABULAR_MANIFEST,
-            log=mock_log,
-        )
-
-
 # =============================================================================
 # Test: Load and Clean Tabular
 # =============================================================================

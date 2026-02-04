@@ -10,6 +10,7 @@ import hashlib
 from unittest.mock import Mock
 
 import pytest
+from pymongo.errors import DuplicateKeyError
 
 
 from services.dagster.etl_pipelines.ops.raw_archival import archive_raw_source
@@ -95,3 +96,39 @@ def test_archive_raw_source_closes_response_on_stream_error():
 
     assert response.closed is True
     assert response.released is True
+
+
+def test_archive_raw_source_handles_duplicate_blob_insert():
+    content = b"raw-bytes"
+    digest = hashlib.sha256(content).hexdigest()
+    content_hash = f"sha256:{digest}"
+
+    minio = Mock()
+    minio.lake_bucket = "data-lake"
+    minio.get_client.return_value.get_object.return_value = _FakeResponse([content])
+
+    mongodb = Mock()
+    mongodb.get_blob_by_hash.side_effect = [
+        None,
+        {
+            "_id": "blob999",
+            "id": "blob999",
+            "content_hash": content_hash,
+            "bucket": "data-lake",
+            "key": f"blobs/sha256/{digest[:2]}/{digest}",
+        },
+    ]
+    mongodb.insert_blob.side_effect = DuplicateKeyError("duplicate")
+
+    result = archive_raw_source(
+        minio=minio,
+        mongodb=mongodb,
+        source_s3_path="s3://landing-zone/batch_001/data.csv",
+        batch_id="batch_001",
+        uploader="test_user",
+        run_id=None,
+        log=Mock(),
+    )
+
+    assert result["blob_id"] == "blob999"
+    assert result["content_hash"] == content_hash
