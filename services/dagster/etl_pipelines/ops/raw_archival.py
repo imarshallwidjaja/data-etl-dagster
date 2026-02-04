@@ -5,8 +5,6 @@
 # into content-addressed blob storage with per-upload artifact records.
 # =============================================================================
 
-from __future__ import annotations
-
 import hashlib
 import tempfile
 from datetime import datetime, timezone
