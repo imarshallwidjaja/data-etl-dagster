@@ -37,8 +37,5 @@ This summary describes behavior of the Dagster code location.
 - Integration/E2E coverage:
   - `tests/integration/test_webapp_manifests_rerun_rewrites_to_blobs.py`
   - `tests/integration/test_tabular_asset_rerun_from_blobs_e2e.py`
-- Integration/E2E coverage:
-  - `tests/integration/test_webapp_manifests_rerun_rewrites_to_blobs.py`
-  - `tests/integration/test_tabular_asset_rerun_from_blobs_e2e.py`
 
 Details: `services/dagster/etl_pipelines/AGENTS.md`.
