@@ -364,11 +364,18 @@ graph TD
         Sensor -->|3. Signal run| Daemon
         Daemon -->|4. Launch Run| CodeLoc
         CodeLoc -->|5. Read Raw Data| Landing
-        CodeLoc -->|6. Spatial Ops - SQL| PostGIS
-        CodeLoc -->|7. Write GeoParquet| Lake
-        CodeLoc -->|8. Log Lineage| Mongo
+    CodeLoc -->|6. Spatial Ops - SQL| PostGIS
+    CodeLoc -->|7. Archive raw source (artifact → blob)| Lake
+    CodeLoc -->|8. Write GeoParquet| Lake
+    CodeLoc -->|9. Log Lineage + Audit| Mongo
     end
 ```
+
+Raw uploads are archived as per-upload **artifacts** that reference content-addressed **blobs** stored under
+`s3://data-lake/blobs/...`. Final pipeline outputs remain **assets** (versioned, queryable datasets).
+Archival follows hash-first, upload-second to avoid memory-heavy hashing when a blob already exists. Reruns
+rewrite manifests to blob paths (including bucket-aware tabular downloads), and each archival records
+`activity_logs` with `action=archive_raw_source` and `resource_type=artifact`.
 
 ## Repository Structure
 
