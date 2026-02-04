@@ -30,6 +30,42 @@ def _derive_digest_from_blob_key(key: str) -> str:
     return key.split("/")[-1]
 
 
+def _write_activity_log(
+    *,
+    mongodb,
+    action: str,
+    resource_type: str,
+    resource_id: str,
+    user: str,
+    timestamp: datetime,
+    details: dict[str, object],
+) -> None:
+    """
+    Write an activity log entry with idempotent upsert.
+
+    Uses (action, resource_type, resource_id) as the compound key for deduplication.
+    """
+    collection = mongodb._get_collection("activity_logs")
+    collection.update_one(
+        {
+            "action": action,
+            "resource_type": resource_type,
+            "resource_id": resource_id,
+        },
+        {
+            "$setOnInsert": {
+                "timestamp": timestamp,
+                "user": user,
+                "action": action,
+                "resource_type": resource_type,
+                "resource_id": resource_id,
+                "details": details,
+            }
+        },
+        upsert=True,
+    )
+
+
 def archive_raw_source(
     *,
     minio,
@@ -138,6 +174,23 @@ def archive_raw_source(
     }
 
     artifact_id = mongodb.insert_artifact(artifact)
+
+    _write_activity_log(
+        mongodb=mongodb,
+        action="archive_raw_source",
+        resource_type="artifact",
+        resource_id=artifact_id,
+        user=uploader,
+        timestamp=now,
+        details={
+            "artifact_id": artifact_id,
+            "blob_id": blob_id,
+            "batch_id": batch_id,
+            "content_hash": content_hash,
+            "source_s3_path": source_s3_path,
+            "blob_key": blob_doc["key"],
+        },
+    )
 
     return {
         "artifact_id": artifact_id,
