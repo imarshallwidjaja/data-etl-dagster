@@ -62,6 +62,8 @@ SAMPLE_TABULAR_MANIFEST = {
 def test_download_tabular_from_landing_success():
     """Test successful download of tabular file."""
     mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
     mock_log = Mock()
 
     # Create a temporary CSV file
@@ -99,6 +101,112 @@ def test_download_tabular_from_landing_success():
             Path(result["local_file_path"]).unlink(missing_ok=True)
 
 
+def test_download_tabular_from_landing_uses_lake_bucket():
+    """Test that data lake paths use download_from_lake."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    manifest = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "s3://data-lake/batch_tabular_001/data.csv",
+                "type": "tabular",
+                "format": "CSV",
+            }
+        ],
+    }
+
+    mock_minio.download_from_lake.side_effect = lambda s3_key, local_path: Path(
+        local_path
+    ).write_text("id,name\n1,Alice")
+
+    result = _download_tabular_from_landing(
+        minio=mock_minio,
+        manifest=manifest,
+        log=mock_log,
+    )
+
+    try:
+        assert Path(result["local_file_path"]).exists()
+        mock_minio.download_from_lake.assert_called_once_with(
+            "batch_tabular_001/data.csv",
+            result["local_file_path"],
+        )
+        mock_minio.download_from_landing.assert_not_called()
+    finally:
+        if "local_file_path" in locals():
+            Path(result["local_file_path"]).unlink(missing_ok=True)
+
+
+def test_download_tabular_from_landing_key_only_defaults_landing():
+    """Test that key-only paths use landing zone."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    manifest = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "landing-zone/batch_tabular_001/data.csv",
+                "type": "tabular",
+                "format": "CSV",
+            }
+        ],
+    }
+
+    mock_minio.download_from_landing.side_effect = lambda s3_key, local_path: Path(
+        local_path
+    ).write_text("id,name\n1,Alice")
+
+    result = _download_tabular_from_landing(
+        minio=mock_minio,
+        manifest=manifest,
+        log=mock_log,
+    )
+
+    try:
+        assert Path(result["local_file_path"]).exists()
+        mock_minio.download_from_landing.assert_called_once_with(
+            "batch_tabular_001/data.csv",
+            result["local_file_path"],
+        )
+        mock_minio.download_from_lake.assert_not_called()
+    finally:
+        if "local_file_path" in locals():
+            Path(result["local_file_path"]).unlink(missing_ok=True)
+
+
+def test_download_tabular_from_landing_unknown_bucket_raises():
+    """Test that unknown buckets raise a clear error."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    manifest = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "s3://unknown-bucket/batch_tabular_001/data.csv",
+                "type": "tabular",
+                "format": "CSV",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Unsupported bucket"):
+        _download_tabular_from_landing(
+            minio=mock_minio,
+            manifest=manifest,
+            log=mock_log,
+        )
+
+
 def test_download_tabular_from_landing_rejects_multiple_files():
     """Test that download rejects manifests with multiple files."""
     multi_file_manifest = {
@@ -118,6 +226,8 @@ def test_download_tabular_from_landing_rejects_multiple_files():
     }
 
     mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
     mock_log = Mock()
 
     with pytest.raises(ValueError, match="exactly one file"):
@@ -131,6 +241,8 @@ def test_download_tabular_from_landing_rejects_multiple_files():
 def test_download_tabular_from_landing_cleanup_on_error():
     """Test that temp file is cleaned up on download error."""
     mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
     mock_minio.download_from_landing.side_effect = RuntimeError("Download failed")
     mock_log = Mock()
 
@@ -145,10 +257,12 @@ def test_download_tabular_from_landing_cleanup_on_error():
 def test_download_tabular_from_landing_cleanup_on_error():
     """Test that temp file is cleaned up on download error."""
     mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
     mock_minio.download_from_landing.side_effect = RuntimeError("Download failed")
     mock_log = Mock()
 
-    with pytest.raises(RuntimeError, match="Download failed"):
+    with pytest.raises(RuntimeError, match="Failed to download"):
         _download_tabular_from_landing(
             minio=mock_minio,
             manifest=SAMPLE_TABULAR_MANIFEST,
