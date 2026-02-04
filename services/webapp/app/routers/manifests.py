@@ -366,6 +366,7 @@ async def rerun_manifest(
 ) -> ManifestRerunResponse:
     """Create a new manifest from an archived manifest for re-processing."""
     minio = get_minio_service()
+    mongodb = get_mongodb_service()
     archive_key = f"archive/manifests/{batch_id}.json"
 
     try:
@@ -379,6 +380,46 @@ async def rerun_manifest(
     new_manifest = dict(original)
     new_manifest["batch_id"] = new_batch_id
     new_manifest["uploader"] = current_user.username
+
+    artifacts = mongodb.list_raw_source_artifacts_for_batch(batch_id)
+    latest_by_source: dict[str, dict] = {}
+    for artifact in artifacts:
+        source_path = artifact.get("source_s3_path")
+        if not source_path:
+            continue
+        created_at = artifact.get("created_at")
+        if created_at is None:
+            continue
+        current = latest_by_source.get(source_path)
+        current_created_at = current.get("created_at") if current else None
+        if current is None or current_created_at is None:
+            latest_by_source[source_path] = artifact
+            continue
+        if created_at > current_created_at:
+            latest_by_source[source_path] = artifact
+
+    blob_ids = [artifact.get("blob_id") for artifact in latest_by_source.values()]
+    blob_map = mongodb.get_blobs_by_ids([blob_id for blob_id in blob_ids if blob_id])
+
+    files = new_manifest.get("files", [])
+    for file_entry in files:
+        source_path = file_entry.get("path")
+        if not source_path:
+            continue
+        artifact = latest_by_source.get(source_path)
+        if not artifact:
+            continue
+        blob_id = artifact.get("blob_id")
+        if not blob_id:
+            continue
+        blob = blob_map.get(blob_id)
+        if not blob:
+            continue
+        bucket = blob.get("bucket")
+        key = blob.get("key")
+        if not bucket or not key:
+            continue
+        file_entry["path"] = f"s3://{bucket}/{key}"
 
     manifest_key = f"manifests/{new_batch_id}.json"
     manifest_json = json.dumps(new_manifest, indent=2, default=str)
