@@ -61,6 +61,8 @@ class MongoDBService:
     MANIFESTS = "manifests"
     ASSETS = "assets"
     LINEAGE = "lineage"
+    BLOBS = "blobs"
+    ARTIFACTS = "artifacts"
 
     def __init__(self) -> None:
         settings = get_settings()
@@ -324,6 +326,60 @@ class MongoDBService:
                 continue
 
         return children
+
+    # ------------------------------------------------------------------
+    # Artifact + Blob operations
+    # ------------------------------------------------------------------
+
+    def list_raw_source_artifacts_for_batch(self, batch_id: str) -> list[dict]:
+        """
+        List raw_source artifacts for a batch.
+
+        Args:
+            batch_id: Manifest batch ID
+
+        Returns:
+            List of artifact documents
+        """
+        collection = self._get_collection(self.ARTIFACTS)
+        cursor = collection.find({"batch_id": batch_id, "kind": "raw_source"})
+
+        artifacts = []
+        for doc in cursor:
+            doc["_id"] = str(doc.get("_id"))
+            artifacts.append(doc)
+
+        return artifacts
+
+    def get_blobs_by_ids(self, blob_ids: list[str]) -> dict[str, dict]:
+        """
+        Fetch blob documents by ObjectId strings.
+
+        Returns a mapping of blob_id (string) -> blob document.
+        """
+        if not blob_ids:
+            return {}
+
+        object_ids = []
+        for blob_id in blob_ids:
+            try:
+                object_ids.append(ObjectId(blob_id))
+            except Exception:
+                continue
+
+        if not object_ids:
+            return {}
+
+        collection = self._get_collection(self.BLOBS)
+        cursor = collection.find({"_id": {"$in": object_ids}})
+
+        blobs: dict[str, dict] = {}
+        for doc in cursor:
+            doc_id = str(doc.get("_id"))
+            doc["_id"] = doc_id
+            blobs[doc_id] = doc
+
+        return blobs
 
     # ------------------------------------------------------------------
     # Re-run versioning
