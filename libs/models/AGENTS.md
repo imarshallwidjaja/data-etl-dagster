@@ -6,6 +6,7 @@ These are the core contracts for ingestion and persistence.
 
 ## Key invariants
 - Pydantic v2 only (`model_config`, `model_dump`, `@field_validator`).
+- Use strict typing; prefer `typing.Annotated` for structured metadata and validators.
 - Models that map to MongoDB documents must match migration schemas.
 - Unified status semantics for manifests/runs: `running`, `success`, `failure`, `canceled`.
 - `HumanMetadataMixin` fields are required (`title`, `description`, `keywords`, `source`, `license`, `attribution`).

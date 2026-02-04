@@ -8,6 +8,7 @@ This repo implements an offline-first spatial data ETL platform orchestrated by 
 - `libs/models/AGENTS.md` (data model contracts)
 
 ## Global invariants
+- Python 3.10+ runtime.
 - Offline-first runtime (no public cloud dependencies).
 - MongoDB is the ledger of record; no Mongo record = data does not exist.
 - PostGIS is transient compute only (never persist durable datasets there).
@@ -26,3 +27,8 @@ This repo implements an offline-first spatial data ETL platform orchestrated by 
 
 ## Testing
 See `docs/agents/testing.md`.
+
+## Docs-first protocol
+- Read the repo-root `AGENTS.md` before starting work.
+- Before editing, read the nearest local `AGENTS.md` in the directory hierarchy.
+- If you change architecture or patterns, update the relevant `AGENTS.md`.

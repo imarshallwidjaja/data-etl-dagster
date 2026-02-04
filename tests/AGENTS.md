@@ -9,6 +9,7 @@ Project test suite (unit + integration).
 - E2E tests are `@pytest.mark.e2e` under the integration suite.
 - Tests must tag Dagster runs with `testing=true` when launching via GraphQL or manifest-driven sensors.
 - Tests must clean artifacts they create within the test/fixture body (use `try/finally`); pre-clean fixtures only.
+- Webapp test locations: unit tests live in `tests/unit/webapp/`, integration tests live under `tests/integration/test_webapp*.py`.
 
 ## References
 - Test commands: `docs/agents/testing.md`
