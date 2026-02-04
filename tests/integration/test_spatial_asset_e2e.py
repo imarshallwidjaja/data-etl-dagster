@@ -17,6 +17,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from bson import ObjectId, errors as bson_errors
 
 from libs.spatial_utils import RunIdSchemaMapping
 
@@ -116,7 +117,41 @@ def _assert_postgis_schema_cleaned(postgis_connection, run_id: str) -> None:
             (schema_name,),
         )
         result = cur.fetchone()
-        assert result is None, f"PostGIS schema {schema_name} still exists"
+    assert result is None, f"PostGIS schema {schema_name} still exists"
+
+
+def _assert_raw_archives_exist(mongo_client, mongo_settings, batch_id: str) -> None:
+    db = mongo_client[mongo_settings.database]
+    artifacts = list(db["artifacts"].find({"batch_id": batch_id, "kind": "raw_source"}))
+    assert artifacts, f"No raw_source artifacts found for batch_id={batch_id}"
+
+    blob_ids = {artifact.get("blob_id") for artifact in artifacts}
+    assert all(blob_ids), "raw_source artifacts missing blob_id"
+
+    for blob_id in blob_ids:
+        try:
+            blob_object_id = ObjectId(blob_id)
+        except bson_errors.InvalidId:
+            raise AssertionError(f"Invalid blob_id value: {blob_id}")
+        blob_doc = db["blobs"].find_one({"_id": blob_object_id})
+        assert blob_doc is not None, f"No blob found for blob_id={blob_id}"
+
+
+def _cleanup_raw_archives(mongo_client, mongo_settings, batch_id: str) -> None:
+    try:
+        db = mongo_client[mongo_settings.database]
+        artifacts = list(db["artifacts"].find({"batch_id": batch_id}))
+        blob_ids = {artifact.get("blob_id") for artifact in artifacts}
+        db["artifacts"].delete_many({"batch_id": batch_id})
+        for blob_id in blob_ids:
+            if not blob_id:
+                continue
+            try:
+                db["blobs"].delete_one({"_id": ObjectId(blob_id)})
+            except bson_errors.InvalidId:
+                continue
+    except Exception:
+        pass
 
 
 class TestSpatialAssetE2E:
@@ -173,7 +208,9 @@ class TestSpatialAssetE2E:
                     f"spatial_asset_job failed: {status}.{format_error_details(error_details)}"
                 )
 
-            asset_doc = assert_mongodb_asset_exists(mongo_client, mongo_settings, run_id)
+            asset_doc = assert_mongodb_asset_exists(
+                mongo_client, mongo_settings, run_id
+            )
             assert asset_doc.get("kind") == "spatial", (
                 f"Expected kind=spatial, got {asset_doc.get('kind')}"
             )
@@ -214,6 +251,8 @@ class TestSpatialAssetE2E:
                 expected_columns=["geom", "sa1_code21"],
             )
 
+            _assert_raw_archives_exist(mongo_client, mongo_settings, batch_id)
+
             _assert_postgis_schema_cleaned(postgis_connection, run_id)
 
         except BaseException as e:
@@ -234,6 +273,8 @@ class TestSpatialAssetE2E:
                 cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
                 cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
+            _cleanup_raw_archives(mongo_client, mongo_settings, batch_id)
+
             cleanup_dynamic_partitions(
                 dagster_client, created_partitions, original_error=test_error
             )
@@ -251,7 +292,9 @@ def cleanup_mongodb_asset_by_id(
         pass
 
 
-def assert_mongodb_asset_exists(mongo_client, mongo_settings, dagster_run_id: str) -> dict:
+def assert_mongodb_asset_exists(
+    mongo_client, mongo_settings, dagster_run_id: str
+) -> dict:
     db = mongo_client[mongo_settings.database]
     run_doc = db["runs"].find_one({"dagster_run_id": dagster_run_id})
     assert run_doc is not None, (

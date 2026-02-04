@@ -85,18 +85,18 @@ def test_valid_manifest_yields_run_request_ingest_lane(
     # Check job name
     assert run_request.job_name == "ingest_job"
 
-    # Check that manifest is passed as op input to load_to_postgis
-    assert "load_to_postgis" in run_request.run_config["ops"]
-    assert "inputs" in run_request.run_config["ops"]["load_to_postgis"]
-    assert "manifest" in run_request.run_config["ops"]["load_to_postgis"]["inputs"]
+    # Check that manifest is passed as op input to init_mongo_run_op
+    assert "init_mongo_run_op" in run_request.run_config["ops"]
+    assert "inputs" in run_request.run_config["ops"]["init_mongo_run_op"]
+    assert "payload" in run_request.run_config["ops"]["init_mongo_run_op"]["inputs"]
     assert (
         "value"
-        in run_request.run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]
+        in run_request.run_config["ops"]["init_mongo_run_op"]["inputs"]["payload"]
     )
     assert (
-        run_request.run_config["ops"]["load_to_postgis"]["inputs"]["manifest"]["value"][
-            "batch_id"
-        ]
+        run_request.run_config["ops"]["init_mongo_run_op"]["inputs"]["payload"][
+            "value"
+        ]["batch_id"]
         == valid_manifest_dict["batch_id"]
     )
 
