@@ -51,6 +51,9 @@ from .asset import (
     Asset,
 )
 
+# Blob models
+from .blob import Blob
+
 # Run models
 from .run import (
     Run,
@@ -98,6 +101,8 @@ __all__ = [
     "ColumnInfo",
     "AssetMetadata",
     "Asset",
+    # Blob models
+    "Blob",
     # Run models
     "Run",
     "RunStatus",

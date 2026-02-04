@@ -181,6 +181,32 @@ RUNS_SCHEMA_V001 = {
     }
 }
 
+BLOBS_SCHEMA_V001 = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": [
+            "content_hash",
+            "bucket",
+            "key",
+            "created_at",
+        ],
+        "properties": {
+            "content_hash": {
+                "bsonType": "string",
+                "pattern": "^sha256:[a-f0-9]{64}$",
+            },
+            "bucket": {
+                "bsonType": "string",
+                "pattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$",
+            },
+            "key": {"bsonType": "string"},
+            "size_bytes": {"bsonType": ["int", "long", "null"], "minimum": 0},
+            "content_type": {"bsonType": ["string", "null"]},
+            "created_at": {"bsonType": "date"},
+        },
+    }
+}
+
 LINEAGE_SCHEMA_V001 = {
     "$jsonSchema": {
         "bsonType": "object",
@@ -275,6 +301,26 @@ def up(db: Database) -> None:
     db.runs.create_index([("status", 1)])
     db.runs.create_index([("batch_id", 1), ("started_at", -1)])
 
+    # Blobs collection
+    try:
+        db.create_collection(
+            "blobs",
+            validator=BLOBS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+    except CollectionInvalid:
+        db.command(
+            "collMod",
+            "blobs",
+            validator=BLOBS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+
+    db.blobs.create_index([("content_hash", 1)], unique=True)
+    db.blobs.create_index([("bucket", 1), ("key", 1)], unique=True)
+
     # Lineage collection
     try:
         db.create_collection(
@@ -304,6 +350,6 @@ def down(db: Database) -> None:
     Note: This is destructive - drops all collections.
     Only use in development when resetting to clean state.
     """
-    for collection_name in ["assets", "manifests", "runs", "lineage"]:
+    for collection_name in ["assets", "manifests", "runs", "lineage", "blobs"]:
         if collection_name in db.list_collection_names():
             db.drop_collection(collection_name)
