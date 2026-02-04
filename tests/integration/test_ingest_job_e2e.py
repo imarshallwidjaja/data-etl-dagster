@@ -11,6 +11,7 @@ Run with: pytest tests/integration/test_ingest_job_e2e.py -v -m "integration and
 """
 
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 from uuid import uuid4
@@ -35,6 +36,8 @@ from .helpers import (
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.e2e]
+
+logger = logging.getLogger(__name__)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 MANIFEST_TEMPLATE_PATH = FIXTURES_DIR / "e2e_sample_sa1_data-manifest.json"
@@ -186,8 +189,10 @@ def _cleanup(
     try:
         db = mongo_client[mongo_settings.database]
         db["assets"].delete_one({"_id": asset_doc["_id"]})
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning(
+            "Failed to delete asset document %s: %s", asset_doc.get("_id"), exc
+        )
 
     try:
         db = mongo_client[mongo_settings.database]
@@ -201,8 +206,8 @@ def _cleanup(
                 db["blobs"].delete_one({"_id": ObjectId(blob_id)})
             except bson_errors.InvalidId:
                 continue
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("Failed to cleanup raw archives for batch %s: %s", batch_id, exc)
 
 
 class TestIngestJobE2E:

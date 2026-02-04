@@ -6,6 +6,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.auth.dependencies import get_current_user
+from libs.models import FileEntry
+from libs.models.spatial import FileType
 from app.main import app
 
 
@@ -134,3 +136,108 @@ def test_rerun_leaves_paths_when_blob_missing(mock_auth):
     assert response.status_code == 200
     uploaded_manifest = captured["body"]
     assert uploaded_manifest["files"][0]["path"] == "s3://landing/raw/missing.csv"
+
+
+def test_rerun_handles_mixed_created_at_types(mock_auth):
+    archived_manifest = {
+        "batch_id": "batch_mixed",
+        "files": [
+            {"path": "s3://landing/raw/mixed.csv", "type": "tabular", "format": "CSV"}
+        ],
+    }
+
+    artifacts = [
+        {
+            "id": "a1",
+            "blob_id": "b1",
+            "batch_id": "batch_mixed",
+            "created_at": datetime(2024, 1, 1),
+            "source_s3_path": "s3://landing/raw/mixed.csv",
+        },
+        {
+            "id": "a2",
+            "blob_id": "b2",
+            "batch_id": "batch_mixed",
+            "created_at": "2024-01-02T00:00:00Z",
+            "source_s3_path": "s3://landing/raw/mixed.csv",
+        },
+    ]
+
+    blobs_by_id = {
+        "b2": {"_id": "b2", "bucket": "data-lake", "key": "blobs/mixed.parquet"}
+    }
+
+    captured, capture_upload = _capture_upload_payload()
+    mock_minio = MagicMock()
+    mock_minio.get_archived_manifest.return_value = archived_manifest
+    mock_minio.upload_if_not_exists.side_effect = capture_upload
+
+    mock_mongodb = MagicMock()
+    mock_mongodb.list_raw_source_artifacts_for_batch.return_value = artifacts
+    mock_mongodb.get_blobs_by_ids.return_value = blobs_by_id
+
+    with (
+        patch("app.routers.manifests.get_minio_service", return_value=mock_minio),
+        patch("app.routers.manifests.get_mongodb_service", return_value=mock_mongodb),
+        patch(
+            "app.routers.manifests.create_rerun_batch_id", return_value="batch_mixed_v2"
+        ),
+        patch("app.routers.manifests.get_activity_service"),
+    ):
+        response = client.post("/manifests/batch_mixed/rerun")
+
+    assert response.status_code == 200
+    uploaded_manifest = captured["body"]
+    assert uploaded_manifest["files"][0]["path"] == "s3://data-lake/blobs/mixed.parquet"
+
+
+def test_rerun_handles_file_entry_objects(mock_auth):
+    archived_manifest = {
+        "batch_id": "batch_obj",
+        "files": [
+            FileEntry(
+                path="s3://landing/raw/object.csv",
+                type=FileType.TABULAR,
+                format="CSV",
+            )
+        ],
+    }
+
+    artifacts = [
+        {
+            "id": "a1",
+            "blob_id": "b1",
+            "batch_id": "batch_obj",
+            "created_at": datetime(2024, 1, 1),
+            "source_s3_path": "s3://landing/raw/object.csv",
+        }
+    ]
+
+    blobs_by_id = {
+        "b1": {"_id": "b1", "bucket": "data-lake", "key": "blobs/object.parquet"}
+    }
+
+    captured, capture_upload = _capture_upload_payload()
+    mock_minio = MagicMock()
+    mock_minio.get_archived_manifest.return_value = archived_manifest
+    mock_minio.upload_if_not_exists.side_effect = capture_upload
+
+    mock_mongodb = MagicMock()
+    mock_mongodb.list_raw_source_artifacts_for_batch.return_value = artifacts
+    mock_mongodb.get_blobs_by_ids.return_value = blobs_by_id
+
+    with (
+        patch("app.routers.manifests.get_minio_service", return_value=mock_minio),
+        patch("app.routers.manifests.get_mongodb_service", return_value=mock_mongodb),
+        patch(
+            "app.routers.manifests.create_rerun_batch_id", return_value="batch_obj_v2"
+        ),
+        patch("app.routers.manifests.get_activity_service"),
+    ):
+        response = client.post("/manifests/batch_obj/rerun")
+
+    assert response.status_code == 200
+    uploaded_manifest = captured["body"]
+    assert (
+        uploaded_manifest["files"][0]["path"] == "s3://data-lake/blobs/object.parquet"
+    )

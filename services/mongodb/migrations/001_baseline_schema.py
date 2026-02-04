@@ -197,6 +197,8 @@ BLOBS_SCHEMA_V001 = {
             },
             "bucket": {
                 "bsonType": "string",
+                "minLength": 3,
+                "maxLength": 63,
                 "pattern": "^[a-z0-9][a-z0-9.-]*[a-z0-9]$",
             },
             "key": {"bsonType": "string"},

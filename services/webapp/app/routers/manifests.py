@@ -6,12 +6,14 @@
 
 import json
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
 
 from libs.models import FileEntry, JoinConfig, TagValue
 
@@ -365,6 +367,22 @@ async def rerun_manifest(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ManifestRerunResponse:
     """Create a new manifest from an archived manifest for re-processing."""
+
+    def _normalize_created_at(value: object) -> Optional[datetime]:
+        if isinstance(value, datetime):
+            if value.tzinfo is None:
+                return value.replace(tzinfo=timezone.utc)
+            return value.astimezone(timezone.utc)
+        if isinstance(value, str):
+            try:
+                parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                return None
+            if parsed.tzinfo is None:
+                return parsed.replace(tzinfo=timezone.utc)
+            return parsed.astimezone(timezone.utc)
+        return None
+
     minio = get_minio_service()
     mongodb = get_mongodb_service()
     archive_key = f"archive/manifests/{batch_id}.json"
@@ -376,34 +394,49 @@ async def rerun_manifest(
             status_code=404, detail=f"Archived manifest not found: {batch_id}"
         ) from exc
 
-    new_batch_id = create_rerun_batch_id(batch_id)
+    new_batch_id = await run_in_threadpool(create_rerun_batch_id, batch_id)
     new_manifest = dict(original)
     new_manifest["batch_id"] = new_batch_id
     new_manifest["uploader"] = current_user.username
 
-    artifacts = mongodb.list_raw_source_artifacts_for_batch(batch_id)
+    artifacts = await run_in_threadpool(
+        mongodb.list_raw_source_artifacts_for_batch, batch_id
+    )
     latest_by_source: dict[str, dict] = {}
     for artifact in artifacts:
         source_path = artifact.get("source_s3_path")
         if not source_path:
             continue
-        created_at = artifact.get("created_at")
+        created_at = _normalize_created_at(artifact.get("created_at"))
         if created_at is None:
             continue
         current = latest_by_source.get(source_path)
-        current_created_at = current.get("created_at") if current else None
-        if current is None or current_created_at is None:
-            latest_by_source[source_path] = artifact
-            continue
-        if created_at > current_created_at:
+        current_created_at = (
+            _normalize_created_at(current.get("created_at")) if current else None
+        )
+        if (
+            current is None
+            or current_created_at is None
+            or created_at > current_created_at
+        ):
             latest_by_source[source_path] = artifact
 
     blob_ids = [artifact.get("blob_id") for artifact in latest_by_source.values()]
-    blob_map = mongodb.get_blobs_by_ids([blob_id for blob_id in blob_ids if blob_id])
+    blob_map = await run_in_threadpool(
+        mongodb.get_blobs_by_ids, [blob_id for blob_id in blob_ids if blob_id]
+    )
 
-    files = new_manifest.get("files", [])
-    for file_entry in files:
-        source_path = file_entry.get("path")
+    files = new_manifest.get("files") or []
+    new_manifest["files"] = files
+    for index, file_entry in enumerate(files):
+        if isinstance(file_entry, dict):
+            entry = file_entry
+        elif hasattr(file_entry, "model_dump"):
+            entry = file_entry.model_dump()
+            files[index] = entry
+        else:
+            continue
+        source_path = entry.get("path")
         if not source_path:
             continue
         artifact = latest_by_source.get(source_path)
@@ -419,7 +452,7 @@ async def rerun_manifest(
         key = blob.get("key")
         if not bucket or not key:
             continue
-        file_entry["path"] = f"s3://{bucket}/{key}"
+        entry["path"] = f"s3://{bucket}/{key}"
 
     manifest_key = f"manifests/{new_batch_id}.json"
     manifest_json = json.dumps(new_manifest, indent=2, default=str)
