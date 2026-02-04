@@ -31,6 +31,7 @@ graph TD
 - **Blobs**: content-addressed raw bytes stored under `s3://data-lake/blobs/...`.
 - **Artifacts**: per-upload raw/intermediate references that point to blobs (includes source path + bucket).
 - **Assets**: versioned, queryable outputs produced by the pipeline.
+
 Raw source archival is content-addressed: uploads create **artifacts** (per upload instance) pointing to
 deduplicated **blobs** in `s3://data-lake/blobs/...`. The archive flow is hash-first, upload-second so
 existing blobs can be reused without re-reading entire files into memory.
