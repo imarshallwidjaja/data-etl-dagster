@@ -4,6 +4,7 @@
 - Run with pytest in the conda env.
 - Conda env name: `data-etl-dagster`.
 - Command: `pytest tests/unit`
+- Install test dependencies: `pip install -r requirements-test.txt`
 
 ## Integration tests
 - Require Docker services.
@@ -25,3 +26,17 @@
 ## Service readiness helpers
 - `python scripts/wait_for_services.py`
 - `python scripts/check_container_stability.py`
+
+## Docker stack (local)
+Start the stack:
+
+```
+docker compose -f docker-compose.yaml up -d --build \
+    dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
+```
+
+Stop the stack:
+
+```
+docker compose -f docker-compose.yaml down -v
+```
