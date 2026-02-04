@@ -20,6 +20,7 @@ from libs.models import (
     AssetKind,
     AssetMetadata,
     ColumnInfo,
+    Blob,
     FileType,
     OutputFormat,
     MongoSettings,
@@ -643,6 +644,74 @@ class TestContentHashValidation:
         hash_upper = "sha256:" + "A" * 64
         hash_val = validate_content_hash(hash_upper)
         assert hash_val == hash_upper.lower()
+
+
+# =============================================================================
+# Blob Validation Tests
+# =============================================================================
+
+
+class TestBlobValidation:
+    """Test Blob validation logic."""
+
+    def test_valid_blob_passes(self):
+        """Test that a valid blob passes validation."""
+        blob = Blob(
+            content_hash="sha256:" + "a" * 64,
+            bucket="data-lake",
+            key="dataset_001/v1/data.parquet",
+            size_bytes=1024,
+            content_type="application/parquet",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+        )
+
+        assert blob.bucket == "data-lake"
+        assert blob.key == "dataset_001/v1/data.parquet"
+        assert blob.size_bytes == 1024
+        assert blob.content_type == "application/parquet"
+
+    def test_content_hash_normalized(self):
+        """Test that content_hash is normalized to lowercase."""
+        blob = Blob(
+            content_hash="SHA256:" + "A" * 64,
+            bucket="data-lake",
+            key="dataset_001/v1/data.parquet",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+        )
+
+        assert blob.content_hash == ("sha256:" + "a" * 64)
+
+    def test_invalid_bucket_rejected(self):
+        """Test that invalid bucket names are rejected."""
+        with pytest.raises(ValidationError, match="Invalid S3 bucket name"):
+            Blob(
+                content_hash="sha256:" + "a" * 64,
+                bucket="InvalidBucket",
+                key="dataset_001/v1/data.parquet",
+                created_at=datetime(2024, 1, 1, 12, 0, 0),
+            )
+
+    def test_invalid_key_rejected(self):
+        """Test that invalid object keys are rejected."""
+        with pytest.raises(ValidationError, match="cannot start with"):
+            Blob(
+                content_hash="sha256:" + "a" * 64,
+                bucket="data-lake",
+                key="/dataset_001/v1/data.parquet",
+                created_at=datetime(2024, 1, 1, 12, 0, 0),
+            )
+
+    def test_optional_fields_default_to_none(self):
+        """Test that optional fields default to None when omitted."""
+        blob = Blob(
+            content_hash="sha256:" + "a" * 64,
+            bucket="data-lake",
+            key="dataset_001/v1/data.parquet",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+        )
+
+        assert blob.size_bytes is None
+        assert blob.content_type is None
 
 
 # =============================================================================
