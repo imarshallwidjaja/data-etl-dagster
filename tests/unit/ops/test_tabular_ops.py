@@ -137,7 +137,7 @@ def test_download_tabular_from_landing_uses_lake_bucket():
         )
         mock_minio.download_from_landing.assert_not_called()
     finally:
-        if "local_file_path" in locals():
+        if "result" in locals():
             Path(result["local_file_path"]).unlink(missing_ok=True)
 
 
@@ -177,7 +177,7 @@ def test_download_tabular_from_landing_key_only_defaults_landing():
         )
         mock_minio.download_from_lake.assert_not_called()
     finally:
-        if "local_file_path" in locals():
+        if "result" in locals():
             Path(result["local_file_path"]).unlink(missing_ok=True)
 
 

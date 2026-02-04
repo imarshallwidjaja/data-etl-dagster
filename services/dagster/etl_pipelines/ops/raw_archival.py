@@ -120,6 +120,7 @@ def archive_raw_source(
         temp_path = temp_file.name
         temp_file.close()
 
+        response = None
         try:
             client = minio.get_client()
             response = client.get_object(bucket, key)
@@ -129,9 +130,6 @@ def archive_raw_source(
                 for chunk in response.stream(32 * 1024):
                     sha256.update(chunk)
                     output.write(chunk)
-
-            response.close()
-            response.release_conn()
 
             digest = sha256.hexdigest()
             content_hash = f"sha256:{digest}"
@@ -154,6 +152,13 @@ def archive_raw_source(
                 )
                 blob_id = blob_doc["id"]
         finally:
+            if response is not None:
+                try:
+                    response.close()
+                    response.release_conn()
+                except Exception as exc:
+                    log.warning(f"Failed to close response for {bucket}/{key}: {exc}")
+
             try:
                 Path(temp_path).unlink(missing_ok=True)
             except Exception as exc:
