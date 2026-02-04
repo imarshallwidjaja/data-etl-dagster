@@ -22,6 +22,15 @@ Versioned, idempotent schema migrations for the metadata ledger.
 3. **Generator script** (`scripts/generate_migration_schema.py`) creates schemas from Pydantic
 4. **Parity tests** (`tests/unit/test_schema_parity.py`) detect drift
 
+> **Pre-deploy exception**: For the blob/artifact rollout, baseline migrations were edited in-place to
+> add `blobs`, `artifacts`, and the `archive_raw_source` activity enum. This is a one-off exception
+> because no production deployment existed yet. Post-deploy, the frozen migration rule applies again.
+
+## Blob + artifact additions
+- `blobs` store content-addressed raw bytes (data lake `blobs/` prefix).
+- `artifacts` store per-upload raw/intermediate references to blobs.
+- `activity_logs` include `action=archive_raw_source` with `resource_type=artifact`.
+
 ### Workflow: Changing Schema
 
 ```

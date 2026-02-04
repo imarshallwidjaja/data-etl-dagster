@@ -14,6 +14,8 @@ These are the core contracts for ingestion and persistence.
 - Spatial/joined assets must include `metadata.geometry_type`; tabular/spatial/joined assets require `metadata.column_schema`.
 - `Asset.run_id` and lineage records use Mongo ObjectId strings (not Dagster run IDs).
 - JSON Schema from `ManifestCreateRequest` is a public API consumed by the webapp.
+- Raw source archival uses `Blob` (content-addressed bytes) and `Artifact` (per-upload raw/intermediate) models.
+- Activity logs include `action=archive_raw_source` with `resource_type=artifact` for raw archival.
 
 ## Environment variables
 - Canonical settings live in `libs/models/config.py`.

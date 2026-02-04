@@ -13,6 +13,11 @@ This summary describes behavior of the Dagster code location.
 - Join outputs are GeoParquet with `geo` metadata merged from the spatial parent
   and validated before upload.
 
+## Data objects
+- **Blobs**: content-addressed raw bytes stored under `s3://data-lake/blobs/...`.
+- **Artifacts**: per-upload raw/intermediate references that point to blobs (includes source path + bucket).
+- **Assets**: versioned, queryable outputs produced by the pipeline.
+
 ## Sensor routing
 - `spatial_sensor` -> `spatial_asset_job` (spatial intents)
 - `tabular_sensor` -> `tabular_asset_job` (tabular intents)
@@ -22,5 +27,18 @@ This summary describes behavior of the Dagster code location.
 ## Run tracking
 - Run lifecycle lives in MongoDB `runs` collection.
 - Assets and lineage reference Mongo `run_id` (ObjectId string).
+
+## Raw source archival + reruns
+- Raw uploads are archived as **artifacts** (per upload) that reference content-addressed **blobs** in
+  `s3://data-lake/blobs/...`.
+- Archive flow is hash-first, upload-second so dedup checks avoid memory-heavy hashing when a blob already exists.
+- Reruns rewrite manifest file paths to blob locations, and tabular downloads resolve blob keys with bucket context.
+- Archive activity logs use `action=archive_raw_source` with `resource_type=artifact`.
+- Integration/E2E coverage:
+  - `tests/integration/test_webapp_manifests_rerun_rewrites_to_blobs.py`
+  - `tests/integration/test_tabular_asset_rerun_from_blobs_e2e.py`
+- Integration/E2E coverage:
+  - `tests/integration/test_webapp_manifests_rerun_rewrites_to_blobs.py`
+  - `tests/integration/test_tabular_asset_rerun_from_blobs_e2e.py`
 
 Details: `services/dagster/etl_pipelines/AGENTS.md`.

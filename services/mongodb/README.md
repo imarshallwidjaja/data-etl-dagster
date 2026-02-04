@@ -23,10 +23,18 @@ MongoDB stores:
 |------------|---------|
 | `manifests` | Ingestion manifest records (batch_id, intent, files, metadata, status) |
 | `assets` | Asset registry with versioning (s3_key, dataset_id, version, kind) |
+| `blobs` | Content-addressed raw bytes stored in `data-lake/blobs/` |
+| `artifacts` | Per-upload raw/intermediate references to blobs (with source paths) |
 | `runs` | Dagster run tracking (dagster_run_id, batch_id, status, asset_ids) |
 | `lineage` | Parent → child asset relationships (for join provenance) |
-| `activity_logs` | Audit trail of all platform operations with user and IP tracking |
+| `activity_logs` | Audit trail of all platform operations with user and IP tracking (includes `archive_raw_source` for artifacts) |
 | `schema_migrations` | Applied migration tracking |
+
+### Blob + artifact lifecycle
+- **Blobs** are content-addressed bytes stored under `s3://data-lake/blobs/...`.
+- **Artifacts** are per-upload raw/intermediate references that point at blobs.
+- Raw archival uses hash-first, upload-second so dedup checks avoid memory-heavy hashing.
+- `activity_logs` records `archive_raw_source` with `resource_type=artifact`.
 
 ## Directory Structure
 
@@ -82,6 +90,10 @@ The `init/` scripts only run on **first container startup** (fresh volumes). Mig
 # Use next available version number
 touch services/mongodb/migrations/003_add_something.py
 ```
+
+> **Pre-deploy exception**: For the blob/artifact rollout, baseline migration files were edited in-place to
+> introduce `blobs`, `artifacts`, and the `archive_raw_source` activity enum. This is a one-off exception
+> because no production deployment existed yet. Post-deploy, the frozen migration rule applies again.
 
 **Step 2: Write the migration**
 
