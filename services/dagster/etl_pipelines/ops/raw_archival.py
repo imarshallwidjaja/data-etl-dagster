@@ -251,9 +251,14 @@ def archive_raw_sources_op(context: OpExecutionContext, manifest: dict) -> dict:
     run_id = context.resources.mongodb.get_run_object_id(context.run_id)
 
     for file_entry in manifest.get("files", []):
-        source_path = file_entry.get("path")
+        if isinstance(file_entry, dict):
+            source_path = file_entry.get("path")
+        else:
+            source_path = getattr(file_entry, "path", None)
         if not source_path:
             continue
+        if not source_path.startswith("s3://"):
+            source_path = f"s3://{source_path}"
         archive_raw_source(
             minio=context.resources.minio,
             mongodb=context.resources.mongodb,

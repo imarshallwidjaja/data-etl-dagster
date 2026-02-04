@@ -439,6 +439,9 @@ async def rerun_manifest(
         source_path = entry.get("path")
         if not source_path:
             continue
+        if not source_path.startswith("s3://"):
+            source_path = f"s3://{source_path}"
+            entry["path"] = source_path
         artifact = latest_by_source.get(source_path)
         if not artifact:
             continue

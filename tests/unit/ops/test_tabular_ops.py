@@ -181,6 +181,32 @@ def test_download_tabular_from_landing_key_only_defaults_landing():
             Path(result["local_file_path"]).unlink(missing_ok=True)
 
 
+def test_download_tabular_from_landing_unknown_bucket_without_prefix_raises():
+    """Test that bucket/key paths preserve bucket and reject unsupported buckets."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    manifest = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "other-bucket/batch_tabular_001/data.csv",
+                "type": "tabular",
+                "format": "CSV",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Unsupported bucket"):
+        _download_tabular_from_landing(
+            minio=mock_minio,
+            manifest=manifest,
+            log=mock_log,
+        )
+
+
 def test_download_tabular_from_landing_unknown_bucket_raises():
     """Test that unknown buckets raise a clear error."""
     mock_minio = Mock()
