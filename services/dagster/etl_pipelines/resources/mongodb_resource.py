@@ -35,6 +35,8 @@ class MongoDBResource(ConfigurableResource):
     ASSETS: ClassVar[str] = "assets"
     LINEAGE: ClassVar[str] = "lineage"
     RUNS: ClassVar[str] = "runs"
+    BLOBS: ClassVar[str] = "blobs"
+    ARTIFACTS: ClassVar[str] = "artifacts"
 
     @cached_property
     def _client(self) -> MongoClient:
@@ -385,3 +387,53 @@ class MongoDBResource(ConfigurableResource):
             assets.append(Asset.model_validate(doc))
 
         return assets
+
+    # ------------------------------------------------------------------
+    # Blob + Artifact operations
+    # ------------------------------------------------------------------
+
+    def get_blob_by_hash(self, content_hash: str) -> dict | None:
+        """Retrieve a blob document by content hash."""
+        collection = self._get_collection(self.BLOBS)
+        document = collection.find_one({"content_hash": content_hash})
+        if not document:
+            return None
+        return {"id": str(document["_id"]), **self._strip_object_id(document)}
+
+    def get_blob_by_id(self, blob_id: str) -> dict | None:
+        """Retrieve a blob document by ObjectId string."""
+        collection = self._get_collection(self.BLOBS)
+        try:
+            oid = ObjectId(blob_id)
+        except Exception:
+            return None
+        document = collection.find_one({"_id": oid})
+        if not document:
+            return None
+        return {"id": str(document["_id"]), **self._strip_object_id(document)}
+
+    def insert_blob(self, blob: dict) -> str:
+        """Insert a blob document and return ObjectId string."""
+        collection = self._get_collection(self.BLOBS)
+        result = collection.insert_one(blob)
+        return str(result.inserted_id)
+
+    def insert_artifact(self, artifact: dict) -> str:
+        """Insert an artifact document and return ObjectId string."""
+        collection = self._get_collection(self.ARTIFACTS)
+        result = collection.insert_one(artifact)
+        return str(result.inserted_id)
+
+    def list_artifacts_for_batch(
+        self, batch_id: str, *, kind: str | None = None
+    ) -> list[dict]:
+        """List artifacts for a batch, optionally filtered by kind."""
+        collection = self._get_collection(self.ARTIFACTS)
+        query: dict = {"batch_id": batch_id}
+        if kind:
+            query["kind"] = kind
+        cursor = collection.find(query)
+        artifacts = []
+        for doc in cursor:
+            artifacts.append({"id": str(doc["_id"]), **self._strip_object_id(doc)})
+        return artifacts
