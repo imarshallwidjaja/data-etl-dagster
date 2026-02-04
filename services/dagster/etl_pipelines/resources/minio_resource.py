@@ -285,6 +285,23 @@ class MinIOResource(ConfigurableResource):
                 content_type=content_type,
             )
 
+    def stat_object(self, bucket: str, s3_key: str):
+        """
+        Retrieve object metadata (stat) for an S3 object.
+
+        Args:
+            bucket: Bucket name
+            s3_key: Object key
+
+        Returns:
+            MinIO object stat result
+
+        Raises:
+            S3Error: If object doesn't exist or access denied
+        """
+        client = self.get_client()
+        return client.stat_object(bucket, s3_key)
+
     def get_presigned_url(
         self, bucket: str, key: str, expiry_seconds: int = 3600
     ) -> str:
