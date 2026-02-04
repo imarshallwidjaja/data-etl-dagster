@@ -67,8 +67,6 @@ def _download_tabular_from_landing(
                 file_entry["path"] = f"s3://{raw_path}"
             elif raw_path.startswith(f"{minio.lake_bucket}/"):
                 file_entry["path"] = f"s3://{raw_path}"
-            elif "/" in raw_path:
-                file_entry["path"] = f"s3://{raw_path}"
             else:
                 normalized_key = raw_path.lstrip("/")
                 file_entry["path"] = f"s3://{minio.landing_bucket}/{normalized_key}"
