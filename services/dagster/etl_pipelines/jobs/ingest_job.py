@@ -12,6 +12,7 @@ from ..ops import (
     spatial_transform,
     export_to_datalake,
     init_mongo_run_op,
+    archive_raw_sources_op,
 )
 
 
@@ -31,8 +32,9 @@ def ingest_job():
 
     The manifest is passed as an op input to load_to_postgis via run config.
     """
-    schema_info = load_to_postgis()
+    manifest = init_mongo_run_op()
+    archived_manifest = archive_raw_sources_op(manifest)
+    schema_info = load_to_postgis(archived_manifest)
     transform_result = spatial_transform(schema_info)
     # init_mongo_run_op creates the run doc; passes transform_result through unchanged
-    initialized_result = init_mongo_run_op(transform_result)
-    export_to_datalake(initialized_result)
+    export_to_datalake(transform_result)
