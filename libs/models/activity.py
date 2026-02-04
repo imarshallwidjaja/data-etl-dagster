@@ -21,13 +21,14 @@ ActivityAction = Literal[
     "upload_file",
     "delete_file",
     "download_asset",
+    "archive_raw_source",
     "run_started",
     "run_success",
     "run_failure",
     "run_canceled",
 ]
 
-ActivityResourceType = Literal["manifest", "file", "asset", "run"]
+ActivityResourceType = Literal["manifest", "file", "asset", "artifact", "run"]
 
 
 class ActivityLog(BaseModel):
