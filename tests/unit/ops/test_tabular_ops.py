@@ -181,8 +181,8 @@ def test_download_tabular_from_landing_key_only_defaults_landing():
             Path(result["local_file_path"]).unlink(missing_ok=True)
 
 
-def test_download_tabular_from_landing_unknown_bucket_without_prefix_raises():
-    """Test that bucket/key paths preserve bucket and reject unsupported buckets."""
+def test_download_tabular_from_landing_relative_key_defaults_landing():
+    """Test that relative keys with directories default to landing bucket."""
     mock_minio = Mock()
     mock_minio.landing_bucket = "landing-zone"
     mock_minio.lake_bucket = "data-lake"
@@ -192,19 +192,33 @@ def test_download_tabular_from_landing_unknown_bucket_without_prefix_raises():
         **SAMPLE_TABULAR_MANIFEST,
         "files": [
             {
-                "path": "other-bucket/batch_tabular_001/data.csv",
+                "path": "uploads/2024/file.csv",
                 "type": "tabular",
                 "format": "CSV",
             }
         ],
     }
 
-    with pytest.raises(ValueError, match="Unsupported bucket"):
-        _download_tabular_from_landing(
-            minio=mock_minio,
-            manifest=manifest,
-            log=mock_log,
+    mock_minio.download_from_landing.side_effect = lambda s3_key, local_path: Path(
+        local_path
+    ).write_text("id,name\n1,Alice")
+
+    result = _download_tabular_from_landing(
+        minio=mock_minio,
+        manifest=manifest,
+        log=mock_log,
+    )
+
+    try:
+        assert Path(result["local_file_path"]).exists()
+        mock_minio.download_from_landing.assert_called_once_with(
+            "uploads/2024/file.csv",
+            result["local_file_path"],
         )
+        mock_minio.download_from_lake.assert_not_called()
+    finally:
+        if "result" in locals():
+            Path(result["local_file_path"]).unlink(missing_ok=True)
 
 
 def test_download_tabular_from_landing_unknown_bucket_raises():
