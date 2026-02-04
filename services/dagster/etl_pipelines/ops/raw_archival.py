@@ -12,6 +12,7 @@ from pathlib import Path
 
 
 from dagster import op, OpExecutionContext, In, Out
+from pymongo.errors import DuplicateKeyError
 
 from libs.s3_utils import parse_s3_path
 
@@ -222,8 +223,14 @@ def _insert_blob_with_race_handling(
         "created_at": created_at,
     }
 
-    blob_id = mongodb.insert_blob(blob)
-    return {**blob, "id": blob_id}
+    try:
+        blob_id = mongodb.insert_blob(blob)
+        return {**blob, "id": blob_id}
+    except DuplicateKeyError:
+        existing_blob = mongodb.get_blob_by_hash(content_hash)
+        if not existing_blob:
+            raise
+        return existing_blob
 
 
 @op(
