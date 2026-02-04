@@ -16,6 +16,7 @@ from typing import Optional
 from uuid import uuid4
 
 import pytest
+from bson import ObjectId, errors as bson_errors
 
 from libs.spatial_utils import RunIdSchemaMapping
 
@@ -96,7 +97,7 @@ def _launch_ingest_job(dagster_client, manifest: dict) -> str:
         "repositoryName": "__repository__",
         "jobName": "ingest_job",
         "runConfigData": {
-            "ops": {"load_to_postgis": {"inputs": {"manifest": {"value": manifest}}}}
+            "ops": {"init_mongo_run_op": {"inputs": {"payload": {"value": manifest}}}}
         },
         "executionMetadata": {
             "tags": build_test_run_tags(
@@ -136,9 +137,26 @@ def _assert_postgis_schema_cleaned(postgis_connection, run_id: str) -> None:
         )
         result = cur.fetchone()
 
-        assert result is None, (
-            f"PostGIS schema {schema_name} still exists after job completion (should be cleaned up)"
-        )
+    assert result is None, (
+        f"PostGIS schema {schema_name} still exists after job completion (should be cleaned up)"
+    )
+
+
+def _assert_raw_archives_exist(mongo_client, mongo_settings, batch_id: str) -> None:
+    db = mongo_client[mongo_settings.database]
+    artifacts = list(db["artifacts"].find({"batch_id": batch_id, "kind": "raw_source"}))
+    assert artifacts, f"No raw_source artifacts found for batch_id={batch_id}"
+
+    blob_ids = {artifact.get("blob_id") for artifact in artifacts}
+    assert all(blob_ids), "raw_source artifacts missing blob_id"
+
+    for blob_id in blob_ids:
+        try:
+            blob_object_id = ObjectId(blob_id)
+        except bson_errors.InvalidId:
+            raise AssertionError(f"Invalid blob_id value: {blob_id}")
+        blob_doc = db["blobs"].find_one({"_id": blob_object_id})
+        assert blob_doc is not None, f"No blob found for blob_id={blob_id}"
 
 
 def _cleanup(
@@ -168,6 +186,21 @@ def _cleanup(
     try:
         db = mongo_client[mongo_settings.database]
         db["assets"].delete_one({"_id": asset_doc["_id"]})
+    except Exception:
+        pass
+
+    try:
+        db = mongo_client[mongo_settings.database]
+        artifacts = list(db["artifacts"].find({"batch_id": batch_id}))
+        blob_ids = {artifact.get("blob_id") for artifact in artifacts}
+        db["artifacts"].delete_many({"batch_id": batch_id})
+        for blob_id in blob_ids:
+            if not blob_id:
+                continue
+            try:
+                db["blobs"].delete_one({"_id": ObjectId(blob_id)})
+            except bson_errors.InvalidId:
+                continue
     except Exception:
         pass
 
@@ -231,6 +264,8 @@ class TestIngestJobE2E:
                 s3_key,
             )
             print(f"Data-lake object exists: {s3_key}")
+
+            _assert_raw_archives_exist(mongo_client, mongo_settings, batch_id)
 
             _assert_postgis_schema_cleaned(postgis_connection, run_id)
             print(f"PostGIS schema cleaned up for run: {run_id}")

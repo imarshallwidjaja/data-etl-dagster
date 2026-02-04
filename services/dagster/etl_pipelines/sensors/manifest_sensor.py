@@ -260,12 +260,12 @@ def build_run_request(
     archive_key = f"archive/{manifest_key}"
 
     # Build run config based on lane
-    # ingest_job expects manifest as op input to load_to_postgis
+    # ingest_job expects manifest as op input to init_mongo_run_op
     run_config = {
         "ops": {
-            "load_to_postgis": {
+            "init_mongo_run_op": {
                 "inputs": {
-                    "manifest": {
+                    "payload": {
                         "value": manifest.model_dump(mode="json"),
                     }
                 }

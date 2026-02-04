@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+from dagster import op, OpExecutionContext, In, Out
+
 from libs.s3_utils import parse_s3_path
 
 
@@ -166,3 +168,37 @@ def _insert_blob_with_race_handling(
 
     blob_id = mongodb.insert_blob(blob)
     return {**blob, "id": blob_id}
+
+
+@op(
+    ins={"manifest": In(dagster_type=dict)},
+    out={"manifest": Out(dagster_type=dict)},
+    required_resource_keys={"minio", "mongodb"},
+)
+def archive_raw_sources_op(context: OpExecutionContext, manifest: dict) -> dict:
+    """
+    Archive raw source files listed in the manifest.
+
+    Returns the manifest unchanged for downstream ops.
+    """
+    uploader = manifest.get("uploader", "unknown")
+    batch_id = manifest.get("batch_id")
+    if not batch_id:
+        raise ValueError("Manifest is missing batch_id for raw archival")
+    run_id = context.resources.mongodb.get_run_object_id(context.run_id)
+
+    for file_entry in manifest.get("files", []):
+        source_path = file_entry.get("path")
+        if not source_path:
+            continue
+        archive_raw_source(
+            minio=context.resources.minio,
+            mongodb=context.resources.mongodb,
+            source_s3_path=source_path,
+            batch_id=batch_id,
+            uploader=uploader,
+            run_id=run_id,
+            log=context.log,
+        )
+
+    return manifest

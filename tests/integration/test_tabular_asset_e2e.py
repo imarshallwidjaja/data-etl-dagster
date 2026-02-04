@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from bson import ObjectId, errors as bson_errors
 
 from .helpers import (
     add_dynamic_partition,
@@ -133,6 +134,21 @@ def _cleanup_minio_mongo(
         except Exception:
             pass
 
+    try:
+        db = mongo_client[mongo_settings.database]
+        artifacts = list(db["artifacts"].find({"batch_id": batch_id}))
+        blob_ids = {artifact.get("blob_id") for artifact in artifacts}
+        db["artifacts"].delete_many({"batch_id": batch_id})
+        for blob_id in blob_ids:
+            if not blob_id:
+                continue
+            try:
+                db["blobs"].delete_one({"_id": ObjectId(blob_id)})
+            except Exception:
+                continue
+    except Exception:
+        pass
+
 
 def _assert_mongodb_asset_exists(
     mongo_client, mongo_settings, dagster_run_id: str
@@ -149,6 +165,23 @@ def _assert_mongodb_asset_exists(
         f"(Dagster run: {dagster_run_id})"
     )
     return asset_doc
+
+
+def _assert_raw_archives_exist(mongo_client, mongo_settings, batch_id: str) -> None:
+    db = mongo_client[mongo_settings.database]
+    artifacts = list(db["artifacts"].find({"batch_id": batch_id, "kind": "raw_source"}))
+    assert artifacts, f"No raw_source artifacts found for batch_id={batch_id}"
+
+    blob_ids = {artifact.get("blob_id") for artifact in artifacts}
+    assert all(blob_ids), "raw_source artifacts missing blob_id"
+
+    for blob_id in blob_ids:
+        try:
+            blob_object_id = ObjectId(blob_id)
+        except bson_errors.InvalidId:
+            raise AssertionError(f"Invalid blob_id value: {blob_id}")
+        blob_doc = db["blobs"].find_one({"_id": blob_object_id})
+        assert blob_doc is not None, f"No blob found for blob_id={blob_id}"
 
 
 class TestTabularAssetJobE2E:
@@ -246,6 +279,8 @@ class TestTabularAssetJobE2E:
                 s3_key,
                 expected_columns=["ogc_fid", "sa1_code21"],
             )
+
+            _assert_raw_archives_exist(mongo_client, mongo_settings, batch_id)
 
         except BaseException as e:
             test_error = e

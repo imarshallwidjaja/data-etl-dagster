@@ -14,6 +14,7 @@ from ..partitions import dataset_partitions
 from ..ops.load_op import _load_files_to_postgis
 from ..ops.transform_op import _spatial_transform
 from ..ops.export_op import _export_to_datalake
+from ..ops.raw_archival import archive_raw_source
 from ..ops.tabular_ops import (
     _download_tabular_from_landing,
     _load_and_clean_tabular,
@@ -30,7 +31,7 @@ class ManifestConfig(Config):
 @asset(
     group_name="ingestion",
     compute_kind="validation",
-    required_resource_keys={"mongodb"},
+    required_resource_keys={"mongodb", "minio"},
     description="Validates manifest JSON and initializes run in MongoDB.",
 )
 def raw_manifest_json(
@@ -91,6 +92,17 @@ def raw_manifest_json(
         partition_key=partition_key,
     )
     context.log.info(f"Created run document: {run_id}")
+
+    for file_entry in validated_manifest.files:
+        archive_raw_source(
+            minio=context.resources.minio,
+            mongodb=mongodb,
+            source_s3_path=file_entry.path,
+            batch_id=batch_id,
+            uploader=validated_manifest.uploader,
+            run_id=run_id,
+            log=context.log,
+        )
 
     # Return normalized dict with run_id
     return {

@@ -10,6 +10,7 @@ from .tabular_ops import (
     export_tabular_parquet_to_datalake,
 )
 from .common_ops import init_mongo_run_op
+from .raw_archival import archive_raw_sources_op
 
 __all__ = [
     "load_to_postgis",
@@ -20,4 +21,5 @@ __all__ = [
     "load_and_clean_tabular",
     "export_tabular_parquet_to_datalake",
     "init_mongo_run_op",
+    "archive_raw_sources_op",
 ]
