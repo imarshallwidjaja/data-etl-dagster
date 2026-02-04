@@ -67,6 +67,9 @@ from .activity import (
     ActivityResourceType,
 )
 
+# Artifact models
+from .artifact import Artifact
+
 # Configuration models
 from .config import (
     MinIOSettings,
@@ -110,6 +113,8 @@ __all__ = [
     "ActivityLog",
     "ActivityAction",
     "ActivityResourceType",
+    # Artifact models
+    "Artifact",
     # Configuration models
     "MinIOSettings",
     "MongoSettings",

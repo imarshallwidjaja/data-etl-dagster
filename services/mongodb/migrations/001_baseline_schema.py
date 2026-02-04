@@ -228,6 +228,42 @@ LINEAGE_SCHEMA_V001 = {
     }
 }
 
+ARTIFACTS_SCHEMA_V001 = {
+    "$jsonSchema": {
+        "bsonType": "object",
+        "required": ["kind", "blob_id", "batch_id", "created_at"],
+        "properties": {
+            "kind": {"enum": ["raw_source", "intermediate"]},
+            "blob_id": {"bsonType": "string"},
+            "batch_id": {"bsonType": "string"},
+            "run_id": {"bsonType": ["string", "null"]},
+            "created_at": {"bsonType": "date"},
+            "source_s3_path": {"bsonType": ["string", "null"]},
+            "original_filename": {"bsonType": ["string", "null"]},
+            "uploader": {"bsonType": ["string", "null"]},
+            "content_type": {"bsonType": ["string", "null"]},
+            "producer": {"bsonType": ["string", "null"]},
+            "label": {"bsonType": ["string", "null"]},
+            "parameters": {"bsonType": "object"},
+        },
+        "anyOf": [
+            {
+                "properties": {"kind": {"enum": ["raw_source"]}},
+                "required": [
+                    "kind",
+                    "source_s3_path",
+                    "original_filename",
+                    "uploader",
+                ],
+            },
+            {
+                "properties": {"kind": {"enum": ["intermediate"]}},
+                "required": ["kind", "producer", "label"],
+            },
+        ],
+    }
+}
+
 
 def up(db: Database) -> None:
     """Apply baseline schema migration."""
@@ -342,6 +378,29 @@ def up(db: Database) -> None:
     db.lineage.create_index([("target_asset_id", 1)])
     db.lineage.create_index([("run_id", 1)])
 
+    # Artifacts collection
+    try:
+        db.create_collection(
+            "artifacts",
+            validator=ARTIFACTS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+    except CollectionInvalid:
+        db.command(
+            "collMod",
+            "artifacts",
+            validator=ARTIFACTS_SCHEMA_V001,
+            validationLevel="strict",
+            validationAction="error",
+        )
+
+    db.artifacts.create_index([("batch_id", 1)])
+    db.artifacts.create_index([("run_id", 1)])
+    db.artifacts.create_index([("kind", 1)])
+    db.artifacts.create_index([("blob_id", 1)])
+    db.artifacts.create_index([("batch_id", 1), ("kind", 1), ("source_s3_path", 1)])
+
 
 def down(db: Database) -> None:
     """
@@ -350,6 +409,13 @@ def down(db: Database) -> None:
     Note: This is destructive - drops all collections.
     Only use in development when resetting to clean state.
     """
-    for collection_name in ["assets", "manifests", "runs", "lineage", "blobs"]:
+    for collection_name in [
+        "assets",
+        "manifests",
+        "runs",
+        "lineage",
+        "blobs",
+        "artifacts",
+    ]:
         if collection_name in db.list_collection_names():
             db.drop_collection(collection_name)

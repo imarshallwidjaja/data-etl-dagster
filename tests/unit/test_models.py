@@ -19,6 +19,7 @@ from libs.models import (
     Asset,
     AssetKind,
     AssetMetadata,
+    Artifact,
     ColumnInfo,
     Blob,
     FileType,
@@ -571,6 +572,93 @@ class TestAssetValidation:
             tags={"project": "BETA"},
         )
         assert metadata2.header_mapping is None
+
+
+# =============================================================================
+# Artifact Validation Tests
+# =============================================================================
+
+
+class TestArtifactValidation:
+    """Test Artifact validation logic."""
+
+    def test_valid_raw_source_artifact(self):
+        """Test that raw_source artifact validates with required fields."""
+        artifact = Artifact(
+            kind="raw_source",
+            blob_id="blob_001",
+            batch_id="batch_001",
+            run_id=None,
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            source_s3_path="s3://landing-zone/batch_001/data.csv",
+            original_filename="data.csv",
+            uploader="user_123",
+            content_type=None,
+        )
+
+        assert artifact.kind == "raw_source"
+        assert artifact.source_s3_path == "s3://landing-zone/batch_001/data.csv"
+
+    def test_raw_source_missing_required_fields_rejected(self):
+        """Test raw_source rejects missing required fields."""
+        with pytest.raises(
+            ValidationError, match="raw_source artifacts require fields"
+        ):
+            Artifact(
+                kind="raw_source",
+                blob_id="blob_002",
+                batch_id="batch_002",
+                run_id="507f1f77bcf86cd799439011",
+                created_at=datetime(2024, 1, 1, 12, 0, 0),
+                source_s3_path="s3://landing-zone/batch_002/data.csv",
+                original_filename="data.csv",
+                # uploader missing
+                content_type="text/csv",
+            )
+
+    def test_valid_intermediate_artifact_defaults_parameters(self):
+        """Test intermediate artifacts default parameters to empty dict."""
+        artifact = Artifact(
+            kind="intermediate",
+            blob_id="blob_003",
+            batch_id="batch_003",
+            run_id="507f1f77bcf86cd799439011",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            producer="pipeline_step",
+            label="normalized",
+        )
+
+        assert artifact.kind == "intermediate"
+        assert artifact.parameters == {}
+
+    def test_intermediate_parameters_none_normalized(self):
+        """Test that parameters=None is normalized to {}."""
+        artifact = Artifact(
+            kind="intermediate",
+            blob_id="blob_004",
+            batch_id="batch_004",
+            run_id="507f1f77bcf86cd799439011",
+            created_at=datetime(2024, 1, 1, 12, 0, 0),
+            producer="pipeline_step",
+            label="normalized",
+            parameters=None,
+        )
+
+        assert artifact.parameters == {}
+
+    def test_intermediate_missing_required_fields_rejected(self):
+        """Test intermediate rejects missing producer/label."""
+        with pytest.raises(
+            ValidationError, match="intermediate artifacts require fields"
+        ):
+            Artifact(
+                kind="intermediate",
+                blob_id="blob_005",
+                batch_id="batch_005",
+                run_id="507f1f77bcf86cd799439011",
+                created_at=datetime(2024, 1, 1, 12, 0, 0),
+                label="normalized",
+            )
 
 
 # =============================================================================
