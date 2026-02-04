@@ -26,7 +26,7 @@ from libs.models import (
     OutputFormat,
     Manifest,
 )
-from libs.s3_utils import extract_s3_key
+from libs.s3_utils import extract_s3_key, parse_s3_path
 from libs.spatial_utils import normalize_headers
 from libs.normalization import extract_column_schema
 
@@ -53,7 +53,25 @@ def _download_tabular_from_landing(
         ValueError: If manifest has multiple files
         RuntimeError: If download fails
     """
-    validated_manifest = Manifest(**manifest)
+    normalized_manifest = {**manifest}
+    if "files" in normalized_manifest:
+        normalized_manifest["files"] = [
+            {**file_entry} for file_entry in normalized_manifest["files"]
+        ]
+
+    if normalized_manifest.get("files"):
+        file_entry = normalized_manifest["files"][0]
+        raw_path = file_entry.get("path", "")
+        if raw_path and not raw_path.startswith("s3://"):
+            if raw_path.startswith(f"{minio.landing_bucket}/"):
+                file_entry["path"] = f"s3://{raw_path}"
+            elif raw_path.startswith(f"{minio.lake_bucket}/"):
+                file_entry["path"] = f"s3://{raw_path}"
+            else:
+                normalized_key = raw_path.lstrip("/")
+                file_entry["path"] = f"s3://{minio.landing_bucket}/{normalized_key}"
+
+    validated_manifest = Manifest(**normalized_manifest)
 
     # Phase 3: Tabular manifests are single-file only
     if len(validated_manifest.files) != 1:
@@ -64,8 +82,7 @@ def _download_tabular_from_landing(
     file_entry = validated_manifest.files[0]
     s3_path = file_entry.path
 
-    # Extract S3 key from path
-    s3_key = extract_s3_key(s3_path)
+    bucket, s3_key = parse_s3_path(s3_path)
 
     # Create temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
@@ -73,13 +90,22 @@ def _download_tabular_from_landing(
     temp_file.close()
 
     try:
-        log.info(f"Downloading tabular file from landing zone: {s3_key}")
-        minio.download_from_landing(s3_key, temp_file_path)
+        if bucket == minio.landing_bucket:
+            log.info(f"Downloading tabular file from landing zone: {s3_key}")
+            minio.download_from_landing(s3_key, temp_file_path)
+        elif bucket == minio.lake_bucket:
+            log.info(f"Downloading tabular file from data lake: {s3_key}")
+            minio.download_from_lake(s3_key, temp_file_path)
+        else:
+            raise ValueError(
+                f"Unsupported bucket '{bucket}' for tabular download. "
+                f"Expected '{minio.landing_bucket}' or '{minio.lake_bucket}'."
+            )
         log.info(f"Downloaded to temporary file: {temp_file_path}")
 
         return {
             "local_file_path": temp_file_path,
-            "manifest": manifest,
+            "manifest": normalized_manifest,
         }
 
     except Exception as e:
@@ -88,6 +114,8 @@ def _download_tabular_from_landing(
             Path(temp_file_path).unlink(missing_ok=True)
         except Exception:
             pass
+        if isinstance(e, ValueError):
+            raise
         raise RuntimeError(f"Failed to download tabular file '{s3_key}': {e}") from e
 
 
