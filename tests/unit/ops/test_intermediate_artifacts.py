@@ -9,6 +9,8 @@ from __future__ import annotations
 import hashlib
 from unittest.mock import Mock
 
+from pymongo.errors import DuplicateKeyError
+
 from services.dagster.etl_pipelines.ops.intermediate_artifacts import (
     register_intermediate_from_local_file,
 )
@@ -85,4 +87,45 @@ def test_register_intermediate_skips_upload_when_blob_exists(tmp_path):
     minio.upload_to_lake.assert_not_called()
     mongodb.insert_artifact.assert_called_once()
     assert result["blob_id"] == "blob123"
+    assert result["content_hash"] == content_hash
+
+
+def test_register_intermediate_handles_duplicate_blob_insert(tmp_path):
+    content = b"intermediate-bytes"
+    local_path = tmp_path / "output.parquet"
+    local_path.write_bytes(content)
+
+    digest = hashlib.sha256(content).hexdigest()
+    content_hash = f"sha256:{digest}"
+
+    minio = Mock()
+    minio.lake_bucket = "data-lake"
+
+    mongodb = Mock()
+    mongodb.get_blob_by_hash.side_effect = [
+        None,
+        {
+            "_id": "blob789",
+            "id": "blob789",
+            "content_hash": content_hash,
+            "bucket": "data-lake",
+            "key": f"blobs/sha256/{digest[:2]}/{digest}",
+        },
+    ]
+    mongodb.insert_blob.side_effect = DuplicateKeyError("duplicate")
+
+    result = register_intermediate_from_local_file(
+        local_path=str(local_path),
+        batch_id="batch_001",
+        run_id=None,
+        producer="transform_op",
+        label="normalized",
+        parameters={"stage": "clean"},
+        content_type=None,
+        minio=minio,
+        mongodb=mongodb,
+        log=Mock(),
+    )
+
+    assert result["blob_id"] == "blob789"
     assert result["content_hash"] == content_hash
