@@ -64,28 +64,31 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version: "3.11"
-                  cache: "pip"
+                  python-version: "3.10"
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v7
+              with:
+                  version-file: .uv-version
 
             - name: Install dependencies
               run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements-test.txt
+                  uv sync --frozen --group test
 
             - name: Start full Docker stack
               run: |
-                  docker compose -f docker-compose.yaml up -d --build \
+                  docker compose -f compose.yaml up -d --build \
                     dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
 
             - name: Wait for services
               run: |
-                  python scripts/wait_for_services.py
+                  uv run python scripts/wait_for_services.py
               timeout-minutes: 5
 
             - name: Check container stability
               id: stability_check
               run: |
-                  python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
+                  uv run python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
                   if [ ${STABILITY_EXIT:-0} -ne 0 ]; then
                     echo "stability_failed=true" >> $GITHUB_OUTPUT
                     cat unstable_containers.txt
@@ -110,14 +113,14 @@ jobs:
                       if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
                         echo ""
                         echo "=== Logs for $line ==="
-                        docker compose -f docker-compose.yaml logs "$line" || true
+                        docker compose -f compose.yaml logs "$line" || true
                       fi
                     done < unstable_containers.txt
                   fi
 
             - name: Run init verification tests
               run: |
-                  pytest tests/integration/test_mongodb_init.py tests/integration/test_postgis_init.py -v
+                  uv run pytest tests/integration/test_mongodb_init.py tests/integration/test_postgis_init.py -v
               timeout-minutes: 5
 
             - name: Run E2E tests
@@ -126,36 +129,36 @@ jobs:
                   max_attempts: 2
                   timeout_minutes: 20
                   command: |
-                      pytest -m "integration and e2e" tests/integration -v --tb=short
+                      uv run pytest -m "integration and e2e" tests/integration -v --tb=short
 
             - name: Dump service logs on failure
               if: failure()
               run: |
                   echo "=== Dagster Webserver Logs ==="
-                  docker compose -f docker-compose.yaml logs dagster-webserver || true
+                  docker compose -f compose.yaml logs dagster-webserver || true
                   echo ""
                   echo "=== Dagster Daemon Logs ==="
-                  docker compose -f docker-compose.yaml logs dagster-daemon || true
+                  docker compose -f compose.yaml logs dagster-daemon || true
                   echo ""
                   echo "=== User Code Logs ==="
-                  docker compose -f docker-compose.yaml logs user-code || true
+                  docker compose -f compose.yaml logs user-code || true
                   echo ""
                   echo "=== MinIO Logs ==="
-                  docker compose -f docker-compose.yaml logs minio || true
+                  docker compose -f compose.yaml logs minio || true
                   echo ""
                   echo "=== MongoDB Logs ==="
-                  docker compose -f docker-compose.yaml logs mongodb || true
+                  docker compose -f compose.yaml logs mongodb || true
                   echo ""
                   echo "=== PostGIS Logs ==="
-                  docker compose -f docker-compose.yaml logs postgis || true
+                  docker compose -f compose.yaml logs postgis || true
                   echo ""
                   echo "=== Webapp Logs ==="
-                  docker compose -f docker-compose.yaml logs webapp || true
+                  docker compose -f compose.yaml logs webapp || true
                   echo ""
                   echo "=== All Container Status ==="
-                  docker compose -f docker-compose.yaml ps || true
+                  docker compose -f compose.yaml ps || true
 
             - name: Cleanup
               if: always()
               run: |
-                  docker compose -f docker-compose.yaml down -v
+                  docker compose -f compose.yaml down -v
