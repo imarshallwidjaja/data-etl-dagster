@@ -24,6 +24,23 @@ def test_dagster_webserver_has_healthcheck():
     )
 
 
+def test_dagster_webserver_healthcheck_uses_graphql_query():
+    """A bare GET to /graphql returns 400 on Dagster (GraphQL expects a query).
+
+    The healthcheck must send a real GraphQL query — the minimal introspection
+    ``{__typename}`` works on every GraphQL server and returns 200.
+    """
+    compose = _load_yaml(REPO_ROOT / "compose.yaml")
+    hc = compose["services"]["dagster-webserver"]["healthcheck"]
+    # test can be a list (CMD/CMD-SHELL) — flatten to a single string
+    test_cmd = hc["test"] if isinstance(hc["test"], str) else " ".join(hc["test"])
+
+    assert "__typename" in test_cmd, (
+        "dagster-webserver healthcheck must include a GraphQL query "
+        "(e.g. {__typename}) — a bare GET to /graphql returns 400"
+    )
+
+
 def test_webapp_has_healthcheck():
     compose = _load_yaml(REPO_ROOT / "compose.yaml")
     webapp = compose["services"]["webapp"]
