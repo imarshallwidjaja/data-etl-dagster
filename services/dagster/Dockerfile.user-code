@@ -5,7 +5,15 @@
 # It runs as a gRPC server that the Dagster daemon connects to.
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# uv — pinned to the project-wide version (.uv-version)
+# ---------------------------------------------------------------------------
+ARG UV_VERSION=0.9.22
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
 FROM ghcr.io/osgeo/gdal:ubuntu-full-3.8.0
+
+COPY --from=uv /uv /uvx /bin/
 
 # Install Python and system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -17,17 +25,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Create and activate virtual environment
+# ---------------------------------------------------------------------------
+# Install dependencies via uv
+# ---------------------------------------------------------------------------
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+WORKDIR /workspace
+COPY pyproject.toml uv.lock .python-version ./
+COPY libs/ libs/
+RUN uv sync --frozen --no-install-project --only-group user-code
+
+# ---------------------------------------------------------------------------
+# Runtime environment
+# ---------------------------------------------------------------------------
 ENV VIRTUAL_ENV=/opt/venv
-RUN python3 -m venv $VIRTUAL_ENV
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-
-# Set working directory
-WORKDIR /opt/dagster/app
-
-# Install Python dependencies
-COPY services/dagster/requirements-user-code.txt .
-RUN pip install --no-cache-dir -r requirements-user-code.txt
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Pre-install DuckDB extensions for offline/air-gapped operation.
 # Extensions are cached in ~/.duckdb/extensions and only LOAD is needed at runtime.
@@ -36,16 +47,12 @@ RUN python3 -c "import duckdb; con = duckdb.connect(); con.execute('INSTALL http
 # Pre-download NLTK stopwords for offline operation (used by tabular_headers).
 RUN python3 -c "import nltk; nltk.download('stopwords', quiet=True)"
 
-# Copy and install the libs package
-COPY libs /opt/dagster/app/libs
-RUN pip install --no-cache-dir /opt/dagster/app/libs
-
 # Set GDAL environment variables
 ENV GDAL_DATA=/usr/share/gdal
 ENV PROJ_LIB=/usr/share/proj
 
 # Copy the ETL pipeline code (for production builds)
-# In development, this is overridden by the volume mount in docker-compose.yaml
+# In development, this is overridden by the volume mount in compose.yaml
 COPY services/dagster/etl_pipelines /opt/dagster/app/etl_pipelines
 
 # Expose gRPC port
@@ -53,4 +60,3 @@ EXPOSE 4000
 
 # Default command (overridden in docker-compose)
 CMD ["dagster", "api", "grpc", "-h", "0.0.0.0", "-p", "4000", "-m", "etl_pipelines"]
-

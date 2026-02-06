@@ -5,7 +5,15 @@
 # It does NOT include GDAL - that's in the user-code container.
 # =============================================================================
 
+# ---------------------------------------------------------------------------
+# uv — pinned to the project-wide version (.uv-version)
+# ---------------------------------------------------------------------------
+ARG UV_VERSION=0.9.22
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
+
 FROM python:3.10-slim
+
+COPY --from=uv /uv /uvx /bin/
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -13,12 +21,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
-WORKDIR /opt/dagster/app
+# ---------------------------------------------------------------------------
+# Install dependencies via uv
+# ---------------------------------------------------------------------------
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+WORKDIR /workspace
+COPY pyproject.toml uv.lock .python-version ./
+COPY libs/ libs/
+RUN uv sync --frozen --no-install-project --only-group dagster
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# ---------------------------------------------------------------------------
+# Runtime environment
+# ---------------------------------------------------------------------------
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Create dagster home directory
 RUN mkdir -p /opt/dagster/dagster_home
@@ -26,10 +42,5 @@ RUN mkdir -p /opt/dagster/dagster_home
 # Set environment
 ENV DAGSTER_HOME=/opt/dagster/dagster_home
 
-# Copy configuration files (will be mounted in docker-compose for dev)
-# COPY dagster.yaml /opt/dagster/dagster_home/dagster.yaml
-# COPY workspace.yaml /opt/dagster/app/workspace.yaml
-
 # Default command (overridden in docker-compose)
 CMD ["dagster-webserver", "-h", "0.0.0.0", "-p", "3000"]
-

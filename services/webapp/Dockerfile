@@ -5,22 +5,37 @@
 # Build context should be repo root for access to libs/.
 # =============================================================================
 
-FROM python:3.11-slim
+# ---------------------------------------------------------------------------
+# uv — pinned to the project-wide version (.uv-version)
+# ---------------------------------------------------------------------------
+ARG UV_VERSION=0.9.22
+FROM ghcr.io/astral-sh/uv:${UV_VERSION} AS uv
 
-WORKDIR /opt/webapp
+FROM python:3.10-slim
+
+COPY --from=uv /uv /uvx /bin/
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for layer caching
-COPY services/webapp/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# ---------------------------------------------------------------------------
+# Install dependencies via uv
+# ---------------------------------------------------------------------------
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+WORKDIR /workspace
+COPY pyproject.toml uv.lock .python-version ./
+COPY libs/ libs/
+RUN uv sync --frozen --no-install-project --only-group webapp
 
-# Install libs for shared model validation
-COPY libs /opt/webapp/libs
-RUN pip install --no-cache-dir -e /opt/webapp/libs
+# ---------------------------------------------------------------------------
+# Runtime environment
+# ---------------------------------------------------------------------------
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /opt/webapp
 
 # Copy webapp source
 COPY services/webapp/app /opt/webapp/app
