@@ -17,7 +17,6 @@ from bson import ObjectId
 
 from .helpers import cleanup_minio_manifest, upload_bytes_to_minio
 
-WEBAPP_URL = "http://localhost:8080"
 AUTH = ("admin", "admin")
 
 
@@ -27,6 +26,7 @@ def test_webapp_rerun_rewrites_manifest_paths_to_blobs(
     minio_settings,
     mongo_client,
     mongo_settings,
+    webapp_url,
 ):
     batch_id = f"test_rerun_{uuid4().hex[:8]}"
     manifest_key = f"manifests/{batch_id}.json"
@@ -98,7 +98,7 @@ def test_webapp_rerun_rewrites_manifest_paths_to_blobs(
             artifact_ids.append(artifact_result.inserted_id)
 
         response = requests.post(
-            f"{WEBAPP_URL}/manifests/{batch_id}/rerun",
+            f"{webapp_url}/manifests/{batch_id}/rerun",
             auth=AUTH,
             timeout=10,
         )
