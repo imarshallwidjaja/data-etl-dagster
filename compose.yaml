@@ -94,7 +94,7 @@ services:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/graphql').read()\"",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/graphql?query=%7B__typename%7D').read()\"",
         ]
       interval: 10s
       timeout: 10s
