@@ -24,7 +24,7 @@ This webapp provides a user-friendly interface for:
 docker compose up -d --build webapp
 
 # Or start with all dependencies
-docker compose -f docker-compose.yaml up -d dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
+docker compose up -d dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
 ```
 
 ### Access
@@ -45,7 +45,7 @@ curl -u admin:admin http://localhost:8080/whoami
 
 ## Configuration
 
-Set environment variables in `.env` or `docker-compose.yaml`:
+Set environment variables in `.env` or `compose.yaml`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -159,15 +159,15 @@ docker compose logs -f webapp
 
 ### Run Tests
 
-```powershell
-# Activate conda environment
-conda activate data-etl-dagster
+```bash
+# Install test dependencies
+uv sync --frozen --group test
 
 # Unit tests (in root tests/unit/webapp/)
-pytest tests/unit/webapp -v
+uv run pytest tests/unit/webapp -v
 
 # Integration tests (Docker stack must be running)
-pytest -m integration tests/integration/test_webapp*.py -v
+uv run pytest -m integration tests/integration/test_webapp*.py -v
 ```
 
 ## Core Features

@@ -28,6 +28,19 @@ This repo implements an offline-first spatial data ETL platform orchestrated by 
 ## Testing
 See `docs/agents/testing.md`.
 
+## Environment (uv)
+- Python env is managed by **uv** with a per-worktree `.venv`.
+- Dependency contract: repo-root `pyproject.toml` + committed `uv.lock`.
+- Install test deps: `uv sync --frozen --group test`.
+- Run anything: `uv run <command>` (no activation required).
+- Pin file: `.uv-version` records the expected uv version.
+
+## Worktrees
+- Each git worktree gets its own `.venv` (created by `uv sync`).
+- Docker test stacks are isolated per worktree via a deterministic compose project name.
+- Agents should use the wrapper: `uv run python scripts/worktree_stack.py up|test|down`.
+- See `docs/agents/testing.md` for full details on the agent-safe wrapper and the Docker test stack.
+
 ## Docs-first protocol
 - Read the repo-root `AGENTS.md` before starting work.
 - Before editing, read the nearest local `AGENTS.md` in the directory hierarchy.

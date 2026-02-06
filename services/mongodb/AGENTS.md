@@ -22,4 +22,4 @@ existed yet. Post-deploy, the frozen migration rule applies again.
 ## References
 - Migrations: `services/mongodb/migrations/README.md`
 - Model contracts: `libs/models/AGENTS.md`
-- Env vars/config: `docker-compose.yaml`
+- Env vars/config: `compose.yaml`
