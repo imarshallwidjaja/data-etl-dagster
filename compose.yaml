@@ -62,8 +62,8 @@ services:
   # Dagster Webserver (UI)
   dagster-webserver:
     build:
-      context: ./services/dagster
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/dagster/Dockerfile
     restart: unless-stopped
     networks:
       - etl-network
@@ -94,8 +94,8 @@ services:
   # Dagster Daemon (Scheduler, Sensor Runner)
   dagster-daemon:
     build:
-      context: ./services/dagster
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/dagster/Dockerfile
     restart: unless-stopped
     networks:
       - etl-network
