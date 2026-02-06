@@ -432,7 +432,10 @@ The project includes both unit tests (no services required) and integration test
 #### Prerequisites
 
 ```bash
-# Install test dependencies
+# Install test dependencies (uv-first — creates .venv with Python 3.10)
+uv sync --frozen --group test
+
+# Legacy alternative (still works)
 pip install -r requirements-test.txt
 ```
 
@@ -442,7 +445,7 @@ Unit tests validate Pydantic models and business logic without requiring running
 
 ```bash
 # Run unit tests only
-pytest tests/unit -v
+uv run pytest tests/unit -v
 ```
 
 #### Integration Tests
@@ -479,7 +482,7 @@ This script monitors critical containers for restarts, which can indicate config
 
 ```bash
 # Run integration tests excluding E2E
-pytest -m "integration and not e2e" tests/integration -v
+uv run pytest -m "integration and not e2e" tests/integration -v
 ```
 
 **5. Run E2E tests (GraphQL-launched jobs):**
@@ -489,7 +492,7 @@ E2E tests launch jobs via Dagster GraphQL and validate offline-first loops:
 - `tabular_asset_job` (tabular): landing-zone → data-lake + MongoDB ledger (no PostGIS)
 
 ```bash
-pytest -m "integration and e2e" tests/integration -v
+uv run pytest -m "integration and e2e" tests/integration -v
 ```
 
 **Test artifact tagging + cleanup:**
@@ -509,11 +512,11 @@ docker compose -f docker-compose.yaml down -v
 
 ```bash
 # Run unit tests first
-pytest tests/unit -v
+uv run pytest tests/unit -v
 
 # Then run integration tests (if Docker stack is running)
-pytest -m "integration and not e2e" tests/integration -v
-pytest -m "integration and e2e" tests/integration -v
+uv run pytest -m "integration and not e2e" tests/integration -v
+uv run pytest -m "integration and e2e" tests/integration -v
 ```
 
 #### Test Coverage

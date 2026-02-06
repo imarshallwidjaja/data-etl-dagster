@@ -1,18 +1,17 @@
 # Testing Guide
 
 ## Unit tests
-- Run with pytest in the conda env.
-- Conda env name: `data-etl-dagster`.
-- Command: `pytest tests/unit`
-- Install test dependencies: `pip install -r requirements-test.txt`
+- Environment: `uv sync --frozen --group test` (creates `.venv` with Python 3.10).
+- Command: `uv run pytest tests/unit`
+- Legacy alternative (still works): `pip install -r requirements-test.txt && pytest tests/unit`
 
 ## Integration tests
 - Require Docker services.
-- Command: `pytest -m "integration" tests/integration`
+- Command: `uv run pytest -m "integration" tests/integration`
 
 ## E2E tests
 - Require Docker services.
-- Command: `pytest -m "integration and e2e" tests/integration`
+- Command: `uv run pytest -m "integration and e2e" tests/integration`
 
 ## Cleanup expectations
 - Integration/E2E tests should clean artifacts they create (manifests, runs, assets).

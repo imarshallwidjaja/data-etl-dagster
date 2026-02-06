@@ -1,0 +1,6 @@
+.venv/
+.worktree/
+.worktrees/
+.git/
+__pycache__/
+.hive/
