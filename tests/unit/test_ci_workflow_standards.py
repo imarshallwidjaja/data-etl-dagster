@@ -3,7 +3,7 @@
 Checks:
 - Python 3.10 (not 3.11)
 - uv setup via astral-sh/setup-uv with version-file
-- No legacy pip install of requirements-test.txt
+- No legacy pip install of legacy requirements files
 - No references to deleted docker-compose.yaml
 """
 
@@ -13,6 +13,9 @@ import re
 import pytest
 
 WORKFLOWS_DIR = pathlib.Path(__file__).resolve().parents[2] / ".github" / "workflows"
+
+# Legacy pip install pattern (deleted; asserted absent)
+_LEGACY_PIP_INSTALL = "pip install -r " + "requirements-test" + ".txt"
 
 # All reusable workflow files that set up Python and/or Docker
 WORKFLOW_FILES = [
@@ -63,8 +66,8 @@ class TestNoPipInstall:
 
     def test_no_pip_install_requirements(self, workflow_content):
         name, content = workflow_content
-        assert "pip install -r requirements-test.txt" not in content, (
-            f"{name} still uses pip install -r requirements-test.txt"
+        assert _LEGACY_PIP_INSTALL not in content, (
+            f"{name} still uses legacy pip install"
         )
 
     def test_no_pip_upgrade(self, workflow_content):

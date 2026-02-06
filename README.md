@@ -433,11 +433,8 @@ The project includes both unit tests (no services required) and integration test
 #### Prerequisites
 
 ```bash
-# Install test dependencies (uv-first — creates .venv with Python 3.10)
+# Install test dependencies (creates .venv with Python 3.10)
 uv sync --frozen --group test
-
-# Legacy alternative (still works)
-pip install -r requirements-test.txt
 ```
 
 #### Unit Tests

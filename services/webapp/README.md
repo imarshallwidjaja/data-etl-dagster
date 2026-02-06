@@ -70,7 +70,6 @@ Set environment variables in `.env` or `docker-compose.yaml`:
 ```
 services/webapp/
 ├── Dockerfile
-├── requirements.txt
 ├── AGENTS.md              # AI agent context
 ├── README.md              # This file
 └── app/

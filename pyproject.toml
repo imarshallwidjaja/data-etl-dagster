@@ -2,13 +2,13 @@
 # Root project — uv workspace
 # =============================================================================
 # This pyproject.toml is the single source of truth for dependency management.
-# It replaces the scattered requirements*.txt files during migration.
+# It replaced the scattered requirements*.txt files (now deleted).
 #
-# Group mapping (mirrors legacy requirements files):
-#   test      = requirements-test.txt  (flattened, includes base + user-code)
-#   dagster   = services/dagster/requirements.txt
-#   user-code = services/dagster/requirements-user-code.txt + spatial-etl-libs
-#   webapp    = services/webapp/requirements.txt + spatial-etl-libs
+# Group mapping (originally derived from legacy requirements files):
+#   test      — flattened base + user-code + test-specific deps
+#   dagster   — webserver/daemon deps
+#   user-code — ETL pipeline deps + spatial-etl-libs
+#   webapp    — FastAPI app deps + spatial-etl-libs
 # =============================================================================
 
 [project]
@@ -31,10 +31,10 @@ package = false
 
 [dependency-groups]
 test = [
-    # --- from requirements.txt (base library deps) ---
+    # --- base library deps ---
     "pydantic>=2.7.0",
     "pydantic-settings>=2.2.0",
-    # --- from services/dagster/requirements-user-code.txt ---
+    # --- user-code deps ---
     "boto3==1.34.14",
     "dagster==1.12.5",
     "dagster-aws==0.28.5",
@@ -52,7 +52,7 @@ test = [
     "shapely==2.0.3",
     "sqlalchemy==2.0.30",
     "structlog==23.3.0",
-    # --- from requirements-test.txt (test-specific) ---
+    # --- test-specific deps ---
     "pytest==7.4.3",
     "requests==2.31.0",
     "mongomock==4.3.0",
