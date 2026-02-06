@@ -382,7 +382,8 @@ rewrite manifests to blob paths (including bucket-aware tabular downloads), and 
 ```
 data-etl-dagster/
 ├── AGENTS.md              # Global architecture context
-├── docker-compose.yaml     # Service orchestration
+├── compose.yaml             # Service orchestration (base)
+├── compose.override.yaml    # Dev overrides (ports, container names)
 ├── services/
 │   ├── dagster/           # Dagster orchestrator
 │   ├── minio/             # Object storage config
@@ -456,7 +457,7 @@ Integration tests verify behavior against running services. These require the Do
 
 ```bash
 # Start all services required for integration tests
-docker compose -f docker-compose.yaml up -d --build \
+docker compose up -d --build \
   dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
 ```
 
@@ -505,7 +506,7 @@ uv run pytest -m "integration and e2e" tests/integration -v
 
 ```bash
 # Stop and remove containers and volumes
-docker compose -f docker-compose.yaml down -v
+docker compose down -v
 ```
 
 #### Running All Tests
