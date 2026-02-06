@@ -1,0 +1,131 @@
+# =============================================================================
+# Root project — uv workspace
+# =============================================================================
+# This pyproject.toml is the single source of truth for dependency management.
+# It replaces the scattered requirements*.txt files during migration.
+#
+# Group mapping (mirrors legacy requirements files):
+#   test      = requirements-test.txt  (flattened, includes base + user-code)
+#   dagster   = services/dagster/requirements.txt
+#   user-code = services/dagster/requirements-user-code.txt + spatial-etl-libs
+#   webapp    = services/webapp/requirements.txt + spatial-etl-libs
+# =============================================================================
+
+[project]
+name = "data-etl-dagster"
+version = "0.0.0"
+description = "Offline-first spatial data ETL platform orchestrated by Dagster"
+requires-python = ">=3.10"
+# No top-level dependencies — everything lives in dependency groups.
+
+# Not a distributable package — workspace root only.
+[tool.uv]
+package = false
+
+# -----------------------------------------------------------------------------
+# Dependency groups (PEP 735)
+# -----------------------------------------------------------------------------
+# Each group maps 1:1 to a legacy requirements file so the migration is
+# auditable. Within each group deps are sorted alphabetically.
+# -----------------------------------------------------------------------------
+
+[dependency-groups]
+test = [
+    # --- from requirements.txt (base library deps) ---
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.2.0",
+    # --- from services/dagster/requirements-user-code.txt ---
+    "boto3==1.34.14",
+    "dagster==1.12.5",
+    "dagster-aws==0.28.5",
+    "dagster-postgres==0.28.5",
+    "duckdb==1.4.0",
+    "geoalchemy2==0.14.4",
+    "geopandas==0.14.3",
+    "minio==7.2.9",
+    "nltk>=3.8.0",
+    "psycopg2-binary==2.9.9",
+    "pyarrow==14.0.2",
+    "pymongo==4.7.2",
+    "pyproj==3.6.1",
+    "python-dotenv==1.0.1",
+    "shapely==2.0.3",
+    "sqlalchemy==2.0.30",
+    "structlog==23.3.0",
+    # --- from requirements-test.txt (test-specific) ---
+    "pytest==7.4.3",
+    "requests==2.31.0",
+    "mongomock==4.3.0",
+    "tenacity==8.2.3",
+    "setuptools<81",
+    # --- webapp deps needed for webapp tests ---
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "jinja2>=3.1.0",
+    "httpx>=0.25.0",
+    "python-multipart>=0.0.6",
+    "aiofiles>=23.2.0",
+    "markdown",
+    "bleach>=6.0,<7.0",
+    # --- workspace dep (replaces -e ./libs) ---
+    "spatial-etl-libs",
+]
+
+dagster = [
+    "dagster==1.12.5",
+    "dagster-aws==0.28.5",
+    "dagster-postgres==0.28.5",
+    "dagster-webserver==1.12.5",
+    "psycopg2-binary==2.9.9",
+]
+
+user-code = [
+    "boto3==1.34.14",
+    "dagster==1.12.5",
+    "dagster-aws==0.28.5",
+    "dagster-postgres==0.28.5",
+    "duckdb==1.4.0",
+    "geoalchemy2==0.14.4",
+    "geopandas==0.14.3",
+    "minio==7.2.9",
+    "nltk>=3.8.0",
+    "psycopg2-binary==2.9.9",
+    "pydantic==2.7.4",
+    "pydantic-settings==2.2.1",
+    "pyarrow==14.0.2",
+    "pymongo==4.7.2",
+    "pyproj==3.6.1",
+    "python-dotenv==1.0.1",
+    "shapely==2.0.3",
+    "sqlalchemy==2.0.30",
+    "structlog==23.3.0",
+    # workspace dep
+    "spatial-etl-libs",
+]
+
+webapp = [
+    "aiofiles>=23.2.0",
+    "bleach>=6.0,<7.0",
+    "fastapi>=0.104.0",
+    "httpx>=0.25.0",
+    "jinja2>=3.1.0",
+    "markdown",
+    "minio>=7.2.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+    "pymongo>=4.6.0",
+    "python-multipart>=0.0.6",
+    "uvicorn[standard]>=0.24.0",
+    # workspace dep
+    "spatial-etl-libs",
+]
+
+# -----------------------------------------------------------------------------
+# uv workspace
+# -----------------------------------------------------------------------------
+
+[tool.uv.workspace]
+members = ["libs"]
+
+[tool.uv.sources]
+spatial-etl-libs = { workspace = true }
