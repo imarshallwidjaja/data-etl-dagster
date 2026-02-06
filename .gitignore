@@ -60,12 +60,15 @@ pytest_cache/
 # Environments
 .env
 !.env.ci  # Allow .env.ci for CI/CD (contains non-secret defaults)
-.venv
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# uv
+.uv/
 
 # Spyder project settings
 .spyderproject
@@ -247,4 +250,5 @@ temp/
 
 .sisyphus/
 
+.worktree/
 .worktrees/
