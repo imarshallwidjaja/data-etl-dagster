@@ -97,9 +97,9 @@ services:
           "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/graphql').read()\"",
         ]
       interval: 10s
-      timeout: 5s
-      retries: 6
-      start_period: 20s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
 
   # Dagster Daemon (Scheduler, Sensor Runner)
   dagster-daemon:
@@ -345,9 +345,12 @@ services:
       WEBAPP_USERNAME: ${WEBAPP_USERNAME:-admin}
       WEBAPP_PASSWORD: ${WEBAPP_PASSWORD:-admin}
     depends_on:
-      - dagster-webserver
-      - minio
-      - mongodb
+      dagster-webserver:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      mongodb:
+        condition: service_started
     healthcheck:
       test:
         [
