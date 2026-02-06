@@ -55,6 +55,9 @@ ENV PROJ_LIB=/usr/share/proj
 # In development, this is overridden by the volume mount in compose.yaml
 COPY services/dagster/etl_pipelines /opt/dagster/app/etl_pipelines
 
+# Runtime module resolution base (matches `dagster api grpc -m etl_pipelines`)
+WORKDIR /opt/dagster/app
+
 # Expose gRPC port
 EXPOSE 4000
 

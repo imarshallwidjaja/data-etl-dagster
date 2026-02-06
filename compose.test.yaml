@@ -38,9 +38,9 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-spatial_compute}
     depends_on:
       dagster-webserver:
-        condition: service_started
+        condition: service_healthy
       webapp:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_healthy
       mongodb:

@@ -23,10 +23,15 @@ jobs:
               with:
                   python-version: "3.10"
 
+            - name: Read pinned uv version
+              id: uv_version
+              run: |
+                  echo "value=$(tr -d '[:space:]' < .uv-version)" >> "$GITHUB_OUTPUT"
+
             - name: Install uv
               uses: astral-sh/setup-uv@v7
               with:
-                  version-file: .uv-version
+                  version: ${{ steps.uv_version.outputs.value }}
 
             - name: Install dependencies
               run: |

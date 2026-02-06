@@ -18,11 +18,12 @@ jobs:
         env:
             ENVIRONMENT: ci
             COMPOSE_PROJECT_NAME: spatial-etl-ci
+            WAIT_FOR_SERVICES: minio,mongodb,postgis,dagster,user-code,webapp
 
             # MinIO Configuration
             MINIO_ROOT_USER: minio
             MINIO_ROOT_PASSWORD: minio_password
-            MINIO_ENDPOINT: localhost:9000
+            MINIO_ENDPOINT: minio:9000
             MINIO_USE_SSL: "false"
             MINIO_LANDING_BUCKET: landing-zone
             MINIO_LAKE_BUCKET: data-lake
@@ -30,7 +31,7 @@ jobs:
             # MongoDB Configuration
             MONGO_INITDB_ROOT_USERNAME: mongo
             MONGO_INITDB_ROOT_PASSWORD: mongo_password
-            MONGO_HOST: localhost
+            MONGO_HOST: mongodb
             MONGO_PORT: "27017"
             MONGO_DATABASE: spatial_etl
 
@@ -38,7 +39,7 @@ jobs:
             POSTGRES_USER: postgis
             POSTGRES_PASSWORD: postgis_password
             POSTGRES_DB: spatial_compute
-            POSTGRES_HOST: localhost
+            POSTGRES_HOST: postgis
             POSTGRES_PORT: "5432"
 
             # Dagster Configuration
@@ -46,13 +47,16 @@ jobs:
             DAGSTER_POSTGRES_USER: dagster
             DAGSTER_POSTGRES_PASSWORD: dagster_password
             DAGSTER_POSTGRES_DB: dagster
-            DAGSTER_POSTGRES_HOST: localhost
+            DAGSTER_POSTGRES_HOST: dagster-postgres
             DAGSTER_POSTGRES_PORT: "5433"
-            DAGSTER_WEBSERVER_HOST: 0.0.0.0
+            DAGSTER_WEBSERVER_HOST: dagster-webserver
             DAGSTER_WEBSERVER_PORT: "3000"
 
             # Service wait timeout
             SERVICE_WAIT_TIMEOUT: "120"
+
+            # Stability checks use compose service names with project prefix
+            CHECK_CONTAINERS: spatial-etl-ci-dagster-webserver-1,spatial-etl-ci-dagster-daemon-1,spatial-etl-ci-user-code-1,spatial-etl-ci-mongodb-1,spatial-etl-ci-postgis-1,spatial-etl-ci-minio-1
 
             # Logging
             LOG_LEVEL: INFO
@@ -66,10 +70,15 @@ jobs:
               with:
                   python-version: "3.10"
 
+            - name: Read pinned uv version
+              id: uv_version
+              run: |
+                  echo "value=$(tr -d '[:space:]' < .uv-version)" >> "$GITHUB_OUTPUT"
+
             - name: Install uv
               uses: astral-sh/setup-uv@v7
               with:
-                  version-file: .uv-version
+                  version: ${{ steps.uv_version.outputs.value }}
 
             - name: Install dependencies
               run: |
@@ -77,12 +86,13 @@ jobs:
 
             - name: Start full Docker stack
               run: |
-                  docker compose -f compose.yaml up -d --build \
+                  docker compose -f compose.yaml -f compose.test.yaml up -d --build \
                     dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres webapp
 
             - name: Wait for services
               run: |
-                  uv run python scripts/wait_for_services.py
+                  docker compose -f compose.yaml -f compose.test.yaml run --rm --no-deps -e WAIT_FOR_SERVICES test-runner \
+                    uv run python scripts/wait_for_services.py
               timeout-minutes: 5
 
             - name: Check container stability
@@ -113,14 +123,15 @@ jobs:
                       if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
                         echo ""
                         echo "=== Logs for $line ==="
-                        docker compose -f compose.yaml logs "$line" || true
+                        docker logs "$line" || true
                       fi
                     done < unstable_containers.txt
                   fi
 
             - name: Run init verification tests
               run: |
-                  uv run pytest tests/integration/test_mongodb_init.py tests/integration/test_postgis_init.py -v
+                  docker compose -f compose.yaml -f compose.test.yaml run --rm --no-deps test-runner \
+                    uv run pytest tests/integration/test_mongodb_init.py tests/integration/test_postgis_init.py -v
               timeout-minutes: 5
 
             - name: Run E2E tests
@@ -129,36 +140,37 @@ jobs:
                   max_attempts: 2
                   timeout_minutes: 20
                   command: |
-                      uv run pytest -m "integration and e2e" tests/integration -v --tb=short
+                      docker compose -f compose.yaml -f compose.test.yaml run --rm --no-deps test-runner \
+                        uv run pytest -m "integration and e2e" tests/integration -v --tb=short
 
             - name: Dump service logs on failure
               if: failure()
               run: |
                   echo "=== Dagster Webserver Logs ==="
-                  docker compose -f compose.yaml logs dagster-webserver || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs dagster-webserver || true
                   echo ""
                   echo "=== Dagster Daemon Logs ==="
-                  docker compose -f compose.yaml logs dagster-daemon || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs dagster-daemon || true
                   echo ""
                   echo "=== User Code Logs ==="
-                  docker compose -f compose.yaml logs user-code || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs user-code || true
                   echo ""
                   echo "=== MinIO Logs ==="
-                  docker compose -f compose.yaml logs minio || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs minio || true
                   echo ""
                   echo "=== MongoDB Logs ==="
-                  docker compose -f compose.yaml logs mongodb || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs mongodb || true
                   echo ""
                   echo "=== PostGIS Logs ==="
-                  docker compose -f compose.yaml logs postgis || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs postgis || true
                   echo ""
                   echo "=== Webapp Logs ==="
-                  docker compose -f compose.yaml logs webapp || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs webapp || true
                   echo ""
                   echo "=== All Container Status ==="
-                  docker compose -f compose.yaml ps || true
+                  docker compose -f compose.yaml -f compose.test.yaml ps || true
 
             - name: Cleanup
               if: always()
               run: |
-                  docker compose -f compose.yaml down -v
+                  docker compose -f compose.yaml -f compose.test.yaml down -v

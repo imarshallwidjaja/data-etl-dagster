@@ -36,6 +36,9 @@ RUN uv sync --frozen --no-install-project --only-group dagster
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Dagster CLI expects workspace/config paths relative to runtime CWD.
+WORKDIR /opt/dagster/app
+
 # Create dagster home directory
 RUN mkdir -p /opt/dagster/dagster_home
 
