@@ -143,12 +143,19 @@ def action_up() -> None:
     print(f"[worktree_stack] project={proj}")
     print(f"[worktree_stack] {' '.join(cmd)}")
 
+    # Write state *before* compose up so that ``down`` can always clean up
+    # partial resources when ``up`` fails midway through.
+    write_state(root, proj)
+
     result = subprocess.run(cmd, cwd=root)
     if result.returncode != 0:
-        print(f"ERROR: compose up exited {result.returncode}", file=sys.stderr)
+        print(
+            f"ERROR: compose up exited {result.returncode} "
+            f"(state kept — run 'down' to clean up)",
+            file=sys.stderr,
+        )
         sys.exit(result.returncode)
 
-    write_state(root, proj)
     print(f"[worktree_stack] stack up — state written to .worktree/stack.json")
 
 
