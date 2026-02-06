@@ -239,6 +239,50 @@ class TestActionUp:
         data = json.loads(sf.read_text())
         assert data["project"] == expected_project
 
+    @patch("worktree_stack.resolve_worktree_root")
+    @patch("subprocess.run")
+    def test_up_preserves_state_on_compose_failure(self, mock_run, mock_root, tmp_path):
+        """When compose up fails, state file must remain so down can clean up."""
+        mock_root.return_value = str(tmp_path)
+        mock_run.return_value = MagicMock(returncode=1)
+
+        with pytest.raises(SystemExit) as exc_info:
+            worktree_stack.action_up()
+        assert exc_info.value.code == 1
+
+        # State file must still exist — this is what allows ``down`` to work
+        sf = tmp_path / ".worktree" / "stack.json"
+        assert sf.exists(), "state file must survive a failed 'up' for teardown"
+        data = json.loads(sf.read_text())
+        assert data["project"] == _expected_project_name(str(tmp_path))
+
+    @patch("worktree_stack.resolve_worktree_root")
+    @patch("subprocess.run")
+    def test_down_works_after_failed_up(self, mock_run, mock_root, tmp_path):
+        """Full scenario: up fails → down still tears down partial resources."""
+        mock_root.return_value = str(tmp_path)
+        expected_project = _expected_project_name(str(tmp_path))
+
+        # Simulate failed up (compose returns non-zero)
+        mock_run.return_value = MagicMock(returncode=1)
+        with pytest.raises(SystemExit):
+            worktree_stack.action_up()
+
+        # Now simulate successful down
+        mock_run.reset_mock()
+        mock_run.return_value = MagicMock(returncode=0)
+        worktree_stack.action_down()
+
+        # Should have called compose down with the correct project
+        mock_run.assert_called_once()
+        args = mock_run.call_args[0][0]
+        assert "down" in args
+        assert expected_project in args
+
+        # State file should be removed after successful down
+        sf = tmp_path / ".worktree" / "stack.json"
+        assert not sf.exists()
+
 
 # ===========================================================================
 # CLI action: test
