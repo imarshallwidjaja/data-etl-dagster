@@ -44,7 +44,10 @@ jobs:
                   filters: |
                       # Force all tests when critical shared files change
                       force-all:
-                        - 'docker-compose.yaml'
+                        - 'compose.yaml'
+                        - 'compose.*.yaml'
+                        - 'pyproject.toml'
+                        - 'uv.lock'
                         - 'requirements*.txt'
                         - 'tests/conftest.py'
                         - '.github/workflows/**'

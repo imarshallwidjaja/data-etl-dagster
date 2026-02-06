@@ -68,28 +68,31 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-          cache: "pip"
+          python-version: "3.10"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version-file: .uv-version
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements-test.txt
+          uv sync --frozen --group test
 
       - name: Start Docker stack
         run: |
-          docker compose -f docker-compose.yaml up -d --build \
+          docker compose -f compose.yaml up -d --build \
             dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
 
       - name: Wait for services
         run: |
-          python scripts/wait_for_services.py
+          uv run python scripts/wait_for_services.py
         timeout-minutes: 5
 
       - name: Check container stability
         id: stability_check
         run: |
-          python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
+          uv run python scripts/check_container_stability.py > unstable_containers.txt 2>&1 || STABILITY_EXIT=$?
           if [ ${STABILITY_EXIT:-0} -ne 0 ]; then
             echo "stability_failed=true" >> $GITHUB_OUTPUT
             cat unstable_containers.txt
@@ -114,7 +117,7 @@ jobs:
               if [ "$in_section" = true ] && [ -n "$line" ] && [[ "$line" != *"==="* ]] && [[ "$line" != "FAILED"* ]] && [[ "$line" != "SUCCESS"* ]]; then
                 echo ""
                 echo "=== Logs for $line ==="
-                docker compose -f docker-compose.yaml logs "$line" || true
+                docker compose -f compose.yaml logs "$line" || true
               fi
             done < unstable_containers.txt
           fi
@@ -125,7 +128,7 @@ jobs:
           max_attempts: 2
           timeout_minutes: 15
           command: |
-            pytest -m "integration and not e2e" \
+            uv run pytest -m "integration and not e2e" \
                    tests/integration/test_dagster*.py \
                    tests/integration/test_sensor*.py \
                    tests/integration/test_schema*.py \
@@ -136,18 +139,18 @@ jobs:
         if: failure()
         run: |
           echo "=== Dagster Webserver Logs ==="
-          docker compose -f docker-compose.yaml logs dagster-webserver || true
+          docker compose -f compose.yaml logs dagster-webserver || true
           echo ""
           echo "=== Dagster Daemon Logs ==="
-          docker compose -f docker-compose.yaml logs dagster-daemon || true
+          docker compose -f compose.yaml logs dagster-daemon || true
           echo ""
           echo "=== User Code Logs ==="
-          docker compose -f docker-compose.yaml logs user-code || true
+          docker compose -f compose.yaml logs user-code || true
           echo ""
           echo "=== All Container Status ==="
-          docker compose -f docker-compose.yaml ps || true
+          docker compose -f compose.yaml ps || true
 
       - name: Cleanup
         if: always()
         run: |
-          docker compose -f docker-compose.yaml down -v
+          docker compose -f compose.yaml down -v
