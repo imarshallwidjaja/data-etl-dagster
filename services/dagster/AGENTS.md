@@ -14,7 +14,7 @@ images, and the ETL code location wiring.
 
 ## Working here
 - After changing `libs/`, rebuild the user-code image: `docker compose build user-code`.
-- Runtime config is in `docker-compose.yaml`; env var contracts live in `libs/models/AGENTS.md`.
+- Runtime config is in `compose.yaml` (base) + `compose.override.yaml` (dev ports/names); env var contracts live in `libs/models/AGENTS.md`.
 
 ## References
 - Pipelines: `etl_pipelines/AGENTS.md`

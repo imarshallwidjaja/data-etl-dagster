@@ -30,12 +30,12 @@
 Start the stack:
 
 ```
-docker compose -f docker-compose.yaml up -d --build \
+docker compose up -d --build \
     dagster-webserver dagster-daemon user-code minio minio-init mongodb postgis dagster-postgres
 ```
 
 Stop the stack:
 
 ```
-docker compose -f docker-compose.yaml down -v
+docker compose down -v
 ```
