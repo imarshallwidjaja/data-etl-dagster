@@ -69,9 +69,7 @@ services/dagster/
 ├── dagster.yaml             # Instance configuration
 ├── workspace.yaml           # Code location wiring
 ├── Dockerfile               # Webserver/Daemon image
-├── Dockerfile.user-code     # User code image (includes GDAL)
-├── requirements.txt         # Webserver/Daemon deps
-└── requirements-user-code.txt  # User code deps
+└── Dockerfile.user-code     # User code image (includes GDAL)
 ```
 
 ## Pipelines

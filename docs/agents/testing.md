@@ -3,7 +3,7 @@
 ## Unit tests
 - Environment: `uv sync --frozen --group test` (creates `.venv` with Python 3.10).
 - Command: `uv run pytest tests/unit`
-- Legacy alternative (still works): `pip install -r requirements-test.txt && pytest tests/unit`
+- Run: `uv run pytest tests/unit`
 
 ## Integration tests
 - Require Docker services.
