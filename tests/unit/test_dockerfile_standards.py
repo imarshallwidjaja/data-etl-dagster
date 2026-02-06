@@ -134,6 +134,31 @@ class TestRuntimeVenv:
             f"{rel_path} PATH does not include /opt/venv/bin"
         )
 
+    def test_webapp_pythonpath_includes_workspace(self):
+        path = REPO_ROOT / "services/webapp/Dockerfile"
+        content = path.read_text()
+        assert re.search(r"ENV\s+PYTHONPATH\s*=\s*/opt/webapp:/workspace", content), (
+            "services/webapp/Dockerfile must include /workspace in PYTHONPATH for libs imports"
+        )
+
+
+class TestRuntimeWorkdir:
+    """User-code runtime workdir must include etl_pipelines module path."""
+
+    def test_user_code_runtime_workdir_opt_dagster_app(self):
+        path = REPO_ROOT / "services/dagster/Dockerfile.user-code"
+        content = path.read_text()
+        assert re.search(r"WORKDIR\s+/opt/dagster/app", content), (
+            "services/dagster/Dockerfile.user-code missing runtime WORKDIR /opt/dagster/app"
+        )
+
+    def test_dagster_runtime_workdir_opt_dagster_app(self):
+        path = REPO_ROOT / "services/dagster/Dockerfile"
+        content = path.read_text()
+        assert re.search(r"WORKDIR\s+/opt/dagster/app", content), (
+            "services/dagster/Dockerfile missing runtime WORKDIR /opt/dagster/app"
+        )
+
 
 class TestNoPipInstall:
     """Dockerfiles must not use pip install or reference requirements*.txt."""
@@ -184,6 +209,24 @@ class TestBuildContexts:
         )
         assert "context: ." in daemon_section or 'context: "."' in daemon_section, (
             "dagster-daemon build context must be repo root (.)"
+        )
+
+
+class TestTestRunnerDockerfile:
+    """test-runner image must install workspace deps needed by scripts/tests."""
+
+    def test_installs_test_group(self):
+        path = REPO_ROOT / "services/test_runner/Dockerfile"
+        content = path.read_text()
+        assert "uv sync --frozen --group test" in content, (
+            "services/test_runner/Dockerfile must install test dependency group"
+        )
+
+    def test_does_not_skip_workspace_install(self):
+        path = REPO_ROOT / "services/test_runner/Dockerfile"
+        content = path.read_text()
+        assert "--no-install-workspace" not in content, (
+            "services/test_runner/Dockerfile must install workspace packages (spatial-etl-libs)"
         )
 
 

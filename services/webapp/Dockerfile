@@ -42,7 +42,7 @@ COPY services/webapp/app /opt/webapp/app
 
 # Environment defaults
 ENV PYTHONUNBUFFERED=1
-ENV PYTHONPATH=/opt/webapp
+ENV PYTHONPATH=/opt/webapp:/workspace
 
 EXPOSE 8080
 

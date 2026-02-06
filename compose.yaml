@@ -90,6 +90,16 @@ services:
         condition: service_healthy
       user-code:
         condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:3000/graphql').read()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
 
   # Dagster Daemon (Scheduler, Sensor Runner)
   dagster-daemon:
@@ -338,3 +348,13 @@ services:
       - dagster-webserver
       - minio
       - mongodb
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health').read()\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s

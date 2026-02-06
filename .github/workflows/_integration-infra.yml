@@ -18,6 +18,7 @@ jobs:
         env:
             ENVIRONMENT: ci
             COMPOSE_PROJECT_NAME: spatial-etl-ci
+            WAIT_FOR_SERVICES: minio,mongodb,postgis
 
             # MinIO Configuration
             MINIO_ROOT_USER: minio
@@ -53,10 +54,15 @@ jobs:
               with:
                   python-version: "3.10"
 
+            - name: Read pinned uv version
+              id: uv_version
+              run: |
+                  echo "value=$(tr -d '[:space:]' < .uv-version)" >> "$GITHUB_OUTPUT"
+
             - name: Install uv
               uses: astral-sh/setup-uv@v7
               with:
-                  version-file: .uv-version
+                  version: ${{ steps.uv_version.outputs.value }}
 
             - name: Install dependencies
               run: |
@@ -64,17 +70,13 @@ jobs:
 
             - name: Start infrastructure services
               run: |
-                  docker compose -f compose.yaml up -d --build \
+                  docker compose -f compose.yaml -f compose.test.yaml up -d --build \
                     minio minio-init mongodb postgis
 
             - name: Wait for services
               run: |
-                  # Wait for MinIO
-                  timeout 60 bash -c 'until curl -sf http://localhost:9000/minio/health/live; do sleep 2; done' || true
-                  # Wait for MongoDB
-                  timeout 60 bash -c 'until docker compose exec -T mongodb mongosh --eval "db.runCommand({ping:1})" -u mongo -p mongo_password --authenticationDatabase admin; do sleep 2; done' || true
-                  # Wait for PostGIS
-                  timeout 60 bash -c 'until docker compose exec -T postgis pg_isready -U postgis; do sleep 2; done' || true
+                  docker compose -f compose.yaml -f compose.test.yaml run --rm --no-deps -e WAIT_FOR_SERVICES test-runner \
+                    uv run python scripts/wait_for_services.py
 
             - name: Run infrastructure tests
               uses: nick-fields/retry@v2
@@ -82,24 +84,25 @@ jobs:
                   max_attempts: 2
                   timeout_minutes: 10
                   command: |
-                      uv run pytest tests/integration/test_minio*.py \
-                             tests/integration/test_mongodb*.py \
-                             tests/integration/test_postgis*.py \
-                             -v --tb=short
+                      docker compose -f compose.yaml -f compose.test.yaml run --rm --no-deps test-runner \
+                        uv run pytest tests/integration/test_minio*.py \
+                               tests/integration/test_mongodb*.py \
+                               tests/integration/test_postgis*.py \
+                               -v --tb=short
 
             - name: Dump logs on failure
               if: failure()
               run: |
                   echo "=== MinIO Logs ==="
-                  docker compose -f compose.yaml logs minio || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs minio || true
                   echo ""
                   echo "=== MongoDB Logs ==="
-                  docker compose -f compose.yaml logs mongodb || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs mongodb || true
                   echo ""
                   echo "=== PostGIS Logs ==="
-                  docker compose -f compose.yaml logs postgis || true
+                  docker compose -f compose.yaml -f compose.test.yaml logs postgis || true
 
             - name: Cleanup
               if: always()
               run: |
-                  docker compose -f compose.yaml down -v
+                  docker compose -f compose.yaml -f compose.test.yaml down -v

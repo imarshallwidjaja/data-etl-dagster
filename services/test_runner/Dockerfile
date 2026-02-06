@@ -30,7 +30,7 @@ WORKDIR /app
 # ---------------------------------------------------------------------------
 COPY pyproject.toml uv.lock .python-version ./
 COPY libs/ libs/
-RUN uv sync --frozen --group test --no-install-workspace
+RUN uv sync --frozen --group test
 
 # ---------------------------------------------------------------------------
 # Source code — pytest.ini sets pythonpath to ". services/webapp" so tests
