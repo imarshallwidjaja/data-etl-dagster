@@ -9,60 +9,13 @@ validates that the health check asset materializes successfully.
 Run with: pytest tests/integration/test_gdal_health.py -v -m integration
 """
 
-import os
 import pytest
-import requests
 import time
-from typing import Optional
-from requests.exceptions import RequestException, Timeout
 
 from .helpers import build_test_run_tags
 
 
 pytestmark = pytest.mark.integration
-
-
-@pytest.fixture
-def dagster_graphql_url():
-    """Get Dagster GraphQL endpoint URL."""
-    port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
-    return f"http://localhost:{port}/graphql"
-
-
-@pytest.fixture
-def dagster_client(dagster_graphql_url):
-    """Create a simple Dagster GraphQL client."""
-
-    class DagsterGraphQLClient:
-        def __init__(self, url: str):
-            self.url = url
-
-        def query(
-            self, query_str: str, variables: Optional[dict] = None, timeout: int = 30
-        ) -> dict:
-            """Execute a GraphQL query."""
-            payload = {"query": query_str}
-            if variables:
-                payload["variables"] = variables
-
-            try:
-                response = requests.post(
-                    self.url,
-                    json=payload,
-                    timeout=timeout,
-                )
-                if response.status_code != 200:
-                    raise RuntimeError(
-                        f"GraphQL request failed with status {response.status_code}: "
-                        f"{response.text}"
-                    )
-                return response.json()
-            except (RequestException, Timeout) as e:
-                raise RuntimeError(
-                    f"Failed to communicate with Dagster GraphQL API: {e}"
-                )
-
-    return DagsterGraphQLClient(dagster_graphql_url)
 
 
 class TestGDALHealthCheckJob:

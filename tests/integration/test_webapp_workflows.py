@@ -14,12 +14,11 @@ from .helpers import (
 
 # Authentication
 AUTH = ("admin", "admin")
-BASE_URL = os.getenv("WEBAPP_URL", "http://localhost:8080")
 
 
 @pytest.fixture
-def client():
-    with httpx.Client(base_url=BASE_URL, auth=AUTH, follow_redirects=True) as client:
+def client(webapp_url):
+    with httpx.Client(base_url=webapp_url, auth=AUTH, follow_redirects=True) as client:
         yield client
 
 
