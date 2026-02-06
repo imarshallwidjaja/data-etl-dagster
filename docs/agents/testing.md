@@ -15,6 +15,23 @@
 - Command (host): `uv run pytest -m "integration and e2e" tests/integration`
 - Command (in-network): see _Docker test stack_ below.
 
+## Agent-safe wrapper (preferred for agents)
+
+The `worktree_stack.py` wrapper automates project naming and state tracking:
+
+```
+uv run python scripts/worktree_stack.py up
+uv run python scripts/worktree_stack.py test -- -q --tb=short
+uv run python scripts/worktree_stack.py down
+```
+
+- Derives a deterministic compose project name (`wt-<sha256[:8]>`) from the
+  worktree root so multiple stacks can coexist without port or name conflicts.
+- Tracks stack state in `<worktree>/.worktree/stack.json`; `down` refuses
+  without it (prevents tearing down the wrong stack).
+- Under the hood it executes the same explicit `docker compose -f ... -p ...`
+  commands documented in _Docker test stack_ below.
+
 ## Cleanup expectations
 - Integration/E2E tests should clean artifacts they create (manifests, runs, assets).
 - Set `PRESERVE_TEST_RUNS=1` to keep run records and activity logs for debugging.
