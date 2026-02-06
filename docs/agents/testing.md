@@ -7,11 +7,13 @@
 
 ## Integration tests
 - Require Docker services.
-- Command: `uv run pytest -m "integration" tests/integration`
+- Command (host): `uv run pytest -m "integration" tests/integration`
+- Command (in-network): see _Docker test stack_ below.
 
 ## E2E tests
 - Require Docker services.
-- Command: `uv run pytest -m "integration and e2e" tests/integration`
+- Command (host): `uv run pytest -m "integration and e2e" tests/integration`
+- Command (in-network): see _Docker test stack_ below.
 
 ## Cleanup expectations
 - Integration/E2E tests should clean artifacts they create (manifests, runs, assets).
@@ -26,7 +28,7 @@
 - `python scripts/wait_for_services.py`
 - `python scripts/check_container_stability.py`
 
-## Docker stack (local)
+## Docker stack (local dev)
 Start the stack:
 
 ```
@@ -39,3 +41,42 @@ Stop the stack:
 ```
 docker compose down -v
 ```
+
+## Docker test stack (in-network test-runner)
+
+The test overlay (`compose.test.yaml`) adds a `test-runner` container that
+executes pytest inside the Docker network.  Explicit `-f` flags prevent
+auto-loading `compose.override.yaml`, so no host ports are exposed and the
+test stack can run alongside the dev stack under a separate `-p` project name.
+
+Start the test stack (builds test-runner and services):
+
+```
+docker compose -f compose.yaml -f compose.test.yaml -p <project> up -d --build
+```
+
+Run tests inside the network:
+
+```
+docker compose -f compose.yaml -f compose.test.yaml -p <project> run --rm test-runner
+```
+
+Override the default command (unit tests) to run integration tests:
+
+```
+docker compose -f compose.yaml -f compose.test.yaml -p <project> run --rm test-runner \
+    uv run pytest tests/integration -m integration -q
+```
+
+Tear down the test stack:
+
+```
+docker compose -f compose.yaml -f compose.test.yaml -p <project> down -v
+```
+
+Some notes:
+- Replace `<project>` with a unique name (e.g. `wt-smoke`, branch slug) to
+  avoid collisions with the dev stack.
+- The `-f` flag is required; without it, Compose auto-loads
+  `compose.override.yaml` which exposes host ports and sets `container_name`,
+  causing conflicts when another stack is already running.
