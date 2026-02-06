@@ -51,17 +51,20 @@ jobs:
             - name: Set up Python
               uses: actions/setup-python@v5
               with:
-                  python-version: "3.11"
-                  cache: "pip"
+                  python-version: "3.10"
+
+            - name: Install uv
+              uses: astral-sh/setup-uv@v7
+              with:
+                  version-file: .uv-version
 
             - name: Install dependencies
               run: |
-                  python -m pip install --upgrade pip
-                  pip install -r requirements-test.txt
+                  uv sync --frozen --group test
 
             - name: Start infrastructure services
               run: |
-                  docker compose -f docker-compose.yaml up -d --build \
+                  docker compose -f compose.yaml up -d --build \
                     minio minio-init mongodb postgis
 
             - name: Wait for services
@@ -79,7 +82,7 @@ jobs:
                   max_attempts: 2
                   timeout_minutes: 10
                   command: |
-                      pytest tests/integration/test_minio*.py \
+                      uv run pytest tests/integration/test_minio*.py \
                              tests/integration/test_mongodb*.py \
                              tests/integration/test_postgis*.py \
                              -v --tb=short
@@ -88,15 +91,15 @@ jobs:
               if: failure()
               run: |
                   echo "=== MinIO Logs ==="
-                  docker compose -f docker-compose.yaml logs minio || true
+                  docker compose -f compose.yaml logs minio || true
                   echo ""
                   echo "=== MongoDB Logs ==="
-                  docker compose -f docker-compose.yaml logs mongodb || true
+                  docker compose -f compose.yaml logs mongodb || true
                   echo ""
                   echo "=== PostGIS Logs ==="
-                  docker compose -f docker-compose.yaml logs postgis || true
+                  docker compose -f compose.yaml logs postgis || true
 
             - name: Cleanup
               if: always()
               run: |
-                  docker compose -f docker-compose.yaml down -v
+                  docker compose -f compose.yaml down -v
