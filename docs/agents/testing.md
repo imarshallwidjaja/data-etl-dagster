@@ -25,8 +25,9 @@
 - Manifest-driven sensors: set `metadata.tags.testing=true` so sensors propagate `testing=true` on RunRequests.
 
 ## Service readiness helpers
-- `python scripts/wait_for_services.py`
-- `python scripts/check_container_stability.py`
+- `uv run python scripts/wait_for_services.py`
+- `uv run python scripts/check_container_stability.py`
+- For project-scoped stacks: `COMPOSE_PROJECT_NAME=<project> uv run python scripts/check_container_stability.py`
 
 ## Docker stack (local dev)
 Start the stack:

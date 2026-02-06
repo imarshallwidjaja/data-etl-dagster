@@ -19,11 +19,16 @@ Polls all service endpoints until they become ready or timeout.
 ### Usage
 
 ```bash
-# Default (60s timeout per service)
-python scripts/wait_for_services.py
+# Default (60s timeout per service, localhost URLs)
+uv run python scripts/wait_for_services.py
 
 # Custom timeout
-SERVICE_WAIT_TIMEOUT=120 python scripts/wait_for_services.py
+SERVICE_WAIT_TIMEOUT=120 uv run python scripts/wait_for_services.py
+
+# In-network execution (e.g. inside test-runner container)
+DAGSTER_GRAPHQL_URL=http://dagster-webserver:3000/graphql \
+WEBAPP_URL=http://webapp:8080 \
+  uv run python scripts/wait_for_services.py
 ```
 
 ### What it checks
@@ -33,6 +38,7 @@ SERVICE_WAIT_TIMEOUT=120 python scripts/wait_for_services.py
 3. **PostGIS** - PostGIS extension is installed
 4. **Dagster** - GraphQL API responds
 5. **User-code** - `gdal_health_check_job` is registered (proves code loaded)
+6. **Webapp** - `/health` endpoint returns `{"status": "healthy"}`
 
 ### Output
 
@@ -59,7 +65,10 @@ SUCCESS: All services are ready
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SERVICE_WAIT_TIMEOUT` | `60` | Timeout per service (seconds) |
-| `DAGSTER_WEBSERVER_PORT` | `3000` | Dagster UI port |
+| `DAGSTER_WEBSERVER_PORT` | `3000` | Dagster UI port (used when `DAGSTER_GRAPHQL_URL` is unset) |
+| `DAGSTER_GRAPHQL_URL` | — | Full Dagster GraphQL URL (takes priority over port) |
+| `WEBAPP_URL` | `http://localhost:8080` | Full webapp base URL |
+| `WAIT_FOR_SERVICES` | (all) | Comma-separated list of services to check |
 
 ---
 
@@ -70,14 +79,19 @@ Monitors container restart counts over a period to detect restart loops.
 ### Usage
 
 ```bash
-# Default (30s monitoring window)
-python scripts/check_container_stability.py
+# Default (30s monitoring window, dev-stack container names)
+uv run python scripts/check_container_stability.py
 
 # Custom monitoring duration
-CONTAINER_STABILITY_MONITOR_DURATION=60 python scripts/check_container_stability.py
+CONTAINER_STABILITY_MONITOR_DURATION=60 uv run python scripts/check_container_stability.py
+
+# Project-scoped stack (e.g. worktree test stack)
+COMPOSE_PROJECT_NAME=wt-smoke uv run python scripts/check_container_stability.py
 ```
 
 ### What it monitors
+
+Default containers (dev stack, using `compose.override.yaml` container names):
 
 - `dagster-webserver`
 - `dagster-daemon`
@@ -85,6 +99,15 @@ CONTAINER_STABILITY_MONITOR_DURATION=60 python scripts/check_container_stability
 - `mongodb`
 - `postgis`
 - `minio`
+
+When `COMPOSE_PROJECT_NAME` is set, derives names as `<project>-<service>-1`:
+
+- `<project>-dagster-webserver-1`
+- `<project>-dagster-daemon-1`
+- `<project>-user-code-1`
+- `<project>-mongodb-1`
+- `<project>-postgis-1`
+- `<project>-minio-1`
 
 ### How it works
 
@@ -107,8 +130,8 @@ Monitoring containers for 30 seconds...
 
 Waiting 30 seconds...
 
-✓ dagster-webserver: stable (restart count = 0)
-✓ dagster-daemon: stable (restart count = 0)
+[OK] dagster-webserver: stable (restart count = 0)
+[OK] dagster-daemon: stable (restart count = 0)
 ...
 ============================================================
 SUCCESS: All containers are stable
@@ -118,6 +141,14 @@ SUCCESS: All containers are stable
 
 - `0` - All containers stable
 - `1` - One or more containers unstable
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CONTAINER_STABILITY_MONITOR_DURATION` | `30` | Monitoring window (seconds) |
+| `COMPOSE_PROJECT_NAME` | — | Compose project name; derives container names as `<project>-<service>-1` |
+| `CHECK_CONTAINERS` | — | Comma-separated list of explicit container names (overrides project-derived names) |
 
 ---
 
@@ -129,7 +160,7 @@ Runs MongoDB schema migrations in order.
 
 ```bash
 # Run all pending migrations
-python scripts/migrate_db.py
+uv run python scripts/migrate_db.py
 ```
 
 ### How it works
@@ -164,17 +195,13 @@ Uses standard MongoDB env vars (see `.env` file):
 
 ## Prerequisites
 
-All scripts require test dependencies:
+All scripts require test dependencies (uv-first):
 
 ```bash
-pip install -r requirements-test.txt
+uv sync --frozen --group test
 ```
 
-Or install libs package directly:
-
-```bash
-pip install -e ./libs
-```
+Then run scripts via `uv run python scripts/<script>.py`.
 
 ---
 
@@ -185,10 +212,10 @@ These scripts are used in the GitHub Actions workflow:
 ```yaml
 # .github/workflows/ci.yml
 - name: Wait for services
-  run: python scripts/wait_for_services.py
+  run: uv run python scripts/wait_for_services.py
 
 - name: Check container stability
-  run: python scripts/check_container_stability.py
+  run: uv run python scripts/check_container_stability.py
 ```
 
 ---
@@ -198,9 +225,7 @@ These scripts are used in the GitHub Actions workflow:
 ### "Missing spatial-etl-libs package"
 
 ```bash
-pip install -r requirements-test.txt
-# or
-pip install -e ./libs
+uv sync --frozen --group test
 ```
 
 ### Script hangs on a service

@@ -18,17 +18,36 @@ try:
     from pymongo import MongoClient
 except ImportError as e:
     print(f"ERROR: Missing required dependency: {e}")
-    print("Install test dependencies with: pip install -r requirements-test.txt")
+    print("Install test dependencies with: uv sync --frozen --group test")
     sys.exit(1)
 
 try:
     from models import MinIOSettings, MongoSettings, PostGISSettings
 except ModuleNotFoundError:
     print(
-        "ERROR: Missing spatial-etl-libs package. Install with `pip install -r requirements-test.txt` "
+        "ERROR: Missing spatial-etl-libs package. Install with `uv sync --frozen --group test` "
         "or `pip install -e ./libs` before running this script."
     )
     sys.exit(1)
+
+
+# =============================================================================
+# URL Override Helpers
+# =============================================================================
+
+
+def _dagster_graphql_url() -> str:
+    """Resolve Dagster GraphQL URL: prefer DAGSTER_GRAPHQL_URL, else localhost."""
+    override = os.getenv("DAGSTER_GRAPHQL_URL")
+    if override:
+        return override
+    port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
+    return f"http://localhost:{port}/graphql"
+
+
+def _webapp_url() -> str:
+    """Resolve webapp URL: prefer WEBAPP_URL, else localhost:8080."""
+    return os.getenv("WEBAPP_URL", "http://localhost:8080")
 
 
 # =============================================================================
@@ -92,10 +111,11 @@ def check_postgis(settings: PostGISSettings, timeout: int = 30) -> bool:
         return False
 
 
-def check_dagster(port: int = 3000, timeout: int = 30) -> bool:
+def check_dagster(url: str | None = None, timeout: int = 30) -> bool:
     """Check if Dagster GraphQL API is ready."""
     try:
-        url = f"http://localhost:{port}/graphql"
+        if url is None:
+            url = _dagster_graphql_url()
         response = requests.post(
             url,
             json={"query": "{ version }"},
@@ -112,10 +132,12 @@ def check_dagster(port: int = 3000, timeout: int = 30) -> bool:
         return False
 
 
-def check_webapp(port: int = 8080, timeout: int = 30) -> bool:
+def check_webapp(base_url: str | None = None, timeout: int = 30) -> bool:
     """Check if the webapp health endpoint is ready."""
     try:
-        url = f"http://localhost:{port}/health"
+        if base_url is None:
+            base_url = _webapp_url()
+        url = f"{base_url.rstrip('/')}/health"
         response = requests.get(url, timeout=timeout)
         if response.status_code == 200:
             data = response.json()
@@ -128,7 +150,7 @@ def check_webapp(port: int = 8080, timeout: int = 30) -> bool:
         return False
 
 
-def verify_user_code_dagster(port: int = 3000, timeout: int = 30) -> bool:
+def verify_user_code_dagster(url: str | None = None, timeout: int = 30) -> bool:
     """
     Verify that user-code container is loadable by checking Dagster GraphQL API.
 
@@ -136,14 +158,15 @@ def verify_user_code_dagster(port: int = 3000, timeout: int = 30) -> bool:
     which proves that the user-code container can load modules successfully.
 
     Args:
-        port: Dagster webserver port (default 3000)
+        url: Full Dagster GraphQL URL (default: resolved via _dagster_graphql_url())
         timeout: Request timeout in seconds (default 30)
 
     Returns:
         True if user-code is verified, False otherwise
     """
     try:
-        url = f"http://localhost:{port}/graphql"
+        if url is None:
+            url = _dagster_graphql_url()
 
         # Query for available jobs
         query = {
@@ -295,8 +318,9 @@ def main():
         print("Make sure .env file exists or environment variables are set")
         sys.exit(1)
 
-    # Get Dagster port from environment
-    dagster_port = int(os.getenv("DAGSTER_WEBSERVER_PORT", "3000"))
+    # Resolve service URLs (support env var overrides for in-network execution)
+    dagster_url = _dagster_graphql_url()
+    webapp_base_url = _webapp_url()
 
     # Timeout per service (in seconds)
     timeout = int(os.getenv("SERVICE_WAIT_TIMEOUT", "60"))
@@ -306,12 +330,12 @@ def main():
         "minio": ("MinIO", lambda: check_minio(minio_settings, timeout)),
         "mongodb": ("MongoDB", lambda: check_mongodb(mongo_settings, timeout)),
         "postgis": ("PostGIS", lambda: check_postgis(postgis_settings, timeout)),
-        "dagster": ("Dagster", lambda: check_dagster(dagster_port, timeout)),
+        "dagster": ("Dagster", lambda: check_dagster(dagster_url, timeout)),
         "user-code": (
             "User-code (Dagster)",
-            lambda: verify_user_code_dagster(dagster_port, timeout),
+            lambda: verify_user_code_dagster(dagster_url, timeout),
         ),
-        "webapp": ("Webapp", lambda: check_webapp(8080, timeout)),
+        "webapp": ("Webapp", lambda: check_webapp(webapp_base_url, timeout)),
     }
 
     # Get which services to check (default: all)

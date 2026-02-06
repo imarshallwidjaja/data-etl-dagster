@@ -17,7 +17,7 @@ import time
 from typing import Dict, List, Optional
 
 
-# Critical containers to monitor
+# Critical containers to monitor (names match compose.override.yaml container_name values)
 CRITICAL_CONTAINERS = [
     "dagster-webserver",
     "dagster-daemon",
@@ -26,6 +26,37 @@ CRITICAL_CONTAINERS = [
     "postgis",
     "minio",
 ]
+
+# Compose service names corresponding to CRITICAL_CONTAINERS
+# (used to derive project-scoped container names: <project>-<service>-1)
+CRITICAL_SERVICES = [
+    "dagster-webserver",
+    "dagster-daemon",
+    "user-code",
+    "mongodb",
+    "postgis",
+    "minio",
+]
+
+
+def resolve_container_names() -> List[str]:
+    """Resolve container names for the current environment.
+
+    If CHECK_CONTAINERS is set, uses those names directly.
+    If COMPOSE_PROJECT_NAME is set, derives ``<project>-<service>-1`` names
+    from the compose service definitions.
+    Otherwise falls back to the hardcoded CRITICAL_CONTAINERS (matching
+    the ``container_name`` values from ``compose.override.yaml``).
+    """
+    containers_env = os.getenv("CHECK_CONTAINERS", "").strip()
+    if containers_env:
+        return [c.strip() for c in containers_env.split(",")]
+
+    project = os.getenv("COMPOSE_PROJECT_NAME", "").strip()
+    if project:
+        return [f"{project}-{svc}-1" for svc in CRITICAL_SERVICES]
+
+    return list(CRITICAL_CONTAINERS)
 
 
 def get_restart_count(container_name: str) -> Optional[int]:
@@ -132,13 +163,12 @@ def main():
     # Get monitoring duration from environment (default 30 seconds)
     monitor_duration = int(os.getenv("CONTAINER_STABILITY_MONITOR_DURATION", "30"))
 
-    # Get containers to check (default: critical containers)
-    containers_env = os.getenv("CHECK_CONTAINERS", "").strip()
-    if containers_env:
-        containers = [c.strip() for c in containers_env.split(",")]
-        print(f"Checking selected containers: {', '.join(containers)}")
-    else:
-        containers = CRITICAL_CONTAINERS
+    # Resolve container names (project-scoped, env override, or defaults)
+    containers = resolve_container_names()
+    project = os.getenv("COMPOSE_PROJECT_NAME", "").strip()
+    if project:
+        print(f"Using compose project: {project}")
+    print(f"Checking containers: {', '.join(containers)}")
 
     # Check stability of containers
     stability_status = check_container_stability(
