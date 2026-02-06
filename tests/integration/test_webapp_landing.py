@@ -8,7 +8,6 @@ import io
 import pytest
 import requests
 
-WEBAPP_URL = "http://localhost:8080"
 AUTH = ("admin", "admin")
 
 
@@ -16,10 +15,10 @@ AUTH = ("admin", "admin")
 class TestWebappLanding:
     """Integration tests for landing zone endpoints."""
 
-    def test_list_landing_zone_html(self):
+    def test_list_landing_zone_html(self, webapp_url):
         """Landing zone list should return HTML by default."""
         response = requests.get(
-            f"{WEBAPP_URL}/landing/",
+            f"{webapp_url}/landing/",
             auth=AUTH,
             timeout=10,
         )
@@ -28,10 +27,10 @@ class TestWebappLanding:
         assert "text/html" in response.headers.get("content-type", "")
         assert "Landing Zone" in response.text
 
-    def test_list_landing_zone_json(self):
+    def test_list_landing_zone_json(self, webapp_url):
         """Landing zone list should return JSON with format param."""
         response = requests.get(
-            f"{WEBAPP_URL}/landing/",
+            f"{webapp_url}/landing/",
             auth=AUTH,
             params={"format": "json"},
             timeout=10,
@@ -43,14 +42,14 @@ class TestWebappLanding:
         assert "count" in data
         assert isinstance(data["files"], list)
 
-    def test_upload_and_delete_file(self):
+    def test_upload_and_delete_file(self, webapp_url):
         """Should upload and delete a file from landing zone."""
         # Upload
         test_content = b"test file content"
         files = {"file": ("test_upload.txt", io.BytesIO(test_content), "text/plain")}
 
         response = requests.post(
-            f"{WEBAPP_URL}/landing/upload",
+            f"{webapp_url}/landing/upload",
             auth=AUTH,
             files=files,
             params={"prefix": "test"},
@@ -63,7 +62,7 @@ class TestWebappLanding:
 
         # Verify file exists
         list_response = requests.get(
-            f"{WEBAPP_URL}/landing/",
+            f"{webapp_url}/landing/",
             auth=AUTH,
             params={"format": "json", "prefix": "test/"},
             timeout=10,
@@ -74,17 +73,17 @@ class TestWebappLanding:
 
         # Delete
         delete_response = requests.post(
-            f"{WEBAPP_URL}/landing/delete/test/test_upload.txt",
+            f"{webapp_url}/landing/delete/test/test_upload.txt",
             auth=AUTH,
             timeout=10,
         )
 
         assert delete_response.status_code == 200
 
-    def test_list_requires_auth(self):
+    def test_list_requires_auth(self, webapp_url):
         """Landing zone should require authentication."""
         response = requests.get(
-            f"{WEBAPP_URL}/landing/",
+            f"{webapp_url}/landing/",
             timeout=10,
         )
 

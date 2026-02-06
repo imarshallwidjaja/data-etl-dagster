@@ -10,7 +10,6 @@ import pytest
 import requests
 from bson import ObjectId
 
-WEBAPP_URL = "http://localhost:8080"
 AUTH = ("admin", "admin")
 
 
@@ -231,10 +230,10 @@ def seeded_tabular_asset(clean_mongodb):
 class TestWebappAssets:
     """Integration tests for asset endpoints."""
 
-    def test_list_assets_html(self):
+    def test_list_assets_html(self, webapp_url):
         """Assets list should return HTML by default."""
         response = requests.get(
-            f"{WEBAPP_URL}/assets/",
+            f"{webapp_url}/assets/",
             auth=AUTH,
             timeout=10,
         )
@@ -243,10 +242,10 @@ class TestWebappAssets:
         assert "text/html" in response.headers.get("content-type", "")
         assert "Assets" in response.text
 
-    def test_list_assets_json(self):
+    def test_list_assets_json(self, webapp_url):
         """Assets list should return JSON with format param."""
         response = requests.get(
-            f"{WEBAPP_URL}/assets/",
+            f"{webapp_url}/assets/",
             auth=AUTH,
             params={"format": "json"},
             timeout=10,
@@ -258,10 +257,10 @@ class TestWebappAssets:
         assert "count" in data
         assert isinstance(data["assets"], list)
 
-    def test_filter_assets_by_kind(self):
+    def test_filter_assets_by_kind(self, webapp_url):
         """Assets list should filter by kind."""
         response = requests.get(
-            f"{WEBAPP_URL}/assets/",
+            f"{webapp_url}/assets/",
             auth=AUTH,
             params={"format": "json", "kind": "spatial"},
             timeout=10,
@@ -273,18 +272,18 @@ class TestWebappAssets:
         for asset in data["assets"]:
             assert asset["kind"] == "spatial"
 
-    def test_assets_requires_auth(self):
+    def test_assets_requires_auth(self, webapp_url):
         """Assets endpoint should require authentication."""
         response = requests.get(
-            f"{WEBAPP_URL}/assets/",
+            f"{webapp_url}/assets/",
             timeout=10,
         )
 
         assert response.status_code == 401
 
-    def test_asset_detail_with_seeded_data(self, seeded_asset):
+    def test_asset_detail_with_seeded_data(self, seeded_asset, webapp_url):
         response = requests.get(
-            f"{WEBAPP_URL}/assets/{seeded_asset['dataset_id']}",
+            f"{webapp_url}/assets/{seeded_asset['dataset_id']}",
             auth=AUTH,
             timeout=10,
         )
@@ -294,9 +293,9 @@ class TestWebappAssets:
         assert "EPSG:4326" in response.text
         assert "Column Schema" in response.text
 
-    def test_asset_detail_markdown_xss_sanitized(self, seeded_asset):
+    def test_asset_detail_markdown_xss_sanitized(self, seeded_asset, webapp_url):
         response = requests.get(
-            f"{WEBAPP_URL}/assets/{seeded_asset['dataset_id']}",
+            f"{webapp_url}/assets/{seeded_asset['dataset_id']}",
             auth=AUTH,
             timeout=10,
         )
@@ -305,9 +304,9 @@ class TestWebappAssets:
         assert "<script>" not in response.text
         assert "<strong>markdown</strong>" in response.text
 
-    def test_lineage_graph_returns_three_nodes(self, seeded_asset):
+    def test_lineage_graph_returns_three_nodes(self, seeded_asset, webapp_url):
         response = requests.get(
-            f"{WEBAPP_URL}/assets/{seeded_asset['dataset_id']}/v1/lineage/graph",
+            f"{webapp_url}/assets/{seeded_asset['dataset_id']}/v1/lineage/graph",
             auth=AUTH,
             timeout=10,
         )
@@ -316,9 +315,9 @@ class TestWebappAssets:
         data = response.json()
         assert len(data["elements"]["nodes"]) == 3
 
-    def test_lineage_graph_returns_two_edges(self, seeded_asset):
+    def test_lineage_graph_returns_two_edges(self, seeded_asset, webapp_url):
         response = requests.get(
-            f"{WEBAPP_URL}/assets/{seeded_asset['dataset_id']}/v1/lineage/graph",
+            f"{webapp_url}/assets/{seeded_asset['dataset_id']}/v1/lineage/graph",
             auth=AUTH,
             timeout=10,
         )
@@ -332,9 +331,9 @@ class TestWebappAssets:
         assert "join_operation" in transformations
         assert "derive_operation" in transformations
 
-    def test_lineage_graph_focal_marked_root(self, seeded_asset):
+    def test_lineage_graph_focal_marked_root(self, seeded_asset, webapp_url):
         response = requests.get(
-            f"{WEBAPP_URL}/assets/{seeded_asset['dataset_id']}/v1/lineage/graph",
+            f"{webapp_url}/assets/{seeded_asset['dataset_id']}/v1/lineage/graph",
             auth=AUTH,
             timeout=10,
         )
@@ -344,9 +343,11 @@ class TestWebappAssets:
         root_nodes = [node for node in nodes if node["data"].get("is_root")]
         assert len(root_nodes) == 1
 
-    def test_tabular_asset_hides_spatial_section(self, seeded_tabular_asset):
+    def test_tabular_asset_hides_spatial_section(
+        self, seeded_tabular_asset, webapp_url
+    ):
         response = requests.get(
-            f"{WEBAPP_URL}/assets/{seeded_tabular_asset['dataset_id']}",
+            f"{webapp_url}/assets/{seeded_tabular_asset['dataset_id']}",
             auth=AUTH,
             timeout=10,
         )

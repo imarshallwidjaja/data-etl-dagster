@@ -36,10 +36,42 @@ class MongoSettingsData:
     database: str
 
 
-@pytest.fixture
-def dagster_graphql_url() -> str:
+def _dagster_graphql_url() -> str:
+    """Resolve Dagster GraphQL URL: prefer DAGSTER_GRAPHQL_URL, else localhost."""
+    override = os.getenv("DAGSTER_GRAPHQL_URL")
+    if override:
+        return override
     port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
     return f"http://localhost:{port}/graphql"
+
+
+def _dagster_url() -> str:
+    """Resolve Dagster base URL: derive from DAGSTER_GRAPHQL_URL or localhost."""
+    graphql = _dagster_graphql_url()
+    # Strip trailing /graphql to get the base URL
+    if graphql.endswith("/graphql"):
+        return graphql[: -len("/graphql")]
+    return graphql
+
+
+def _webapp_url() -> str:
+    """Resolve webapp URL: prefer WEBAPP_URL, else localhost:8080."""
+    return os.getenv("WEBAPP_URL", "http://localhost:8080")
+
+
+@pytest.fixture
+def dagster_graphql_url() -> str:
+    return _dagster_graphql_url()
+
+
+@pytest.fixture
+def dagster_url() -> str:
+    return _dagster_url()
+
+
+@pytest.fixture
+def webapp_url() -> str:
+    return _webapp_url()
 
 
 @pytest.fixture
