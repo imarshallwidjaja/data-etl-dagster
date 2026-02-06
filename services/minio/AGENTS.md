@@ -11,5 +11,5 @@ MinIO storage for raw uploads (landing zone) and processed outputs (data lake).
 - Reruns rewrite manifest file paths to `s3://data-lake/blobs/...` when blob-backed artifacts exist.
 
 ## References
-- Env vars/config: `libs/models/AGENTS.md` and `docker-compose.yaml`
+- Env vars/config: `libs/models/AGENTS.md` and `compose.yaml`
 - MinIO resource: `services/dagster/etl_pipelines/resources/minio_resource.py`
