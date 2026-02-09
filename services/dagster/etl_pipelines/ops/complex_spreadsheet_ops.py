@@ -16,7 +16,9 @@ from openpyxl.worksheet.worksheet import Worksheet
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.s3_utils import parse_s3_path
-from .intermediate_artifacts import register_intermediate_from_local_file
+from services.dagster.etl_pipelines.ops.intermediate_artifacts import (
+    register_intermediate_from_local_file,
+)
 
 
 # =============================================================================
@@ -107,6 +109,11 @@ def melt_to_long_format(
     )
 
 
+def _slugify_sheet_name(name: str) -> str:
+    """Normalize sheet names to safe, stable child-key slugs."""
+    return name.replace(" ", "_").lower()
+
+
 def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
     """
     Validate that sheet names produce unique slugs after normalization.
@@ -117,7 +124,7 @@ def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
     seen_slugs: set[str] = set()
     for result in sheet_results:
         sheet_name = result["sheet_name"]
-        safe_sheet = sheet_name.replace(" ", "_").lower()
+        safe_sheet = _slugify_sheet_name(sheet_name)
         if safe_sheet in seen_slugs:
             raise ValueError(
                 f"Duplicate child key slug '{safe_sheet}' generated from sheet '{sheet_name}'. "
@@ -129,7 +136,7 @@ def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
 def process_workbook_sheets(
     *,
     xlsx_path: str,
-    anchor: str,
+    anchor: Optional[str],
     anchor_mode: str = "exact",
     header_rows: int = 1,
     id_column_count: int = 1,
@@ -142,13 +149,15 @@ def process_workbook_sheets(
     Args:
         xlsx_path: Path to the XLSX file on disk.
         anchor: Cell value that marks the top-left of the data region.
+            ``None`` or blank/whitespace defaults to worksheet top-left (0, 0).
         anchor_mode: ``"exact"`` or ``"contains"``.
         header_rows: Number of rows that form the header ending at anchor row
             (anchor is the last header row).
         id_column_count: Number of leading columns treated as IDs for melt.
         sheet_names: If provided, only process sheets whose names appear in
             this list. Workbook ordering is preserved; names not present in the
-            workbook are silently ignored. ``None`` means process all sheets.
+            workbook are silently ignored. ``None`` and ``[]`` mean process all
+            sheets.
 
     Returns:
         List of dicts ``{"sheet_name": str, "dataframe": pl.DataFrame}``
@@ -159,15 +168,20 @@ def process_workbook_sheets(
     """
     wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
     results: list[dict[str, Any]] = []
+    anchor_text = anchor.strip() if isinstance(anchor, str) else ""
+    use_default_anchor = not anchor_text
 
     try:
         sheets_to_process = wb.sheetnames
-        if sheet_names is not None:
+        if sheet_names:
             sheets_to_process = [s for s in wb.sheetnames if s in sheet_names]
 
         for sheet_name in sheets_to_process:
             ws = wb[sheet_name]
-            pos = find_anchor_in_sheet(ws, anchor=anchor, mode=anchor_mode)
+            if use_default_anchor:
+                pos = (0, 0)
+            else:
+                pos = find_anchor_in_sheet(ws, anchor=anchor_text, mode=anchor_mode)
             if pos is None:
                 continue
 
@@ -199,10 +213,10 @@ def process_workbook_sheets(
                 sliced = sliced.select(sliced.columns[anchor_col:])
 
             # --- Compose header ---
-            header_raw_rows: list[list] = []
+            header_raw_rows: list[list[Any]] = []
             for i in range(header_rows):
                 if i < sliced.height:
-                    header_raw_rows.append(sliced.row(i, named=False))
+                    header_raw_rows.append(list(sliced.row(i, named=False)))
             headers = compose_multi_row_header(header_raw_rows)
 
             # Slice data below header rows
@@ -239,8 +253,13 @@ def process_workbook_sheets(
         wb.close()
 
     if not results:
+        if use_default_anchor:
+            raise ValueError(
+                "No sheets produced data using the default top-left anchor (0, 0). "
+                "All sheets were skipped."
+            )
         raise ValueError(
-            f"No sheets contained the anchor '{anchor}' (mode={anchor_mode}). "
+            f"No sheets contained the anchor '{anchor_text}' (mode={anchor_mode}). "
             "All sheets were skipped."
         )
 
@@ -297,31 +316,31 @@ def split_complex_spreadsheet_op(
     tmp_xlsx_path = tmp_xlsx.name
     tmp_xlsx.close()
 
-    if bucket == minio.landing_bucket:
-        context.log.info(f"Downloading XLSX from landing zone: {s3_key}")
-        minio.download_from_landing(s3_key, tmp_xlsx_path)
-    elif bucket == minio.lake_bucket:
-        context.log.info(f"Downloading XLSX from data lake: {s3_key}")
-        minio.download_from_lake(s3_key, tmp_xlsx_path)
-    else:
-        raise ValueError(f"Unsupported bucket '{bucket}' for XLSX download")
-
-    # --- Determine template parameters ---
-    if template_id != "anchor_unpivot_v1":
-        raise ValueError(
-            f"Unsupported template_id '{template_id}'. "
-            "Only 'anchor_unpivot_v1' is currently supported."
-        )
-
-    params = cs_config.template_params
-    anchor = params.anchor_text
-    anchor_mode = params.anchor_match
-    header_rows = params.header_rows
-    id_column_count = params.id_column_count
-    sheet_names = params.sheet_names
-
-    # --- Step 2: Process workbook ---
     try:
+        if bucket == minio.landing_bucket:
+            context.log.info(f"Downloading XLSX from landing zone: {s3_key}")
+            minio.download_from_landing(s3_key, tmp_xlsx_path)
+        elif bucket == minio.lake_bucket:
+            context.log.info(f"Downloading XLSX from data lake: {s3_key}")
+            minio.download_from_lake(s3_key, tmp_xlsx_path)
+        else:
+            raise ValueError(f"Unsupported bucket '{bucket}' for XLSX download")
+
+        # --- Determine template parameters ---
+        if template_id != "anchor_unpivot_v1":
+            raise ValueError(
+                f"Unsupported template_id '{template_id}'. "
+                "Only 'anchor_unpivot_v1' is currently supported."
+            )
+
+        params = cs_config.template_params
+        anchor = params.anchor_text
+        anchor_mode = params.anchor_match
+        header_rows = params.header_rows
+        id_column_count = params.id_column_count
+        sheet_names = params.sheet_names
+
+        # --- Step 2: Process workbook ---
         sheet_results = process_workbook_sheets(
             xlsx_path=tmp_xlsx_path,
             anchor=anchor,
@@ -340,7 +359,7 @@ def split_complex_spreadsheet_op(
     child_manifest_keys: list[str] = []
     for result in sheet_results:
         sheet_name = result["sheet_name"]
-        safe_sheet = sheet_name.replace(" ", "_").lower()
+        safe_sheet = _slugify_sheet_name(sheet_name)
         child_batch_id = f"{batch_id}__{safe_sheet}"
         child_key = f"manifests/{child_batch_id}.json"
         child_manifest_keys.append(child_key)
@@ -359,7 +378,7 @@ def split_complex_spreadsheet_op(
     for idx, result in enumerate(sheet_results):
         sheet_name = result["sheet_name"]
         df: pl.DataFrame = result["dataframe"]
-        safe_sheet = sheet_name.replace(" ", "_").lower()
+        safe_sheet = _slugify_sheet_name(sheet_name)
         child_batch_id = f"{batch_id}__{safe_sheet}"
         child_dataset_id = f"{dataset_id_base}__{safe_sheet}"
 
