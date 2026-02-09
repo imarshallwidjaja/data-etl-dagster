@@ -16,9 +16,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.s3_utils import parse_s3_path
-from services.dagster.etl_pipelines.ops.intermediate_artifacts import (
-    register_intermediate_from_local_file,
-)
+from .intermediate_artifacts import register_intermediate_from_local_file
 
 
 # =============================================================================

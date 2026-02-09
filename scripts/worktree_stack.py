@@ -121,7 +121,7 @@ def compose_cmd(
         return [*base, "down", "-v", "--remove-orphans"]
 
     if action == "test":
-        cmd = [*base, "run", "--rm", "test-runner", "pytest"]
+        cmd = [*base, "run", "--rm", "test-runner", "uv", "run", "pytest"]
         if pytest_args:
             cmd.extend(pytest_args)
         return cmd
