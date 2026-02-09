@@ -135,6 +135,7 @@ class TestTrackedJobs:
         assert "tabular_asset_job" in TRACKED_JOBS
         assert "join_asset_job" in TRACKED_JOBS
         assert "ingest_job" in TRACKED_JOBS
+        assert "complex_table_splitter_job" in TRACKED_JOBS
 
     def test_tracked_jobs_is_frozen(self):
         assert isinstance(TRACKED_JOBS, frozenset)
