@@ -197,7 +197,13 @@ def determine_lane(manifest: Manifest) -> Lane:
     # - spatial_sensor: ingest_vector, ingest_raster
     # - tabular_sensor: ingest_tabular
     # - join_sensor: join_datasets
-    if intent in ("ingest_tabular", "join_datasets", "ingest_vector", "ingest_raster"):
+    if intent in (
+        "ingest_tabular",
+        "join_datasets",
+        "ingest_vector",
+        "ingest_raster",
+        "ingest_complex_spreadsheet",
+    ):
         return None
 
     # Default to ingest lane for all other intents

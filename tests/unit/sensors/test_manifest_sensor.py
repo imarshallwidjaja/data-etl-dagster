@@ -188,6 +188,26 @@ def test_join_intent_is_skipped_and_not_archived(
     assert mock_sensor_context.update_cursor.called
 
 
+def test_complex_spreadsheet_intent_is_skipped_and_not_archived(
+    mock_sensor_context,
+    mock_minio_resource,
+    valid_complex_spreadsheet_manifest_dict,
+):
+    """Complex spreadsheet intents are handled by complex_spreadsheet_sensor; legacy manifest_sensor should skip."""
+    manifest_key = "manifests/batch_complex.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = (
+        valid_complex_spreadsheet_manifest_dict
+    )
+
+    results = list(_manifest_sensor_fn(mock_sensor_context, mock_minio_resource))
+
+    assert results == []
+    # Must not archive: complex_spreadsheet_sensor should still be able to see the manifest
+    mock_minio_resource.move_to_archive.assert_not_called()
+    assert mock_sensor_context.update_cursor.called
+
+
 # =============================================================================
 # Test: Traffic Controller - default to ingest only
 # =============================================================================

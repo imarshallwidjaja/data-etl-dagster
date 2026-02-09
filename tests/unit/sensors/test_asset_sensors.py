@@ -1,5 +1,5 @@
 """
-Unit tests for asset sensors (spatial_sensor, tabular_sensor, join_sensor).
+Unit tests for asset sensors (spatial_sensor, tabular_sensor, join_sensor, complex_spreadsheet_sensor).
 
 These sensors are narrow: they only claim their specific intents and launch
 asset-based jobs that configure `raw_manifest_json`.
@@ -14,6 +14,9 @@ from services.dagster.etl_pipelines.resources import MinIOResource
 from services.dagster.etl_pipelines.sensors.join_sensor import join_sensor
 from services.dagster.etl_pipelines.sensors.spatial_sensor import spatial_sensor
 from services.dagster.etl_pipelines.sensors.tabular_sensor import tabular_sensor
+from services.dagster.etl_pipelines.sensors.complex_spreadsheet_sensor import (
+    complex_spreadsheet_sensor,
+)
 
 
 @pytest.fixture
@@ -271,3 +274,103 @@ def test_source_tag_defaults_to_unknown_when_no_tags(
     assert len(results) == 1
     rr = results[0]
     assert rr.tags["source"] == "unknown"
+
+
+# =============================================================================
+# Complex Spreadsheet Sensor Tests
+# =============================================================================
+
+
+def test_complex_spreadsheet_sensor_skips_when_no_manifests(
+    mock_sensor_context, mock_minio_resource
+):
+    mock_minio_resource.list_manifests.return_value = []
+    results = list(
+        complex_spreadsheet_sensor._raw_fn(mock_sensor_context, mock_minio_resource)
+    )
+    assert len(results) == 1
+    assert isinstance(results[0], SkipReason)
+
+
+def test_complex_spreadsheet_sensor_claims_complex_intent_and_yields_run_request(
+    mock_sensor_context,
+    mock_minio_resource,
+    valid_complex_spreadsheet_manifest_dict,
+):
+    manifest_key = "manifests/batch_complex_001.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = (
+        valid_complex_spreadsheet_manifest_dict
+    )
+
+    results = list(
+        complex_spreadsheet_sensor._raw_fn(mock_sensor_context, mock_minio_resource)
+    )
+    assert len(results) == 1
+    assert isinstance(results[0], RunRequest)
+    rr = results[0]
+
+    # Op-based job: manifest is passed via init_mongo_run_op inputs
+    run_config = rr.run_config
+    payload = run_config["ops"]["init_mongo_run_op"]["inputs"]["payload"]["value"]
+    assert payload["batch_id"] == valid_complex_spreadsheet_manifest_dict["batch_id"]
+
+    # Verify expected tags
+    assert rr.tags["batch_id"] == "batch_complex_001"
+    assert rr.tags["uploader"] == "user_123"
+    assert rr.tags["intent"] == "ingest_complex_spreadsheet"
+    assert rr.tags["manifest_key"] == manifest_key
+    assert rr.tags["partition_key"] == "complex_dataset_001"
+    assert rr.tags["operator"] == "user_123"
+    assert rr.tags["source"] == "unit-test"
+    assert rr.tags["sensor"] == "complex_spreadsheet_sensor"
+
+    # Verify manifest was archived
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
+
+
+def test_complex_spreadsheet_sensor_skips_non_complex_intent(
+    mock_sensor_context,
+    mock_minio_resource,
+    valid_tabular_manifest_dict,
+):
+    """Complex sensor ignores manifests with non-complex intents."""
+    manifest_key = "manifests/batch_tabular.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = valid_tabular_manifest_dict
+
+    results = list(
+        complex_spreadsheet_sensor._raw_fn(mock_sensor_context, mock_minio_resource)
+    )
+    # No RunRequests, possibly only a cursor update
+    run_requests = [r for r in results if isinstance(r, RunRequest)]
+    assert len(run_requests) == 0
+    # Must NOT archive: other sensors handle this manifest
+    mock_minio_resource.move_to_archive.assert_not_called()
+
+
+def test_complex_spreadsheet_sensor_includes_testing_tag(
+    mock_sensor_context,
+    mock_minio_resource,
+    valid_complex_spreadsheet_manifest_dict,
+):
+    manifest_with_testing = {
+        **valid_complex_spreadsheet_manifest_dict,
+        "metadata": {
+            **valid_complex_spreadsheet_manifest_dict["metadata"],
+            "tags": {
+                **valid_complex_spreadsheet_manifest_dict["metadata"]["tags"],
+                "testing": True,
+            },
+        },
+    }
+    manifest_key = "manifests/batch_complex_testing.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = manifest_with_testing
+
+    results = list(
+        complex_spreadsheet_sensor._raw_fn(mock_sensor_context, mock_minio_resource)
+    )
+    assert len(results) == 1
+    rr = results[0]
+    assert rr.tags["testing"] == "true"

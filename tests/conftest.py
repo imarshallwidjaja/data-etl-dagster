@@ -87,6 +87,51 @@ def valid_tabular_manifest(valid_tabular_manifest_dict):
 
 
 # =============================================================================
+# Complex Spreadsheet Manifest Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def valid_complex_spreadsheet_manifest_dict():
+    """Complete valid complex spreadsheet manifest dictionary."""
+    return {
+        "batch_id": "batch_complex_001",
+        "uploader": "user_123",
+        "intent": "ingest_complex_spreadsheet",
+        "files": [
+            {
+                "path": "s3://landing-zone/batch_complex_001/data.xlsx",
+                "type": "tabular",
+                "format": "XLSX",
+            }
+        ],
+        "metadata": {
+            "title": "Test Complex Spreadsheet",
+            "description": "Test multi-table XLSX for validation",
+            "keywords": ["complex", "spreadsheet", "test"],
+            "source": "Unit Test Suite",
+            "license": "MIT",
+            "attribution": "Test Contributors",
+            "project": "ALPHA",
+            "tags": {
+                "dataset_id": "complex_dataset_001",
+                "source": "unit-test",
+            },
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {},
+            },
+        },
+    }
+
+
+@pytest.fixture
+def valid_complex_spreadsheet_manifest(valid_complex_spreadsheet_manifest_dict):
+    """Complete valid complex spreadsheet Manifest model instance."""
+    return Manifest(**valid_complex_spreadsheet_manifest_dict)
+
+
+# =============================================================================
 # Join Manifest Fixtures
 # =============================================================================
 
