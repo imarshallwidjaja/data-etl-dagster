@@ -38,6 +38,7 @@ SAMPLE_MANIFEST = {
         "project": "TEST_PROJECT",
         "tags": {},
         "join_config": None,
+        "complex_spreadsheet": None,
     },
 }
 
@@ -67,6 +68,7 @@ MULTI_FILE_MANIFEST = {
         "project": "TEST_PROJECT",
         "tags": {},
         "join_config": None,
+        "complex_spreadsheet": None,
     },
 }
 

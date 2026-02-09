@@ -18,6 +18,8 @@ from .spatial import FileType
 from .base import HumanMetadataMixin
 
 __all__ = [
+    "ComplexSpreadsheetConfig",
+    "ComplexSpreadsheetTemplateParamsV1",
     "FileEntry",
     "JoinConfig",
     "ManifestMetadata",
@@ -241,6 +243,43 @@ class JoinConfig(BaseModel):
 
 
 # =============================================================================
+# Complex Spreadsheet Config Models
+# =============================================================================
+
+
+class ComplexSpreadsheetTemplateParamsV1(BaseModel):
+    """
+    Template parameters for complex spreadsheet processing (v1).
+
+    Currently empty — reserved for template-specific configuration
+    (e.g., anchor cells, header rows, unpivot rules) to be defined per template.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ComplexSpreadsheetConfig(BaseModel):
+    """
+    Configuration for complex spreadsheet ingestion.
+
+    Pairs a template identifier with version-specific parameters
+    that drive the multi-table splitter logic.
+
+    Attributes:
+        template_id: Identifier for the splitting template (e.g., "abs_lga_2021")
+        template_params: Template-specific parameters (v1: empty)
+    """
+
+    template_id: str = Field(..., description="Identifier for the splitting template")
+    template_params: ComplexSpreadsheetTemplateParamsV1 = Field(
+        default_factory=ComplexSpreadsheetTemplateParamsV1,
+        description="Template-specific parameters",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+# =============================================================================
 # Manifest Metadata Model
 # =============================================================================
 
@@ -273,6 +312,10 @@ class ManifestMetadata(HumanMetadataMixin):
     join_config: JoinConfig | None = Field(
         None,
         description="Optional join configuration for downstream matching",
+    )
+    complex_spreadsheet: ComplexSpreadsheetConfig | None = Field(
+        None,
+        description="Configuration for complex spreadsheet ingestion (template-driven splitting)",
     )
 
     model_config = ConfigDict(
@@ -347,6 +390,7 @@ class Manifest(BaseModel):
 
         Rules:
         - If intent == "ingest_tabular" → all files[].type must be "tabular"
+        - If intent == "ingest_complex_spreadsheet" → all files[].type must be "tabular"
         - If intent == "join_datasets" → all files[].type must be "tabular"
         - Otherwise → forbid "tabular" (prevents accidental routing to spatial pipeline)
 
@@ -355,12 +399,12 @@ class Manifest(BaseModel):
         """
         from .spatial import FileType
 
-        if self.intent == "ingest_tabular":
+        if self.intent in ("ingest_tabular", "ingest_complex_spreadsheet"):
             # All files must be tabular
             non_tabular = [f for f in self.files if f.type != FileType.TABULAR]
             if non_tabular:
                 raise ValueError(
-                    f"Manifest with intent 'ingest_tabular' must have all files with type 'tabular'. "
+                    f"Manifest with intent '{self.intent}' must have all files with type 'tabular'. "
                     f"Found non-tabular files: {[f.path for f in non_tabular]}"
                 )
         elif self.intent == "join_datasets":
@@ -397,6 +441,51 @@ class Manifest(BaseModel):
             raise ValueError(
                 f"Manifest with intent '{self.intent}' requires at least one file"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_complex_spreadsheet_constraints(self) -> "Manifest":
+        """
+        Enforce constraints specific to ingest_complex_spreadsheet intent.
+
+        Rules:
+        - Exactly one file
+        - File format must be XLSX
+        - metadata.complex_spreadsheet must be present (non-None)
+        - metadata.tags.dataset_id must be present and non-empty
+        """
+        if self.intent != "ingest_complex_spreadsheet":
+            return self
+
+        # Exactly one file
+        if len(self.files) != 1:
+            raise ValueError(
+                f"Manifest with intent 'ingest_complex_spreadsheet' requires exactly one file, "
+                f"got {len(self.files)}"
+            )
+
+        # File format must be XLSX
+        if self.files[0].format != "XLSX":
+            raise ValueError(
+                f"Manifest with intent 'ingest_complex_spreadsheet' requires file format 'XLSX', "
+                f"got '{self.files[0].format}'"
+            )
+
+        # metadata.complex_spreadsheet must be present
+        if self.metadata.complex_spreadsheet is None:
+            raise ValueError(
+                "Manifest with intent 'ingest_complex_spreadsheet' requires "
+                "metadata.complex_spreadsheet to be set"
+            )
+
+        # metadata.tags.dataset_id must be present and non-empty
+        dataset_id = self.metadata.tags.get("dataset_id")
+        if not dataset_id or not isinstance(dataset_id, str) or not dataset_id.strip():
+            raise ValueError(
+                "Manifest with intent 'ingest_complex_spreadsheet' requires "
+                "metadata.tags.dataset_id to be a non-empty string"
+            )
+
         return self
 
     model_config = ConfigDict(
