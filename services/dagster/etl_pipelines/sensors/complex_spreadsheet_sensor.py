@@ -105,7 +105,8 @@ def complex_spreadsheet_sensor(context: SensorEvaluationContext, minio: MinIORes
             except ValidationError as e:
                 context.log.error(
                     f"Invalid manifest '{manifest_key}': {e.errors()}. "
-                    "Marking as processed to prevent retry."
+                    f"Marking as processed to prevent retry. "
+                    f"To retry, rerun/re-execute the Dagster run (sensor is one-shot)."
                 )
                 processed_this_run.append(manifest_key)
                 try:
@@ -173,7 +174,8 @@ def complex_spreadsheet_sensor(context: SensorEvaluationContext, minio: MinIORes
         except Exception as e:
             context.log.error(
                 f"Error processing manifest '{manifest_key}': {e}. "
-                "Marking as processed to prevent retry."
+                f"Marking as processed to prevent retry. "
+                f"To retry, rerun/re-execute the Dagster run (sensor is one-shot)."
             )
             processed_this_run.append(manifest_key)
             try:
