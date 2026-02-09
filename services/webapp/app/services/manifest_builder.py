@@ -8,7 +8,14 @@ import re
 import uuid
 from typing import Any
 
-from libs.models import ComplexSpreadsheetConfig, FileEntry, Manifest, ManifestMetadata
+from libs.models import (
+    ComplexSpreadsheetConfig,
+    FileEntry,
+    FileType,
+    Manifest,
+    ManifestMetadata,
+    TagValue,
+)
 
 from app.services.mongodb_service import get_mongodb_service
 
@@ -97,7 +104,7 @@ def build_manifest(
     project = form_data.get("project")
 
     # Extract tags
-    tags: dict[str, Any] = {}
+    tags: dict[str, TagValue] = {}
     dataset_id = form_data.get("dataset_id")
     if dataset_id:
         tags["dataset_id"] = dataset_id
@@ -121,7 +128,7 @@ def build_manifest(
         license=license_field,
         attribution=attribution,
         project=project if project else None,
-        tags=tags if tags else None,
+        tags=tags,
     )
 
     # Asset-type specific logic
@@ -247,18 +254,18 @@ def _build_complex_spreadsheet_manifest(
     """
     intent = "ingest_complex_spreadsheet"
 
-    # Build file entries (complex spreadsheet requires exactly one XLSX file)
-    files = _get_file_entries(form_data)
-
-    if len(files) != 1:
-        raise ValueError("Complex spreadsheet manifest requires exactly one file")
-
     # Get complex_spreadsheet config from form data
     cs_config_data = form_data.get("complex_spreadsheet")
     if not cs_config_data:
         raise ValueError(
             "Complex spreadsheet manifest requires complex_spreadsheet config"
         )
+
+    # Build file entries (complex spreadsheet requires exactly one XLSX file)
+    files = _get_file_entries(form_data, default_type=FileType.TABULAR)
+
+    if len(files) != 1:
+        raise ValueError("Complex spreadsheet manifest requires exactly one file")
 
     # Build ComplexSpreadsheetConfig (validates via Pydantic)
     if isinstance(cs_config_data, dict):
@@ -269,17 +276,7 @@ def _build_complex_spreadsheet_manifest(
         raise ValueError("Invalid complex_spreadsheet config format")
 
     # Attach complex_spreadsheet to metadata
-    metadata_with_cs = ManifestMetadata(
-        title=metadata.title,
-        description=metadata.description,
-        keywords=metadata.keywords,
-        source=metadata.source,
-        license=metadata.license,
-        attribution=metadata.attribution,
-        project=metadata.project,
-        tags=metadata.tags,
-        complex_spreadsheet=cs_config,
-    )
+    metadata_with_cs = metadata.model_copy(update={"complex_spreadsheet": cs_config})
 
     return Manifest(
         batch_id=batch_id,
@@ -290,7 +287,9 @@ def _build_complex_spreadsheet_manifest(
     )
 
 
-def _get_file_entries(form_data: dict[str, Any]) -> list[FileEntry]:
+def _get_file_entries(
+    form_data: dict[str, Any], default_type: FileType = FileType.VECTOR
+) -> list[FileEntry]:
     """
     Get FileEntry list from form data.
 
@@ -299,6 +298,7 @@ def _get_file_entries(form_data: dict[str, Any]) -> list[FileEntry]:
 
     Args:
         form_data: Form data with "files" key
+        default_type: Default file type when one is not supplied in form data
 
     Returns:
         List of FileEntry
@@ -317,11 +317,17 @@ def _get_file_entries(form_data: dict[str, Any]) -> list[FileEntry]:
         if isinstance(file_info, dict):
             path = file_info.get("path", "")
             file_format = file_info.get("format", _infer_format(path))
-            file_type = file_info.get("type", "vector")
+            file_type_value = file_info.get("type")
+            if file_type_value is None:
+                file_type = default_type
+            elif isinstance(file_type_value, FileType):
+                file_type = file_type_value
+            else:
+                file_type = FileType(str(file_type_value))
         else:
             path = str(file_info)
             file_format = _infer_format(path)
-            file_type = "vector"
+            file_type = default_type
 
         if path:
             entries.append(
