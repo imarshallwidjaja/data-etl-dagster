@@ -172,3 +172,71 @@ class TestTagValueValidation:
         """TagValue should accept bool."""
         tags: dict[str, TagValue] = {"active": True}
         assert tags["active"] is True
+
+
+# =============================================================================
+# Router Endpoint Tests for complex_spreadsheet allowlist
+# =============================================================================
+
+import sys
+import os
+from unittest.mock import MagicMock, patch
+
+from starlette.testclient import TestClient
+
+sys.path.insert(
+    0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "services", "webapp")
+)
+
+
+@pytest.fixture
+def mock_mongodb_service():
+    with patch("app.routers.manifests.get_mongodb_service") as mock_factory:
+        mock_service = MagicMock()
+        mock_factory.return_value = mock_service
+        mock_service.list_assets.return_value = []
+        yield mock_service
+
+
+@pytest.fixture
+def auth_override():
+    from app.auth.dependencies import get_current_user
+    from app.auth.providers import AuthenticatedUser
+    from app.main import app
+
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        username="testuser", display_name="Test User"
+    )
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client(auth_override):
+    from app.main import app
+
+    return TestClient(app)
+
+
+class TestComplexSpreadsheetRouterAllowlist:
+    """Tests that complex_spreadsheet is accepted by manifest router endpoints."""
+
+    def test_get_new_complex_spreadsheet_form_json_does_not_404(
+        self, client, mock_mongodb_service
+    ):
+        """GET /manifests/new/complex_spreadsheet?format=json should not 404."""
+        response = client.get("/manifests/new/complex_spreadsheet?format=json")
+        assert response.status_code != 404, (
+            f"Expected non-404 for complex_spreadsheet, got {response.status_code}"
+        )
+        assert response.status_code == 200
+
+    def test_get_schema_complex_spreadsheet_does_not_404(
+        self, client, mock_mongodb_service
+    ):
+        """GET /manifests/schemas/complex_spreadsheet should not 404."""
+        response = client.get("/manifests/schemas/complex_spreadsheet")
+        assert response.status_code != 404, (
+            f"Expected non-404 for complex_spreadsheet schema, got {response.status_code}"
+        )
+        assert response.status_code == 200

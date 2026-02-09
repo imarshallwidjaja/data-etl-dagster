@@ -15,7 +15,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
-from libs.models import FileEntry, JoinConfig, TagValue
+from libs.models import ComplexSpreadsheetConfig, FileEntry, JoinConfig, TagValue
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
 from app.services.activity_service import get_activity_service
@@ -90,6 +90,7 @@ class ManifestCreateRequest(BaseModel):
     files: Optional[list[FileEntry]] = None
     join_config: Optional[JoinConfig] = None
     tags: Optional[dict[str, TagValue]] = None
+    complex_spreadsheet: Optional[ComplexSpreadsheetConfig] = None
 
 
 class ManifestCreateResponse(BaseModel):
@@ -171,6 +172,11 @@ async def select_asset_type(
             "name": "Joined Asset",
             "description": "Join spatial + tabular",
         },
+        {
+            "id": "complex_spreadsheet",
+            "name": "Complex Spreadsheet",
+            "description": "Multi-table XLSX with template-driven splitting",
+        },
     ]
 
     if format == "json":
@@ -190,7 +196,7 @@ async def get_asset_form(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """Return form for the specified asset type."""
-    if asset_type not in ("spatial", "tabular", "joined"):
+    if asset_type not in ("spatial", "tabular", "joined", "complex_spreadsheet"):
         raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")
 
     mongodb = get_mongodb_service()
@@ -225,7 +231,7 @@ async def create_manifest(
     current_user: AuthenticatedUser = Depends(get_current_user),
 ) -> ManifestCreateResponse:
     """Create a new manifest and upload to landing zone."""
-    if asset_type not in ("spatial", "tabular", "joined"):
+    if asset_type not in ("spatial", "tabular", "joined", "complex_spreadsheet"):
         raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")
 
     try:
@@ -287,7 +293,7 @@ async def get_manifest_schema(
     Exposes the ManifestCreateRequest schema for client-side validation.
     The asset_type is included as x-asset-type metadata hint.
     """
-    if asset_type not in ("spatial", "tabular", "joined"):
+    if asset_type not in ("spatial", "tabular", "joined", "complex_spreadsheet"):
         raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")
 
     # Generate JSON Schema from Pydantic model

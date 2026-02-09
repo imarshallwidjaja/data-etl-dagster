@@ -8,7 +8,7 @@ import re
 import uuid
 from typing import Any
 
-from libs.models import FileEntry, Manifest, ManifestMetadata
+from libs.models import ComplexSpreadsheetConfig, FileEntry, Manifest, ManifestMetadata
 
 from app.services.mongodb_service import get_mongodb_service
 
@@ -131,6 +131,10 @@ def build_manifest(
         return _build_tabular_manifest(form_data, batch_id, uploader, metadata)
     elif asset_type == "joined":
         return _build_joined_manifest(form_data, batch_id, uploader, metadata)
+    elif asset_type == "complex_spreadsheet":
+        return _build_complex_spreadsheet_manifest(
+            form_data, batch_id, uploader, metadata
+        )
     else:
         raise ValueError(f"Unknown asset type: {asset_type}")
 
@@ -230,6 +234,62 @@ def _build_joined_manifest(
     )
 
 
+def _build_complex_spreadsheet_manifest(
+    form_data: dict[str, Any],
+    batch_id: str,
+    uploader: str,
+    metadata: ManifestMetadata,
+) -> Manifest:
+    """Build a complex spreadsheet manifest.
+
+    Sets intent to ingest_complex_spreadsheet, enforces exactly one file,
+    and attaches the complex_spreadsheet config to metadata.
+    """
+    intent = "ingest_complex_spreadsheet"
+
+    # Build file entries (complex spreadsheet requires exactly one XLSX file)
+    files = _get_file_entries(form_data)
+
+    if len(files) != 1:
+        raise ValueError("Complex spreadsheet manifest requires exactly one file")
+
+    # Get complex_spreadsheet config from form data
+    cs_config_data = form_data.get("complex_spreadsheet")
+    if not cs_config_data:
+        raise ValueError(
+            "Complex spreadsheet manifest requires complex_spreadsheet config"
+        )
+
+    # Build ComplexSpreadsheetConfig (validates via Pydantic)
+    if isinstance(cs_config_data, dict):
+        cs_config = ComplexSpreadsheetConfig(**cs_config_data)
+    elif isinstance(cs_config_data, ComplexSpreadsheetConfig):
+        cs_config = cs_config_data
+    else:
+        raise ValueError("Invalid complex_spreadsheet config format")
+
+    # Attach complex_spreadsheet to metadata
+    metadata_with_cs = ManifestMetadata(
+        title=metadata.title,
+        description=metadata.description,
+        keywords=metadata.keywords,
+        source=metadata.source,
+        license=metadata.license,
+        attribution=metadata.attribution,
+        project=metadata.project,
+        tags=metadata.tags,
+        complex_spreadsheet=cs_config,
+    )
+
+    return Manifest(
+        batch_id=batch_id,
+        uploader=uploader,
+        intent=intent,
+        files=files,
+        metadata=metadata_with_cs,
+    )
+
+
 def _get_file_entries(form_data: dict[str, Any]) -> list[FileEntry]:
     """
     Get FileEntry list from form data.
@@ -288,6 +348,7 @@ def _infer_format(path: str) -> str:
         "tiff": "GTiff",
         "csv": "CSV",
         "parquet": "Parquet",
+        "xlsx": "XLSX",
     }
 
     return format_map.get(ext, "GeoJSON")
