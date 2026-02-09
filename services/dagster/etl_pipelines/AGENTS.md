@@ -18,3 +18,7 @@ Dagster code location: assets, ops, sensors, resources, and partitioning logic.
 - Pipeline behavior: `docs/agents/pipelines.md`
 - Data model contracts: `libs/models/AGENTS.md`
 - Dagster orchestration: `services/dagster/AGENTS.md`
+
+## Complex spreadsheet splitter
+
+The `split_complex_spreadsheet_op` dispatches behavior by `template_id` from the manifest's `metadata.complex_spreadsheet` config. New templates are additive handlers — add a new branch for the new `template_id` without modifying existing template logic. All templates must remain backward compatible (see `libs/models/AGENTS.md` for the versioning contract).

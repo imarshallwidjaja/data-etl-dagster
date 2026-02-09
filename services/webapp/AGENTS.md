@@ -13,3 +13,7 @@ Dagster, MongoDB, or MinIO.
 - Webapp README: `services/webapp/README.md`
 - Model contracts: `libs/models/AGENTS.md`
 - Testing: `docs/agents/testing.md`
+
+## Complex spreadsheet templates
+
+The manifest schema endpoint (`/manifests/schemas/complex_spreadsheet`) must expose the versioned template union from `ManifestCreateRequest` in an Ajv-compatible JSON Schema. The UI should treat `template_id` as the discriminator when rendering template-specific parameter forms.
