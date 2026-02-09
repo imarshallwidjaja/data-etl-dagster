@@ -37,6 +37,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgis_password}
       POSTGRES_DB: ${POSTGRES_DB:-spatial_compute}
     depends_on:
+      dagster-daemon:
+        condition: service_started
       dagster-webserver:
         condition: service_healthy
       webapp:
