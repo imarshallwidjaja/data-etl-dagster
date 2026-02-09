@@ -107,6 +107,25 @@ def melt_to_long_format(
     )
 
 
+def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
+    """
+    Validate that sheet names produce unique slugs after normalization.
+
+    Raises:
+        ValueError: If two sheet names normalize to the same slug.
+    """
+    seen_slugs: set[str] = set()
+    for result in sheet_results:
+        sheet_name = result["sheet_name"]
+        safe_sheet = sheet_name.replace(" ", "_").lower()
+        if safe_sheet in seen_slugs:
+            raise ValueError(
+                f"Duplicate child key slug '{safe_sheet}' generated from sheet '{sheet_name}'. "
+                "Sheet names must produce unique slugs after normalization."
+            )
+        seen_slugs.add(safe_sheet)
+
+
 def process_workbook_sheets(
     *,
     xlsx_path: str,
@@ -143,7 +162,7 @@ def process_workbook_sheets(
             if pos is None:
                 continue
 
-            anchor_row, _anchor_col = pos
+            anchor_row, anchor_col = pos
 
             # The anchor marks the *last* header row.
             # The header region starts (header_rows - 1) rows above the anchor.
@@ -165,6 +184,10 @@ def process_workbook_sheets(
 
             # Slice from header start onwards
             sliced = raw_df.slice(header_start)
+
+            # Slice columns starting from anchor column
+            if anchor_col > 0:
+                sliced = sliced.select(sliced.columns[anchor_col:])
 
             # --- Compose header ---
             header_raw_rows: list[list] = []
@@ -300,6 +323,9 @@ def split_complex_spreadsheet_op(
         Path(tmp_xlsx_path).unlink(missing_ok=True)
 
     # --- Step 3: Preflight collision check ---
+    # First, check for duplicate slugs within this run
+    _check_slug_uniqueness(sheet_results)
+
     child_manifest_keys: list[str] = []
     for result in sheet_results:
         sheet_name = result["sheet_name"]
