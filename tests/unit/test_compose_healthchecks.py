@@ -57,3 +57,17 @@ def test_test_runner_waits_for_dagster_and_webapp_health():
     assert depends_on["webapp"]["condition"] == "service_healthy", (
         "compose.test.yaml test-runner must wait for webapp health"
     )
+
+
+def test_test_runner_waits_for_dagster_daemon_start():
+    """E2E GraphQL-launched runs require dagster-daemon to dequeue queued runs."""
+    overlay = _load_yaml(REPO_ROOT / "compose.test.yaml")
+    depends_on = overlay["services"]["test-runner"]["depends_on"]
+
+    assert "dagster-daemon" in depends_on, (
+        "compose.test.yaml test-runner must depend on dagster-daemon; "
+        "without it, GraphQL-launched runs can remain queued and E2E polling hangs"
+    )
+    assert depends_on["dagster-daemon"]["condition"] == "service_started", (
+        "compose.test.yaml test-runner must wait for dagster-daemon to start"
+    )
