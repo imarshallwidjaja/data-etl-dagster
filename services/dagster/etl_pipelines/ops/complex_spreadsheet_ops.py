@@ -133,6 +133,7 @@ def process_workbook_sheets(
     anchor_mode: str = "exact",
     header_rows: int = 1,
     id_column_count: int = 1,
+    sheet_names: Optional[list[str]] = None,
 ) -> list[dict[str, Any]]:
     """
     Open a workbook, locate the anchor in each sheet, compose headers,
@@ -144,6 +145,9 @@ def process_workbook_sheets(
         anchor_mode: ``"exact"`` or ``"contains"``.
         header_rows: Number of rows that form the header (starting at anchor row).
         id_column_count: Number of leading columns treated as IDs for melt.
+        sheet_names: If provided, only process sheets whose names appear in
+            this list. Workbook ordering is preserved; names not present in the
+            workbook are silently ignored. ``None`` means process all sheets.
 
     Returns:
         List of dicts ``{"sheet_name": str, "dataframe": pl.DataFrame}``
@@ -156,7 +160,11 @@ def process_workbook_sheets(
     results: list[dict[str, Any]] = []
 
     try:
-        for sheet_name in wb.sheetnames:
+        sheets_to_process = wb.sheetnames
+        if sheet_names is not None:
+            sheets_to_process = [s for s in wb.sheetnames if s in sheet_names]
+
+        for sheet_name in sheets_to_process:
             ws = wb[sheet_name]
             pos = find_anchor_in_sheet(ws, anchor=anchor, mode=anchor_mode)
             if pos is None:
@@ -309,6 +317,7 @@ def split_complex_spreadsheet_op(
     anchor_mode = params.anchor_match
     header_rows = params.header_rows
     id_column_count = params.id_column_count
+    sheet_names = params.sheet_names
 
     # --- Step 2: Process workbook ---
     try:
@@ -318,6 +327,7 @@ def split_complex_spreadsheet_op(
             anchor_mode=anchor_mode,
             header_rows=header_rows,
             id_column_count=id_column_count,
+            sheet_names=sheet_names,
         )
     finally:
         Path(tmp_xlsx_path).unlink(missing_ok=True)
