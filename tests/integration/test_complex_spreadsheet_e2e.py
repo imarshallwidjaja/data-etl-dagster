@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from io import BytesIO
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -352,13 +353,28 @@ def _cleanup_all(
         cleanup_mongodb_activity_logs(mongo_client, mongo_settings, splitter_run_id)
         cleanup_mongodb_run(mongo_client, mongo_settings, splitter_run_id)
 
+    db = mongo_client[mongo_settings.database]
+
+    # Capture Mongo run _ids for tabular runs before run cleanup.
+    # Needed to clean assets even when run docs are deleted first.
+    tabular_mongodb_run_ids: list[str] = []
+    try:
+        run_docs = list(
+            db["runs"].find(
+                {"dagster_run_id": {"$in": tabular_run_ids}},
+                {"_id": 1},
+            )
+        )
+        tabular_mongodb_run_ids = [str(run_doc["_id"]) for run_doc in run_docs]
+    except Exception:
+        pass
+
     # MongoDB: tabular runs
     for run_id in tabular_run_ids:
         cleanup_mongodb_activity_logs(mongo_client, mongo_settings, run_id)
         cleanup_mongodb_run(mongo_client, mongo_settings, run_id)
 
     # MongoDB: artifacts (parent batch + child batches)
-    db = mongo_client[mongo_settings.database]
     try:
         db["artifacts"].delete_many({"batch_id": parent_batch_id})
     except Exception:
@@ -370,14 +386,40 @@ def _cleanup_all(
             pass
 
     # MongoDB + MinIO: asset docs and their data-lake objects
+    # Collect known asset _ids from the explicit list to avoid double-deletion
+    cleaned_asset_ids: set = set()
     for asset_doc in asset_docs:
         s3_key = asset_doc.get("s3_key", "")
         if s3_key:
             cleanup_minio_object(minio_client, minio_settings.lake_bucket, s3_key)
         try:
             db["assets"].delete_one({"_id": asset_doc["_id"]})
+            cleaned_asset_ids.add(asset_doc["_id"])
         except Exception:
             pass
+
+    # Also discover assets via tabular_run_ids in case asset_docs is incomplete
+    # (e.g. test failed before the assertion that populates asset_docs)
+    try:
+        if tabular_mongodb_run_ids:
+            found_assets = db["assets"].find(
+                {"run_id": {"$in": tabular_mongodb_run_ids}},
+                {"_id": 1, "s3_key": 1},
+            )
+            for found_asset in found_assets:
+                if found_asset["_id"] in cleaned_asset_ids:
+                    continue
+
+                s3_key = found_asset.get("s3_key", "")
+                if s3_key:
+                    cleanup_minio_object(
+                        minio_client, minio_settings.lake_bucket, s3_key
+                    )
+
+                db["assets"].delete_one({"_id": found_asset["_id"]})
+                cleaned_asset_ids.add(found_asset["_id"])
+    except Exception:
+        pass
 
     # MinIO: blob objects from intermediate artifacts
     try:
@@ -422,6 +464,89 @@ def _cleanup_all(
 # =============================================================================
 
 
+class TestComplexSpreadsheetE2ECleanup:
+    def test_cleanup_all_deletes_assets_for_run_id_even_when_multiple_exist(
+        self, monkeypatch
+    ):
+        mongomock = pytest.importorskip("mongomock")
+
+        mongo_client = mongomock.MongoClient()
+        mongo_settings = SimpleNamespace(database="test_db")
+        minio_settings = SimpleNamespace(
+            landing_bucket="landing-zone",
+            lake_bucket="data-lake",
+        )
+
+        db = mongo_client[mongo_settings.database]
+        run_doc_id = (
+            db["runs"].insert_one({"dagster_run_id": "tabular-run-1"}).inserted_id
+        )
+        db["assets"].insert_many(
+            [
+                {
+                    "run_id": str(run_doc_id),
+                    "s3_key": "dataset/test/v1/one.parquet",
+                },
+                {
+                    "run_id": str(run_doc_id),
+                    "s3_key": "dataset/test/v1/two.parquet",
+                },
+            ]
+        )
+
+        cleaned_objects: list[tuple[str, str]] = []
+
+        def _record_cleanup(_minio_client, bucket: str, key: str):
+            cleaned_objects.append((bucket, key))
+
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.cleanup_minio_object",
+            _record_cleanup,
+        )
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.cleanup_minio_manifest",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.cleanup_mongodb_manifest",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.cleanup_mongodb_activity_logs",
+            lambda *_args, **_kwargs: None,
+        )
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.cleanup_dynamic_partitions",
+            lambda *_args, **_kwargs: None,
+        )
+
+        _cleanup_all(
+            minio_client=object(),
+            minio_settings=minio_settings,
+            mongo_client=mongo_client,
+            mongo_settings=mongo_settings,
+            dagster_client=object(),
+            xlsx_key="e2e/input.xlsx",
+            parent_batch_id="batch-parent",
+            child_batch_ids=[],
+            splitter_run_id=None,
+            tabular_run_ids=["tabular-run-1"],
+            asset_docs=[],
+            created_partitions=set(),
+        )
+
+        lake_cleanups = {
+            key
+            for bucket, key in cleaned_objects
+            if bucket == minio_settings.lake_bucket
+        }
+        assert lake_cleanups == {
+            "dataset/test/v1/one.parquet",
+            "dataset/test/v1/two.parquet",
+        }
+        assert db["assets"].count_documents({"run_id": str(run_doc_id)}) == 0
+
+
 class TestComplexSpreadsheetE2E:
     """End-to-end test: XLSX -> splitter -> child manifests -> tabular assets."""
 
@@ -462,9 +587,10 @@ class TestComplexSpreadsheetE2E:
             )
 
             # --- Step 2: Build and launch splitter job ---
+            xlsx_s3_path = f"s3://{minio_settings.landing_bucket}/{xlsx_key}"
             parent_manifest = _build_parent_manifest(
                 batch_id=parent_batch_id,
-                xlsx_s3_path=f"s3://landing-zone/{xlsx_key}",
+                xlsx_s3_path=xlsx_s3_path,
                 dataset_id=dataset_id,
             )
 
