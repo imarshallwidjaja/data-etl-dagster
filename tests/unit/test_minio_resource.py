@@ -519,26 +519,22 @@ def test_object_exists_in_landing_raises_on_other_s3_errors(minio_resource):
 
 
 def test_upload_json_to_landing_uploads_json_payload(minio_resource):
-    """Test that upload_json_to_landing serializes and uploads JSON to landing bucket."""
+    """Test that upload_json_to_landing serializes and uploads JSON to landing bucket.
+
+    Default if_not_exists=False means no existence check — just overwrite.
+    """
     payload = {"sheet": "Sheet1", "rows": [1, 2, 3]}
 
     with patch(
         "services.dagster.etl_pipelines.resources.minio_resource.Minio"
     ) as mock_minio:
         mock_client = Mock()
-        # stat_object raises NoSuchKey → object doesn't exist yet
-        error = S3Error(
-            "NoSuchKey",
-            "The specified key does not exist",
-            resource="batch_001/config.json",
-            request_id="test",
-            host_id="test",
-            response=Mock(status=404),
-        )
-        mock_client.stat_object.side_effect = error
         mock_minio.return_value = mock_client
 
         minio_resource.upload_json_to_landing("batch_001/config.json", payload)
+
+        # Should NOT have checked existence (default is overwrite)
+        mock_client.stat_object.assert_not_called()
 
         # Verify put_object called with correct args
         mock_client.put_object.assert_called_once()
