@@ -45,6 +45,7 @@ TRACKED_JOBS = frozenset(
         "tabular_asset_job",
         "join_asset_job",
         "ingest_job",
+        "complex_table_splitter_job",
     ]
 )
 
