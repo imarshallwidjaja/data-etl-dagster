@@ -310,7 +310,7 @@ class MinIOResource(ConfigurableResource):
         self,
         key: str,
         payload: dict,
-        if_not_exists: bool = True,
+        if_not_exists: bool = False,
     ) -> None:
         """
         Serialize a dict as JSON and upload it to the landing zone bucket.
@@ -318,8 +318,9 @@ class MinIOResource(ConfigurableResource):
         Args:
             key: Destination object key in landing bucket
             payload: Dictionary to serialize as JSON
-            if_not_exists: When True (default), raise FileExistsError if
-                the object already exists. When False, overwrite silently.
+            if_not_exists: When True, raise FileExistsError if
+                the object already exists. When False (default), overwrite
+                silently for idempotent uploads.
 
         Raises:
             FileExistsError: If if_not_exists is True and the object already exists.
