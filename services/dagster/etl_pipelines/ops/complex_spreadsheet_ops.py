@@ -143,7 +143,8 @@ def process_workbook_sheets(
         xlsx_path: Path to the XLSX file on disk.
         anchor: Cell value that marks the top-left of the data region.
         anchor_mode: ``"exact"`` or ``"contains"``.
-        header_rows: Number of rows that form the header (starting at anchor row).
+        header_rows: Number of rows that form the header ending at anchor row
+            (anchor is the last header row).
         id_column_count: Number of leading columns treated as IDs for melt.
         sheet_names: If provided, only process sheets whose names appear in
             this list. Workbook ordering is preserved; names not present in the
