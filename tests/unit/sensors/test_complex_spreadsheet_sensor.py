@@ -11,7 +11,6 @@ from unittest.mock import Mock
 
 import pytest
 from dagster import RunRequest, SkipReason
-from pydantic import ValidationError
 
 from services.dagster.etl_pipelines.resources import MinIOResource
 from services.dagster.etl_pipelines.sensors.complex_spreadsheet_sensor import (

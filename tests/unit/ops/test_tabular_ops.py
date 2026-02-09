@@ -5,11 +5,9 @@
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime
+from unittest.mock import Mock
 
 import pyarrow as pa
-import pyarrow.csv as csv
 import pyarrow.parquet as pq
 
 from services.dagster.etl_pipelines.ops.tabular_ops import (

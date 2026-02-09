@@ -156,7 +156,7 @@ def action_up() -> None:
         )
         sys.exit(result.returncode)
 
-    print(f"[worktree_stack] stack up — state written to .worktree/stack.json")
+    print("[worktree_stack] stack up — state written to .worktree/stack.json")
 
 
 def action_test(*, pytest_args: list[str]) -> None:

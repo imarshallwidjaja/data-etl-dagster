@@ -10,7 +10,6 @@ import os
 import pytest
 from unittest.mock import Mock, patch
 from dagster import SkipReason, RunRequest
-from pydantic import ValidationError
 
 from services.dagster.etl_pipelines.sensors.manifest_sensor import manifest_sensor
 from services.dagster.etl_pipelines.resources import MinIOResource
@@ -362,8 +361,7 @@ def test_cursor_bounding_preserves_tail_processing_order(
     """Test that cursor bounding keeps the most recently processed keys (tail)."""
     # Create keys in known order, with last few being identifiable
     many_keys = [f"manifests/batch_{i:03d}.json" for i in range(600)]
-    # Last few keys that should survive bounding
-    tail_keys = many_keys[-10:]  # batch_590.json through batch_599.json
+    # Last few keys that should survive bounding: batch_590.json through batch_599.json
     new_key = "manifests/batch_new.json"
 
     # Set cursor with many keys
