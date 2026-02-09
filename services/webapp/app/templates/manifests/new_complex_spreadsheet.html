@@ -120,7 +120,125 @@
 <script src="/static/js/forms.js"></script>
 <script src="/static/js/validation.js"></script>
 <script>
-    const validator = new ManifestFormValidator('manifest-form', 'complex_spreadsheet');
+    /**
+     * Set status message on a node using safe DOM methods (no innerHTML).
+     * @param {HTMLElement} node - Container element
+     * @param {"busy"|"success"|"error"} kind - Status type
+     * @param {string} message - Text content (never interpreted as HTML)
+     */
+    function setStatus(node, kind, message) {
+        const p = document.createElement('p');
+        if (kind === 'busy') {
+            p.setAttribute('aria-busy', 'true');
+        } else {
+            p.classList.add(kind);
+        }
+        p.textContent = message;
+        node.textContent = '';
+        node.appendChild(p);
+    }
+
+    /**
+     * Collect form data into the nested complex_spreadsheet manifest structure.
+     * Passed to ManifestFormValidator as the collectData hook.
+     * @param {HTMLFormElement} form
+     * @returns {Object} manifest data
+     */
+    function collectComplexSpreadsheetData(form) {
+        const formData = new FormData(form);
+
+        const anchorTextRaw = formData.get('anchor_text') || '';
+        const anchorText = anchorTextRaw.trim() || null;
+        const anchorMatch = formData.get('anchor_match') || 'exact';
+        const headerRows = parseInt(formData.get('header_rows') || '1', 10);
+        const idColumnCount = parseInt(formData.get('id_column_count') || '1', 10);
+        const sheetNamesRaw = formData.get('sheet_names') || '';
+        const sheetNames = sheetNamesRaw
+            ? sheetNamesRaw.split(',').map(s => s.trim()).filter(Boolean)
+            : [];
+
+        const templateParams = {
+            anchor_text: anchorText,
+            anchor_match: anchorMatch,
+            header_rows: headerRows,
+            id_column_count: idColumnCount
+        };
+        if (sheetNames.length > 0) {
+            templateParams.sheet_names = sheetNames;
+        }
+
+        const data = {
+            batch_id: formData.get('batch_id') || null,
+            title: formData.get('title'),
+            description: formData.get('description') || '',
+            keywords: (formData.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean),
+            source: formData.get('source') || '',
+            license: formData.get('license') || '',
+            attribution: formData.get('attribution') || '',
+            project: formData.get('project') || null,
+            dataset_id: formData.get('dataset_id') || null,
+            files: [{
+                path: formData.get('file_path'),
+                type: 'tabular',
+                format: 'XLSX'
+            }],
+            complex_spreadsheet: {
+                template_id: 'anchor_unpivot_v1',
+                template_params: templateParams
+            },
+            tags: {}
+        };
+
+        const tagKeys = formData.getAll('tag_key');
+        const tagValues = formData.getAll('tag_value');
+        tagKeys.forEach((key, i) => {
+            if (key && tagValues[i]) {
+                data.tags[key] = tagValues[i];
+            }
+        });
+
+        return data;
+    }
+
+    /**
+     * Submit validated data to the backend via fetch.
+     * @param {Object} data - Validated manifest data
+     */
+    async function submitManifest(data) {
+        const status = document.getElementById('submit-status');
+        setStatus(status, 'busy', 'Creating manifest...');
+
+        try {
+            const response = await fetch('/manifests/new/complex_spreadsheet', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                const result = await response.json();
+                setStatus(status, 'success', 'Manifest created: ' + result.batch_id);
+                setTimeout(() => window.location.href = '/manifests/', 1500);
+            } else {
+                const error = await response.json();
+                setStatus(status, 'error', error.detail || 'Creation failed');
+            }
+        } catch (err) {
+            setStatus(status, 'error', err.message);
+        }
+    }
+
+    // Initialize validator with collectData hook and onValid callback for form submission
+    const validator = new ManifestFormValidator('manifest-form', 'complex_spreadsheet', {
+        collectData: collectComplexSpreadsheetData,
+        onValid: submitManifest
+    });
+
+    // Always prevent native form submission (we use fetch); validator.handleSubmit
+    // already runs via the listener registered in ManifestFormValidator.init().
+    document.getElementById('manifest-form').addEventListener('submit', function(e) {
+        e.preventDefault();
+    });
 
     // Mode toggle
     const formModeBtn = document.getElementById('form-mode-btn');
@@ -146,87 +264,17 @@
         formModeBtn.classList.remove('active');
     });
 
-    document.getElementById('manifest-form').addEventListener('submit', async function (e) {
-        e.preventDefault();
-        const status = document.getElementById('submit-status');
-        status.innerHTML = '<p aria-busy="true">Creating manifest...</p>';
-
-        const formData = new FormData(e.target);
-
-        // Parse template params from form fields
-        const anchorMatch = formData.get('anchor_match') || 'exact';
-        const headerRows = parseInt(formData.get('header_rows') || '1', 10);
-        const idColumnCount = parseInt(formData.get('id_column_count') || '1', 10);
-        const sheetNamesRaw = formData.get('sheet_names') || '';
-        const sheetNames = sheetNamesRaw ? sheetNamesRaw.split(',').map(s => s.trim()).filter(Boolean) : undefined;
-
-        const data = {
-            batch_id: formData.get('batch_id') || null,
-            title: formData.get('title'),
-            description: formData.get('description') || '',
-            keywords: (formData.get('keywords') || '').split(',').map(k => k.trim()).filter(Boolean),
-            source: formData.get('source') || '',
-            license: formData.get('license') || '',
-            attribution: formData.get('attribution') || '',
-            project: formData.get('project') || null,
-            dataset_id: formData.get('dataset_id') || null,
-            files: [{
-                path: formData.get('file_path'),
-                type: 'tabular',
-                format: 'XLSX'
-            }],
-            complex_spreadsheet: {
-                template_id: 'anchor_unpivot_v1',
-                template_params: {
-                    anchor_text: formData.get('anchor_text'),
-                    anchor_match: anchorMatch,
-                    header_rows: headerRows,
-                    id_column_count: idColumnCount,
-                    ...(sheetNames ? { sheet_names: sheetNames } : {})
-                }
-            },
-            tags: {}
-        };
-
-        const tagKeys = formData.getAll('tag_key');
-        const tagValues = formData.getAll('tag_value');
-        tagKeys.forEach((key, i) => {
-            if (key && tagValues[i]) {
-                data.tags[key] = tagValues[i];
-            }
-        });
-
-        try {
-            const response = await fetch('/manifests/new/complex_spreadsheet', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(data)
-            });
-
-            if (response.ok) {
-                const result = await response.json();
-                status.innerHTML = '<p class="success">Manifest created: ' + result.batch_id + '</p>';
-                setTimeout(() => window.location.href = '/manifests/', 1500);
-            } else {
-                const error = await response.json();
-                status.innerHTML = '<p class="error">' + (error.detail || 'Creation failed') + '</p>';
-            }
-        } catch (err) {
-            status.innerHTML = '<p class="error">' + err.message + '</p>';
-        }
-    });
-
     // JSON Submit
     document.getElementById('json-submit-btn').addEventListener('click', async function() {
         const textarea = document.getElementById('json-input');
         const status = document.getElementById('json-status');
-        status.innerHTML = '<p aria-busy="true">Validating JSON...</p>';
+        setStatus(status, 'busy', 'Validating JSON...');
 
         let data;
         try {
             data = JSON.parse(textarea.value);
         } catch (e) {
-            status.innerHTML = '<p class="error">Invalid JSON: ' + e.message + '</p>';
+            setStatus(status, 'error', 'Invalid JSON: ' + e.message);
             return;
         }
 
@@ -239,11 +287,11 @@
 
             if (!validate(data)) {
                 const errors = validate.errors.map(e => (e.instancePath || 'root') + ': ' + e.message).join('; ');
-                status.innerHTML = '<p class="error">Validation failed: ' + errors + '</p>';
+                setStatus(status, 'error', 'Validation failed: ' + errors);
                 return;
             }
 
-            status.innerHTML = '<p aria-busy="true">Submitting...</p>';
+            setStatus(status, 'busy', 'Submitting...');
             const response = await fetch('/manifests/new/complex_spreadsheet', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -252,14 +300,14 @@
 
             if (response.ok) {
                 const result = await response.json();
-                status.innerHTML = '<p class="success">Manifest created: ' + result.batch_id + '</p>';
+                setStatus(status, 'success', 'Manifest created: ' + result.batch_id);
                 setTimeout(() => window.location.href = '/manifests/', 1500);
             } else {
                 const error = await response.json();
-                status.innerHTML = '<p class="error">' + (error.detail || 'Submission failed') + '</p>';
+                setStatus(status, 'error', error.detail || 'Submission failed');
             }
         } catch (err) {
-            status.innerHTML = '<p class="error">' + err.message + '</p>';
+            setStatus(status, 'error', err.message);
         }
     });
 </script>
