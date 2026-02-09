@@ -11,6 +11,7 @@ from .tabular_ops import (
 )
 from .common_ops import init_mongo_run_op
 from .raw_archival import archive_raw_sources_op
+from .complex_spreadsheet_ops import split_complex_spreadsheet_op
 
 __all__ = [
     "load_to_postgis",
@@ -22,4 +23,5 @@ __all__ = [
     "export_tabular_parquet_to_datalake",
     "init_mongo_run_op",
     "archive_raw_sources_op",
+    "split_complex_spreadsheet_op",
 ]
