@@ -5,9 +5,7 @@ Tests all methods with mocked minio.Minio client to avoid network calls.
 """
 
 import json
-from io import BytesIO
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 import pytest
 
 from services.dagster.etl_pipelines.resources import MinIOResource
@@ -48,7 +46,7 @@ def test_get_client(minio_resource):
     with patch(
         "services.dagster.etl_pipelines.resources.minio_resource.Minio"
     ) as mock_minio:
-        client = minio_resource.get_client()
+        minio_resource.get_client()
 
         # Verify Minio was instantiated with correct parameters
         mock_minio.assert_called_once_with(
@@ -437,7 +435,7 @@ def test_get_presigned_url_respects_custom_expiry(minio_resource):
         )
         mock_minio.return_value = mock_client
 
-        url = minio_resource.get_presigned_url(
+        minio_resource.get_presigned_url(
             "test-landing",
             "batch/file.tif",
             expiry_seconds=7200,

@@ -5,8 +5,13 @@
 # This prevents 422 errors like the missing 'type' field issue.
 # =============================================================================
 
+import os
+import sys
+from unittest.mock import MagicMock, patch
+
 import pytest
 from pydantic import ValidationError
+from starlette.testclient import TestClient
 
 from libs.models import FileEntry, JoinConfig, TagValue
 
@@ -177,12 +182,6 @@ class TestTagValueValidation:
 # =============================================================================
 # Router Endpoint Tests for complex_spreadsheet allowlist
 # =============================================================================
-
-import sys
-import os
-from unittest.mock import MagicMock, patch
-
-from starlette.testclient import TestClient
 
 sys.path.insert(
     0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "services", "webapp")
