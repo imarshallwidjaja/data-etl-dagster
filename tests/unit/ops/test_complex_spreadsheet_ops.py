@@ -2,11 +2,13 @@
 # Unit Tests: Complex Spreadsheet Ops (pure helpers)
 # =============================================================================
 
+import shutil
+
 import pytest
 import openpyxl
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
     find_anchor_in_sheet,
@@ -731,3 +733,140 @@ class TestTrailingRowTrimming:
         df = results[0]["dataframe"]
         # 2 data rows × 2 value columns = 4 rows after melt
         assert df.shape[0] == 4
+
+
+# =============================================================================
+# Test: Non-default template_params propagation through the op
+# =============================================================================
+
+
+class TestNonDefaultTemplateParamsPropagation:
+    """Op-level test proving non-default template_params drive processing.
+
+    Uses anchor_match=contains, header_rows=2, id_column_count=2 — all
+    non-default.  The XLSX data is designed so that default params would
+    either fail to find the anchor or produce incorrect output shape.
+    """
+
+    def test_non_default_params_drive_processing(self, tmp_path):
+        """Non-default params (contains, 2 header rows, 2 ID cols) flow
+        through the op and produce the expected child manifest shape.
+
+        Failure modes if defaults were used instead:
+        - anchor_match="exact": "Region" ≠ "Region Name" → ValueError (no anchor)
+        - header_rows=1: would miss the category prefix row → wrong column names
+        - id_column_count=1: would melt 3 value cols instead of 2 → wrong shape
+        """
+        from dagster import build_op_context
+
+        # --- Build an XLSX that ONLY works with non-default params ---
+        #
+        # Layout:
+        #   Row 0: ["Preamble line"]                               (junk)
+        #   Row 1: ["", "Category", "Population", "Population"]    (header row 1)
+        #   Row 2: ["Region Name", "Sub-Region", "Male", "Female"] (header row 2 — anchor)
+        #   Row 3: ["NSW", "Sydney", 100, 200]                     (data)
+        #   Row 4: ["VIC", "Melbourne", 300, 400]                  (data)
+        #
+        # anchor_text="Region", anchor_match="contains" → matches "Region Name"
+        # header_rows=2 → header composed from rows 1+2
+        # id_column_count=2 → "Region Name" + "Category Sub-Region" are IDs
+        xlsx_path = _make_xlsx(
+            {
+                "Data": [
+                    ["Preamble line"],
+                    ["", "Category", "Population", "Population"],
+                    ["Region Name", "Sub-Region", "Male", "Female"],
+                    ["NSW", "Sydney", 100, 200],
+                    ["VIC", "Melbourne", 300, 400],
+                ],
+            }
+        )
+
+        manifest = {
+            "batch_id": "batch_params_test",
+            "uploader": "test_user",
+            "intent": "ingest_complex_spreadsheet",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_params_test/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "metadata": {
+                "title": "Params Test",
+                "description": "Test non-default params",
+                "keywords": ["test"],
+                "source": "Unit Test",
+                "license": "MIT",
+                "attribution": "Test",
+                "project": "TEST",
+                "tags": {"dataset_id": "params_test_ds"},
+                "complex_spreadsheet": {
+                    "template_id": "anchor_unpivot_v1",
+                    "template_params": {
+                        "anchor_text": "Region",
+                        "anchor_match": "contains",
+                        "header_rows": 2,
+                        "id_column_count": 2,
+                    },
+                },
+            },
+        }
+
+        # --- Mock resources ---
+        mock_minio = Mock()
+        mock_minio.landing_bucket = "landing-zone"
+        mock_minio.lake_bucket = "data-lake"
+
+        def fake_download(s3_key, local_path):
+            shutil.copy(xlsx_path, local_path)
+
+        mock_minio.download_from_landing.side_effect = fake_download
+        mock_minio.object_exists_in_landing.return_value = False
+        mock_minio.upload_json_to_landing = Mock()
+
+        mock_mongodb = Mock()
+        mock_mongodb.get_run_object_id.return_value = "60a1f77bcf86cd799439022"
+
+        context = build_op_context(
+            resources={"minio": mock_minio, "mongodb": mock_mongodb},
+        )
+
+        # Mock register_intermediate_from_local_file to avoid real S3 calls
+        fake_artifact = {
+            "artifact_id": "art_123",
+            "blob_s3_path": "s3://data-lake/blobs/test_hash",
+        }
+
+        with patch(
+            "services.dagster.etl_pipelines.ops.complex_spreadsheet_ops."
+            "register_intermediate_from_local_file",
+            return_value=fake_artifact,
+        ):
+            result = split_complex_spreadsheet_op(context, manifest)
+
+        # --- Assertions ---
+
+        # 1. Op returns the original manifest unchanged
+        assert result == manifest
+
+        # 2. A child manifest was published (one sheet → one child)
+        assert mock_minio.upload_json_to_landing.call_count == 1
+
+        # 3. Inspect the child manifest content
+        call_args = mock_minio.upload_json_to_landing.call_args
+        child_key = call_args[0][0]  # positional arg 0: S3 key
+        child_manifest = call_args[0][1]  # positional arg 1: manifest dict
+
+        assert child_key == "manifests/batch_params_test__data.json"
+        assert child_manifest["intent"] == "ingest_tabular"
+        assert child_manifest["batch_id"] == "batch_params_test__data"
+        assert child_manifest["files"][0]["format"] == "Parquet"
+
+        # 4. Metadata propagated correctly
+        child_meta = child_manifest["metadata"]
+        assert child_meta["title"] == "Params Test — Data"
+        assert child_meta["tags"]["parent_batch_id"] == "batch_params_test"
+        assert child_meta["tags"]["source_sheet"] == "Data"
