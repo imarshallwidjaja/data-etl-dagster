@@ -12,7 +12,14 @@ import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated, Literal
-from pydantic import BaseModel, Field, BeforeValidator, ConfigDict, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    BeforeValidator,
+    ConfigDict,
+    field_validator,
+    model_validator,
+)
 
 from .spatial import FileType
 from .base import HumanMetadataMixin
@@ -255,7 +262,7 @@ class ComplexSpreadsheetTemplateParamsV1(BaseModel):
     within each worksheet of a multi-table XLSX workbook.
     """
 
-    anchor_text: str = Field(
+    anchor_text: str | None = Field(
         ..., description="Cell value marking the data region start"
     )
     anchor_match: Literal["exact", "contains"] = Field(
@@ -274,6 +281,25 @@ class ComplexSpreadsheetTemplateParamsV1(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+    @field_validator("anchor_text", mode="before")
+    @classmethod
+    def _normalize_anchor_text(cls, v: object) -> str | None:
+        """Coerce empty/whitespace anchor_text to None."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v  # type: ignore[return-value]
+
+    @field_validator("sheet_names", mode="before")
+    @classmethod
+    def _normalize_sheet_names(cls, v: object) -> list[str] | None:
+        """Filter blank entries from sheet_names; coerce empty list to None."""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            filtered = [s for s in v if isinstance(s, str) and s.strip()]
+            return filtered or None
+        return v  # type: ignore[return-value]
 
 
 class ComplexSpreadsheetConfig(BaseModel):
@@ -484,12 +510,13 @@ class Manifest(BaseModel):
                 f"got {len(self.files)}"
             )
 
-        # File format must be XLSX
-        if self.files[0].format != "XLSX":
+        # File format must be XLSX (case-insensitive; normalize to uppercase)
+        if self.files[0].format.upper() != "XLSX":
             raise ValueError(
                 f"Manifest with intent 'ingest_complex_spreadsheet' requires file format 'XLSX', "
                 f"got '{self.files[0].format}'"
             )
+        self.files[0].format = self.files[0].format.upper()
 
         # metadata.complex_spreadsheet must be present
         if self.metadata.complex_spreadsheet is None:
