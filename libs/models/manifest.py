@@ -262,7 +262,9 @@ class ComplexSpreadsheetTemplateParamsV1(BaseModel):
         "exact", description="Anchor matching mode"
     )
     header_rows: int = Field(
-        1, ge=1, description="Number of header rows starting at anchor"
+        1,
+        ge=1,
+        description="Number of header rows ending at anchor row (anchor is the last header row)",
     )
     id_column_count: int = Field(
         1, ge=1, description="Number of leading ID columns for melt"
