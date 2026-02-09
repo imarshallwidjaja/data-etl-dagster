@@ -85,12 +85,9 @@ def _download_tabular_from_landing(
 
     bucket, s3_key = parse_s3_path(s3_path)
 
-    # Determine temp file suffix from file format (defaults to .csv)
+    # Determine temp file suffix from file format
     file_format = file_entry.format
-    try:
-        suffix = RecipeRegistry.get_tabular_suffix(file_format)
-    except ValueError:
-        suffix = ".csv"
+    suffix = RecipeRegistry.get_tabular_suffix(file_format)
 
     # Create temporary file
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
@@ -154,11 +151,7 @@ def _load_and_clean_tabular(
     try:
         # Determine the reader from the file format in manifest
         file_format = validated_manifest.files[0].format
-        try:
-            reader = RecipeRegistry.get_tabular_reader(file_format)
-        except ValueError:
-            # Fallback to CSV reader for unknown formats (backward compat)
-            reader = RecipeRegistry.get_tabular_reader("CSV")
+        reader = RecipeRegistry.get_tabular_reader(file_format)
         log.info(f"Reading tabular file ({file_format}): {local_file_path}")
 
         # Read file into Arrow Table using the resolved reader

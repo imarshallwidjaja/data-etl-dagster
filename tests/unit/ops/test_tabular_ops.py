@@ -529,6 +529,70 @@ def test_load_and_clean_tabular_reads_parquet():
         Path(temp_path).unlink(missing_ok=True)
 
 
+def test_load_and_clean_tabular_unsupported_format_raises():
+    """Test that unsupported tabular format raises instead of silently falling back to CSV."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("id,name\n1,Alice\n")
+        temp_path = f.name
+
+    try:
+        manifest_unknown_format = {
+            **SAMPLE_TABULAR_MANIFEST,
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xyz",
+                    "type": "tabular",
+                    "format": "XYZ_UNSUPPORTED",
+                }
+            ],
+            "metadata": {
+                **SAMPLE_TABULAR_MANIFEST["metadata"],
+                "join_config": None,
+            },
+        }
+
+        download_result = {
+            "local_file_path": temp_path,
+            "manifest": manifest_unknown_format,
+        }
+
+        mock_log = Mock()
+
+        with pytest.raises(RuntimeError, match="Unsupported tabular format"):
+            _load_and_clean_tabular(
+                download_result=download_result,
+                log=mock_log,
+            )
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+def test_download_tabular_from_landing_unsupported_format_raises():
+    """Test that unsupported tabular format in download raises instead of falling back to .csv suffix."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    manifest_unknown_format = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "s3://landing-zone/batch_001/data.xyz",
+                "type": "tabular",
+                "format": "XYZ_UNSUPPORTED",
+            }
+        ],
+    }
+
+    with pytest.raises(ValueError, match="Unsupported tabular format"):
+        _download_tabular_from_landing(
+            minio=mock_minio,
+            manifest=manifest_unknown_format,
+            log=mock_log,
+        )
+
+
 def test_load_and_clean_tabular_csv_still_works():
     """Test that CSV files continue to work (regression)."""
     with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
