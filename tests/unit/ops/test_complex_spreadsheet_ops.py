@@ -275,3 +275,106 @@ class TestProcessWorkbookSheets:
         df = results[0]["dataframe"]
         # 2 data rows × 1 value column = 2 rows after melt
         assert df.shape[0] == 2
+
+    def test_anchor_column_slices_leading_junk_columns(self):
+        """When anchor is not in column 0, columns before anchor are dropped."""
+        # Layout: col0 is junk, col1 is junk, anchor 'Year' at col2
+        # Row 0: ["junk", "junk", "Year", "Value"]
+        # Row 1: ["x",    "y",    2020,   100   ]
+        # Row 2: ["x",    "y",    2021,   200   ]
+        path = _make_xlsx(
+            {
+                "Data": [
+                    ["junk0", "junk1", "Year", "Value"],
+                    ["x", "y", 2020, 100],
+                    ["x", "y", 2021, 200],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        # Should only have 'Year' and 'Value' columns (melted to long format)
+        # junk0 and junk1 should be stripped
+        assert "variable" in df.columns
+        assert "value" in df.columns
+        # The id column should be 'Year', not 'junk0'
+        assert "Year" in df.columns
+        assert "junk0" not in df.columns
+        assert "junk1" not in df.columns
+
+    def test_anchor_at_col0_no_column_slice(self):
+        """When anchor is in column 0, no columns are dropped (regression guard)."""
+        path = _make_xlsx(
+            {
+                "Data": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                    [2021, 200],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        assert "Year" in df.columns
+        assert df.shape[0] == 2
+
+
+# =============================================================================
+# Test: slug uniqueness in split_complex_spreadsheet_op
+# =============================================================================
+
+
+class TestSlugUniqueness:
+    def test_duplicate_slug_raises_valueerror(self):
+        """Sheet names that normalize to the same slug must raise ValueError."""
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            _check_slug_uniqueness,
+        )
+
+        # "Data 1" and "Data_1" both normalize to "data_1"
+        sheet_results = [
+            {"sheet_name": "Data 1", "dataframe": None},
+            {"sheet_name": "Data_1", "dataframe": None},
+        ]
+        with pytest.raises(ValueError, match="Duplicate child key slug"):
+            _check_slug_uniqueness(sheet_results)
+
+    def test_unique_slugs_pass(self):
+        """Distinct slugs should not raise."""
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            _check_slug_uniqueness,
+        )
+
+        sheet_results = [
+            {"sheet_name": "Data 1", "dataframe": None},
+            {"sheet_name": "Data 2", "dataframe": None},
+        ]
+        # Should not raise
+        _check_slug_uniqueness(sheet_results)
+
+    def test_case_collision_raises(self):
+        """Sheet names differing only in case normalize to same slug."""
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            _check_slug_uniqueness,
+        )
+
+        sheet_results = [
+            {"sheet_name": "DATA 1", "dataframe": None},
+            {"sheet_name": "Data 1", "dataframe": None},
+        ]
+        with pytest.raises(ValueError, match="Duplicate child key slug"):
+            _check_slug_uniqueness(sheet_results)
