@@ -151,3 +151,51 @@ class TestManifestCreateRequestValidation:
         assert request.intent is None
         assert request.files is None
         assert request.tags is None
+
+
+class TestComplexSpreadsheetSchemaDefinitions:
+    """Tests for ComplexSpreadsheetConfig and related defs in ManifestCreateRequest schema."""
+
+    def test_schema_defs_contains_complex_spreadsheet_config(self):
+        """$defs should contain ComplexSpreadsheetConfig."""
+        schema = ManifestCreateRequest.model_json_schema()
+        assert "$defs" in schema
+        assert "ComplexSpreadsheetConfig" in schema["$defs"]
+
+    def test_schema_defs_contains_complex_spreadsheet_template_params_v1(self):
+        """$defs should contain ComplexSpreadsheetTemplateParamsV1."""
+        schema = ManifestCreateRequest.model_json_schema()
+        assert "$defs" in schema
+        assert "ComplexSpreadsheetTemplateParamsV1" in schema["$defs"]
+
+    def test_complex_spreadsheet_config_forbids_additional_properties(self):
+        """ComplexSpreadsheetConfig should set additionalProperties=false."""
+        schema = ManifestCreateRequest.model_json_schema()
+        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
+        assert config_def.get("additionalProperties") is False
+
+    def test_template_params_v1_forbids_additional_properties(self):
+        """ComplexSpreadsheetTemplateParamsV1 should set additionalProperties=false."""
+        schema = ManifestCreateRequest.model_json_schema()
+        params_def = schema["$defs"]["ComplexSpreadsheetTemplateParamsV1"]
+        assert params_def.get("additionalProperties") is False
+
+    def test_complex_spreadsheet_config_requires_template_id(self):
+        """ComplexSpreadsheetConfig should require template_id."""
+        schema = ManifestCreateRequest.model_json_schema()
+        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
+        assert "required" in config_def
+        assert "template_id" in config_def["required"]
+
+    def test_template_id_is_string_type(self):
+        """template_id in ComplexSpreadsheetConfig should be a string type."""
+        schema = ManifestCreateRequest.model_json_schema()
+        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
+        props = config_def.get("properties", {})
+        assert "template_id" in props
+        assert props["template_id"].get("type") == "string"
+
+    def test_schema_contains_complex_spreadsheet_field(self):
+        """ManifestCreateRequest should include complex_spreadsheet field."""
+        schema = ManifestCreateRequest.model_json_schema()
+        assert "complex_spreadsheet" in schema["properties"]
