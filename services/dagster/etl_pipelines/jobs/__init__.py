@@ -5,6 +5,6 @@ defined in definitions.py, not here. This module only contains legacy op-based j
 """
 
 from .ingest_job import ingest_job
+from .complex_table_splitter_job import complex_table_splitter_job
 
-__all__ = ["ingest_job"]
-
+__all__ = ["ingest_job", "complex_table_splitter_job"]
