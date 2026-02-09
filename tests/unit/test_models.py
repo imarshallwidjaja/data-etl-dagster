@@ -1242,7 +1242,6 @@ class TestSpatialGeometryTypeEnforcement:
             AssetMetadata,
             ColumnInfo,
             OutputFormat,
-            CRS,
         )
 
         metadata = AssetMetadata(
@@ -1284,7 +1283,6 @@ class TestSpatialGeometryTypeEnforcement:
             AssetMetadata,
             ColumnInfo,
             OutputFormat,
-            CRS,
         )
 
         metadata = AssetMetadata(
@@ -1326,7 +1324,6 @@ class TestSpatialGeometryTypeEnforcement:
             AssetMetadata,
             ColumnInfo,
             OutputFormat,
-            CRS,
         )
 
         metadata = AssetMetadata(

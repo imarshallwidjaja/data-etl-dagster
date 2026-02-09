@@ -68,9 +68,9 @@ def test_registry_returns_new_instances():
     assert recipe1[2] is not recipe2[2]
 
     # But should be same type
-    assert type(recipe1[0]) == type(recipe2[0])
-    assert type(recipe1[1]) == type(recipe2[1])
-    assert type(recipe1[2]) == type(recipe2[2])
+    assert recipe1[0].__class__ is recipe2[0].__class__
+    assert recipe1[1].__class__ is recipe2[1].__class__
+    assert recipe1[2].__class__ is recipe2[2].__class__
 
 
 def test_registry_default_recipe_matches_known_intents():
@@ -80,9 +80,9 @@ def test_registry_default_recipe_matches_known_intents():
 
     # Should have same structure
     assert len(default_recipe) == len(ingest_vector_recipe)
-    assert type(default_recipe[0]) == type(ingest_vector_recipe[0])
-    assert type(default_recipe[1]) == type(ingest_vector_recipe[1])
-    assert type(default_recipe[2]) == type(ingest_vector_recipe[2])
+    assert default_recipe[0].__class__ is ingest_vector_recipe[0].__class__
+    assert default_recipe[1].__class__ is ingest_vector_recipe[1].__class__
+    assert default_recipe[2].__class__ is ingest_vector_recipe[2].__class__
 
 
 # =============================================================================

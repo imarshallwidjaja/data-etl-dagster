@@ -3,7 +3,7 @@
 # =============================================================================
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch, PropertyMock
+from unittest.mock import Mock, PropertyMock
 from dagster import build_op_context
 
 from services.dagster.etl_pipelines.ops.load_op import (
@@ -183,7 +183,7 @@ def test_load_files_to_postgis_multiple_files():
     mock_log = Mock()
 
     # Call core function
-    result = _load_files_to_postgis(
+    _load_files_to_postgis(
         gdal=mock_gdal,
         postgis=mock_postgis,
         manifest=MULTI_FILE_MANIFEST,

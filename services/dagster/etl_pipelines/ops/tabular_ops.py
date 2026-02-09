@@ -26,7 +26,7 @@ from libs.models import (
     OutputFormat,
     Manifest,
 )
-from libs.s3_utils import extract_s3_key, parse_s3_path
+from libs.s3_utils import parse_s3_path
 from libs.spatial_utils import normalize_headers
 from libs.normalization import extract_column_schema
 from libs.transformations.registry import RecipeRegistry

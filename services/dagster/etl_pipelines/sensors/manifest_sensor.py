@@ -407,7 +407,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 context.log.info(
                     f"Lane '{lane.value}' is disabled for manifest '{manifest_key}' "
                     f"(batch_id: {manifest.batch_id}). "
-                    f"Enabled lanes: {[l.value for l in enabled]}. "
+                    f"Enabled lanes: {[enabled_lane.value for enabled_lane in enabled]}. "
                     f"Marking as processed (one-shot)."
                 )
                 processed_this_run.append(manifest_key)
