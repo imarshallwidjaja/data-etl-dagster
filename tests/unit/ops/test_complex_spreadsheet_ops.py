@@ -6,9 +6,10 @@ import shutil
 
 import pytest
 import openpyxl
-import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+from pydantic import ValidationError
 
 from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
     find_anchor_in_sheet,
@@ -20,22 +21,35 @@ from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
 
 
 # =============================================================================
-# Helpers
+# Fixtures
 # =============================================================================
 
 
-def _make_xlsx(sheets: dict[str, list[list]]) -> str:
-    """Create a temp XLSX from {sheet_name: [[row1], [row2], ...]}."""
-    wb = openpyxl.Workbook()
-    # Remove default sheet
-    wb.remove(wb.active)
-    for name, rows in sheets.items():
-        ws = wb.create_sheet(title=name)
-        for row in rows:
-            ws.append(row)
-    path = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-    wb.save(path)
-    return path
+@pytest.fixture()
+def make_xlsx(tmp_path: Path):
+    """Factory fixture: create XLSX files in the pytest temp dir.
+
+    Usage::
+
+        path = make_xlsx({"Sheet1": [["A", "B"], [1, 2]]})
+    """
+
+    _counter = 0
+
+    def _factory(sheets: dict[str, list[list]]) -> str:
+        nonlocal _counter
+        _counter += 1
+        wb = openpyxl.Workbook()
+        wb.remove(wb.active)
+        for name, rows in sheets.items():
+            ws = wb.create_sheet(title=name)
+            for row in rows:
+                ws.append(row)
+        path = tmp_path / f"workbook_{_counter}.xlsx"
+        wb.save(str(path))
+        return str(path)
+
+    return _factory
 
 
 # =============================================================================
@@ -187,9 +201,9 @@ class TestMeltToLongFormat:
 
 
 class TestProcessWorkbookSheets:
-    def test_sheet_missing_anchor_skipped(self):
+    def test_sheet_missing_anchor_skipped(self, make_xlsx):
         """Sheets where anchor is not found are skipped, no error."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data1": [
                     ["Preamble"],
@@ -213,9 +227,9 @@ class TestProcessWorkbookSheets:
         assert len(results) == 1
         assert results[0]["sheet_name"] == "Data1"
 
-    def test_all_sheets_skipped_raises(self):
+    def test_all_sheets_skipped_raises(self, make_xlsx):
         """If all sheets are skipped (no anchor found), raise ValueError."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Notes1": [["No anchor here"]],
                 "Notes2": [["Still nothing"]],
@@ -230,9 +244,9 @@ class TestProcessWorkbookSheets:
                 id_column_count=1,
             )
 
-    def test_multi_row_header_and_melt(self):
+    def test_multi_row_header_and_melt(self, make_xlsx):
         """Integration: 2-row header composed, data melted correctly."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["Title line — ignore"],
@@ -255,9 +269,9 @@ class TestProcessWorkbookSheets:
         assert set(df.columns) == {"Region", "variable", "value"}
         assert df.shape[0] == 4  # 2 regions × 2 value columns
 
-    def test_trailing_empty_rows_trimmed(self):
+    def test_trailing_empty_rows_trimmed(self, make_xlsx):
         """Trailing all-null rows are removed from the data."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["Year", "Value"],
@@ -279,9 +293,9 @@ class TestProcessWorkbookSheets:
         # 2 data rows × 1 value column = 2 rows after melt
         assert df.shape[0] == 2
 
-    def test_sheet_names_filter_processes_only_listed_sheets(self):
+    def test_sheet_names_filter_processes_only_listed_sheets(self, make_xlsx):
         """When sheet_names is provided, only those sheets are processed."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data1": [
                     ["Year", "Value"],
@@ -311,9 +325,9 @@ class TestProcessWorkbookSheets:
         assert "Notes" not in sheet_names_result
         assert len(results) == 2
 
-    def test_sheet_names_none_processes_all_sheets(self):
+    def test_sheet_names_none_processes_all_sheets(self, make_xlsx):
         """When sheet_names is None, all sheets with anchors are processed."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data1": [
                     ["Year", "Value"],
@@ -343,9 +357,9 @@ class TestProcessWorkbookSheets:
         assert "Data2" in sheet_names_result
         assert "Notes" in sheet_names_result
 
-    def test_sheet_names_empty_list_raises(self):
-        """When sheet_names=[] filters to nothing, raises ValueError (no anchor found)."""
-        path = _make_xlsx(
+    def test_sheet_names_empty_list_processes_all(self, make_xlsx):
+        """When sheet_names=[], behaves like None and processes all sheets."""
+        path = make_xlsx(
             {
                 "Data1": [
                     ["Year", "Value"],
@@ -353,19 +367,21 @@ class TestProcessWorkbookSheets:
                 ],
             }
         )
-        with pytest.raises(ValueError, match="No sheets.*anchor"):
-            process_workbook_sheets(
-                xlsx_path=path,
-                anchor="Year",
-                anchor_mode="exact",
-                header_rows=1,
-                id_column_count=1,
-                sheet_names=[],
-            )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+            sheet_names=[],
+        )
+        # Empty list normalised to None → process all sheets
+        assert len(results) == 1
+        assert results[0]["sheet_name"] == "Data1"
 
-    def test_sheet_names_nonexistent_sheet_ignored(self):
+    def test_sheet_names_nonexistent_sheet_ignored(self, make_xlsx):
         """Non-existent sheet names in filter are silently ignored."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data1": [
                     ["Year", "Value"],
@@ -388,13 +404,13 @@ class TestProcessWorkbookSheets:
         assert len(results) == 1
         assert results[0]["sheet_name"] == "Data1"
 
-    def test_anchor_column_slices_leading_junk_columns(self):
+    def test_anchor_column_slices_leading_junk_columns(self, make_xlsx):
         """When anchor is not in column 0, columns before anchor are dropped."""
         # Layout: col0 is junk, col1 is junk, anchor 'Year' at col2
         # Row 0: ["junk", "junk", "Year", "Value"]
         # Row 1: ["x",    "y",    2020,   100   ]
         # Row 2: ["x",    "y",    2021,   200   ]
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["junk0", "junk1", "Year", "Value"],
@@ -421,9 +437,9 @@ class TestProcessWorkbookSheets:
         assert "junk0" not in df.columns
         assert "junk1" not in df.columns
 
-    def test_anchor_at_col0_no_column_slice(self):
+    def test_anchor_at_col0_no_column_slice(self, make_xlsx):
         """When anchor is in column 0, no columns are dropped (regression guard)."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["Year", "Value"],
@@ -443,6 +459,18 @@ class TestProcessWorkbookSheets:
         df = results[0]["dataframe"]
         assert "Year" in df.columns
         assert df.shape[0] == 2
+
+    def test_anchor_none_defaults_to_top_left(self, make_xlsx):
+        """When anchor is None, processing starts at the top-left cell."""
+        path = make_xlsx({"Data": [["Year", "Value"], [2020, 100]]})
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor=None,
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
 
 
 # =============================================================================
@@ -498,11 +526,11 @@ class TestSlugUniqueness:
 
 
 class TestNonFirstColumnAnchor:
-    def test_anchor_at_col2_produces_correct_column_count(self):
+    def test_anchor_at_col2_produces_correct_column_count(self, make_xlsx):
         """Anchor at column 2 strips 2 leading junk columns; output has correct width."""
         # 4 raw columns, anchor at col 2 → 2 usable columns (Year, Value)
         # After melt with id_column_count=1: 3 columns (Year, variable, value)
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["junk_a", "junk_b", "Year", "2020", "2021"],
@@ -586,7 +614,7 @@ class TestUnknownTemplateId:
 
         # The Manifest model's Literal["anchor_unpivot_v1"] constraint
         # causes a ValidationError before the runtime guard is reached.
-        with pytest.raises(Exception, match="template_id"):
+        with pytest.raises(ValidationError, match="template_id"):
             split_complex_spreadsheet_op(context, manifest)
 
 
@@ -596,9 +624,9 @@ class TestUnknownTemplateId:
 
 
 class TestHeaderOnlySheet:
-    def test_sheet_with_header_only_skipped(self):
+    def test_sheet_with_header_only_skipped(self, make_xlsx):
         """Sheet with anchor and header row but no data rows is skipped."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "HeaderOnly": [
                     ["Preamble"],
@@ -622,9 +650,9 @@ class TestHeaderOnlySheet:
         assert len(results) == 1
         assert results[0]["sheet_name"] == "WithData"
 
-    def test_all_sheets_header_only_raises(self):
+    def test_all_sheets_header_only_raises(self, make_xlsx):
         """If ALL sheets have only headers and no data, raise ValueError."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Sheet1": [
                     ["Year", "Value"],
@@ -648,9 +676,9 @@ class TestHeaderOnlySheet:
 
 
 class TestSingleRowData:
-    def test_single_data_row_melts_correctly(self):
+    def test_single_data_row_melts_correctly(self, make_xlsx):
         """A sheet with exactly one data row produces correct melt output."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["Region", "2020", "2021", "2022"],
@@ -682,9 +710,9 @@ class TestSingleRowData:
 
 
 class TestTrailingRowTrimming:
-    def test_trailing_row_with_one_non_null_cell_not_trimmed(self):
+    def test_trailing_row_with_one_non_null_cell_not_trimmed(self, make_xlsx):
         """A trailing row with at least one non-null cell must NOT be removed."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["Region", "2020", "2021"],
@@ -711,9 +739,9 @@ class TestTrailingRowTrimming:
         assert "VIC" in regions
         assert "NSW" in regions
 
-    def test_trailing_row_single_non_null_in_value_column_not_trimmed(self):
+    def test_trailing_row_single_non_null_in_value_column_not_trimmed(self, make_xlsx):
         """A trailing row where only a value column has data is preserved."""
-        path = _make_xlsx(
+        path = make_xlsx(
             {
                 "Data": [
                     ["Region", "2020", "2021"],
@@ -748,7 +776,7 @@ class TestNonDefaultTemplateParamsPropagation:
     either fail to find the anchor or produce incorrect output shape.
     """
 
-    def test_non_default_params_drive_processing(self):
+    def test_non_default_params_drive_processing(self, make_xlsx):
         """Non-default params (contains, 2 header rows, 2 ID cols) flow
         through the op and produce the expected child manifest shape.
 
@@ -771,7 +799,7 @@ class TestNonDefaultTemplateParamsPropagation:
         # anchor_text="Region", anchor_match="contains" → matches "Region Name"
         # header_rows=2 → header composed from rows 1+2
         # id_column_count=2 → "Region Name" + "Category Sub-Region" are IDs
-        xlsx_path = _make_xlsx(
+        xlsx_path = make_xlsx(
             {
                 "Data": [
                     ["Preamble line"],
