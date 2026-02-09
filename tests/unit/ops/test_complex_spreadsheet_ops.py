@@ -13,6 +13,7 @@ from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
     compose_multi_row_header,
     melt_to_long_format,
     process_workbook_sheets,
+    split_complex_spreadsheet_op,
 )
 
 
@@ -378,3 +379,246 @@ class TestSlugUniqueness:
         ]
         with pytest.raises(ValueError, match="Duplicate child key slug"):
             _check_slug_uniqueness(sheet_results)
+
+
+# =============================================================================
+# Test: Non-first-column anchor — column count correctness
+# =============================================================================
+
+
+class TestNonFirstColumnAnchor:
+    def test_anchor_at_col2_produces_correct_column_count(self):
+        """Anchor at column 2 strips 2 leading junk columns; output has correct width."""
+        # 4 raw columns, anchor at col 2 → 2 usable columns (Year, Value)
+        # After melt with id_column_count=1: 3 columns (Year, variable, value)
+        path = _make_xlsx(
+            {
+                "Data": [
+                    ["junk_a", "junk_b", "Year", "2020", "2021"],
+                    ["x", "y", "NSW", 100, 110],
+                    ["x", "y", "VIC", 200, 210],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        # After slicing junk: 3 usable columns (Year, 2020, 2021)
+        # After melt with id_column_count=1: Year is id, 2020/2021 become variable/value
+        assert set(df.columns) == {"Year", "variable", "value"}
+        # 2 regions × 2 value columns = 4 rows
+        assert df.shape[0] == 4
+        # Verify no junk columns leaked through
+        all_vars = df["variable"].unique().to_list()
+        assert "junk_a" not in all_vars
+        assert "junk_b" not in all_vars
+
+
+# =============================================================================
+# Test: Unknown template_id raises ValueError
+# =============================================================================
+
+
+class TestUnknownTemplateId:
+    def test_unknown_template_id_raises(self):
+        """split_complex_spreadsheet_op raises for unknown template_id.
+
+        The Literal constraint on ComplexSpreadsheetConfig.template_id means
+        Pydantic validation rejects bad values before the runtime guard fires.
+        Either way, the op must not proceed with an unsupported template.
+        """
+        from dagster import build_op_context
+
+        manifest = {
+            "batch_id": "batch_001",
+            "uploader": "user_123",
+            "intent": "ingest_complex_spreadsheet",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "metadata": {
+                "title": "Test",
+                "description": "Test",
+                "keywords": ["test"],
+                "source": "Unit Test",
+                "license": "MIT",
+                "attribution": "Test",
+                "project": "ALPHA",
+                "tags": {},
+                "complex_spreadsheet": {
+                    "template_id": "nonexistent_template_v99",
+                    "template_params": {"anchor_text": "Year"},
+                },
+            },
+        }
+
+        mock_minio = Mock()
+        mock_minio.landing_bucket = "landing-zone"
+        mock_minio.lake_bucket = "data-lake"
+
+        mock_mongodb = Mock()
+        mock_mongodb.get_run_object_id.return_value = "60a1f77bcf86cd799439022"
+
+        context = build_op_context(
+            resources={"minio": mock_minio, "mongodb": mock_mongodb},
+        )
+
+        # The Manifest model's Literal["anchor_unpivot_v1"] constraint
+        # causes a ValidationError before the runtime guard is reached.
+        with pytest.raises(Exception, match="template_id"):
+            split_complex_spreadsheet_op(context, manifest)
+
+
+# =============================================================================
+# Test: Sheet with only headers (no data rows) is skipped
+# =============================================================================
+
+
+class TestHeaderOnlySheet:
+    def test_sheet_with_header_only_skipped(self):
+        """Sheet with anchor and header row but no data rows is skipped."""
+        path = _make_xlsx(
+            {
+                "HeaderOnly": [
+                    ["Preamble"],
+                    ["Year", "Value"],
+                    # No data rows below the header
+                ],
+                "WithData": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        # HeaderOnly should be skipped (data.is_empty() after slicing header)
+        assert len(results) == 1
+        assert results[0]["sheet_name"] == "WithData"
+
+    def test_all_sheets_header_only_raises(self):
+        """If ALL sheets have only headers and no data, raise ValueError."""
+        path = _make_xlsx(
+            {
+                "Sheet1": [
+                    ["Year", "Value"],
+                    # No data rows
+                ],
+            }
+        )
+        with pytest.raises(ValueError, match="No sheets.*anchor"):
+            process_workbook_sheets(
+                xlsx_path=path,
+                anchor="Year",
+                anchor_mode="exact",
+                header_rows=1,
+                id_column_count=1,
+            )
+
+
+# =============================================================================
+# Test: Single data row (edge case for melt)
+# =============================================================================
+
+
+class TestSingleRowData:
+    def test_single_data_row_melts_correctly(self):
+        """A sheet with exactly one data row produces correct melt output."""
+        path = _make_xlsx(
+            {
+                "Data": [
+                    ["Region", "2020", "2021", "2022"],
+                    ["NSW", 100, 200, 300],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Region",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        # 1 region × 3 value columns = 3 rows
+        assert df.shape[0] == 3
+        assert set(df.columns) == {"Region", "variable", "value"}
+        # All rows should have Region == "NSW"
+        assert df["Region"].unique().to_list() == ["NSW"]
+        # Variables should be the year columns
+        assert sorted(df["variable"].to_list()) == sorted(["2020", "2021", "2022"])
+
+
+# =============================================================================
+# Test: Trailing rows with partial non-null cells are NOT trimmed
+# =============================================================================
+
+
+class TestTrailingRowTrimming:
+    def test_trailing_row_with_one_non_null_cell_not_trimmed(self):
+        """A trailing row with at least one non-null cell must NOT be removed."""
+        path = _make_xlsx(
+            {
+                "Data": [
+                    ["Region", "2020", "2021"],
+                    ["NSW", 100, 200],
+                    ["VIC", 300, None],  # partial null — must NOT be trimmed
+                    [None, None, None],  # fully null — SHOULD be trimmed
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Region",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        # 2 data rows × 2 value columns = 4 rows after melt
+        # The fully-null row is trimmed, but VIC row (partial null) stays
+        assert df.shape[0] == 4
+        # Verify VIC is present
+        regions = df["Region"].unique().to_list()
+        assert "VIC" in regions
+        assert "NSW" in regions
+
+    def test_trailing_row_single_non_null_in_value_column_not_trimmed(self):
+        """A trailing row where only a value column has data is preserved."""
+        path = _make_xlsx(
+            {
+                "Data": [
+                    ["Region", "2020", "2021"],
+                    ["NSW", 100, 200],
+                    [None, 999, None],  # Region is null, but 2020 has data
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Region",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        # 2 data rows × 2 value columns = 4 rows after melt
+        assert df.shape[0] == 4
