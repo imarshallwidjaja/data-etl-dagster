@@ -490,11 +490,11 @@ def test_load_and_clean_tabular_join_key_not_found():
 
 def test_load_and_clean_tabular_reads_parquet():
     """Test that Parquet files are read correctly by _load_and_clean_tabular."""
-    # Create a temporary Parquet file
+    # Create a temporary Parquet file (set path before writing via file handle)
     table_in = pa.table({"id": [1, 2], "name": ["Alice", "Bob"], "age": [30, 25]})
     with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:
-        pq.write_table(table_in, f.name)
         temp_path = f.name
+    pq.write_table(table_in, temp_path)
 
     try:
         parquet_manifest = {
@@ -524,6 +524,10 @@ def test_load_and_clean_tabular_reads_parquet():
         assert result["columns"] == ["id", "name", "age"]
         # Join key should still work
         assert result["join_key_clean"] == "id"
+
+        # Join key column must be cast to string (matches CSV test expectations)
+        table = result["table"]
+        assert table.schema.field("id").type == pa.string()
 
     finally:
         Path(temp_path).unlink(missing_ok=True)
