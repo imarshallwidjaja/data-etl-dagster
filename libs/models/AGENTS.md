@@ -25,3 +25,18 @@ These are the core contracts for ingestion and persistence.
 ## References
 - Root guide: `AGENTS.md`
 - MongoDB migrations: `services/mongodb/AGENTS.md`
+
+## Complex spreadsheet templates
+
+`manifests.metadata.complex_spreadsheet` represents per-manifest processing configuration — it is not a stored template library. The field carries a `template_id` discriminator and a typed `template_params` object that together tell the splitter op how to decompose a multi-table XLSX.
+
+### Versioning contract
+
+- `template_id` is a versioned discriminator (e.g. `anchor_unpivot_v1`). New behavior is additive: introduce a new ID like `anchor_unpivot_v2` rather than changing the meaning of an existing one.
+- `template_params` schema is versioned in code via typed Pydantic models (`ComplexSpreadsheetTemplateParamsV1`, future `V2`, etc.).
+- Once multiple template versions exist, model the config as a discriminated union on `template_id`.
+
+### Backwards compatibility
+
+- Never change the semantics of an existing `*_v1` template; add a new version instead.
+- The current MongoDB migration (004) only allows the `complex_spreadsheet` field at the schema level. Adding new template versions typically does not require a Mongo migration unless DB-level enforcement of `template_params` shape is added.
