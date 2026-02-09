@@ -251,9 +251,25 @@ class ComplexSpreadsheetTemplateParamsV1(BaseModel):
     """
     Template parameters for complex spreadsheet processing (v1).
 
-    Currently empty — reserved for template-specific configuration
-    (e.g., anchor cells, header rows, unpivot rules) to be defined per template.
+    Defines how the splitter locates, reads, and unpivots data regions
+    within each worksheet of a multi-table XLSX workbook.
     """
+
+    anchor_text: str = Field(
+        ..., description="Cell value marking the data region start"
+    )
+    anchor_match: Literal["exact", "contains"] = Field(
+        "exact", description="Anchor matching mode"
+    )
+    header_rows: int = Field(
+        1, ge=1, description="Number of header rows starting at anchor"
+    )
+    id_column_count: int = Field(
+        1, ge=1, description="Number of leading ID columns for melt"
+    )
+    sheet_names: list[str] | None = Field(
+        None, description="Optional whitelist of sheet names to process"
+    )
 
     model_config = ConfigDict(extra="forbid")
 
@@ -266,13 +282,15 @@ class ComplexSpreadsheetConfig(BaseModel):
     that drive the multi-table splitter logic.
 
     Attributes:
-        template_id: Identifier for the splitting template (e.g., "abs_lga_2021")
-        template_params: Template-specific parameters (v1: empty)
+        template_id: Versioned identifier for the splitting template.
+        template_params: Template-specific parameters (v1: anchor/header/melt config).
     """
 
-    template_id: str = Field(..., description="Identifier for the splitting template")
+    template_id: Literal["anchor_unpivot_v1"] = Field(
+        ..., description="Versioned identifier for the splitting template"
+    )
     template_params: ComplexSpreadsheetTemplateParamsV1 = Field(
-        default_factory=ComplexSpreadsheetTemplateParamsV1,
+        ...,
         description="Template-specific parameters",
     )
 
