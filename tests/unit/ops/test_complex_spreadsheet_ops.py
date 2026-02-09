@@ -748,7 +748,7 @@ class TestNonDefaultTemplateParamsPropagation:
     either fail to find the anchor or produce incorrect output shape.
     """
 
-    def test_non_default_params_drive_processing(self, tmp_path):
+    def test_non_default_params_drive_processing(self):
         """Non-default params (contains, 2 header rows, 2 ID cols) flow
         through the op and produce the expected child manifest shape.
 
@@ -834,16 +834,35 @@ class TestNonDefaultTemplateParamsPropagation:
             resources={"minio": mock_minio, "mongodb": mock_mongodb},
         )
 
-        # Mock register_intermediate_from_local_file to avoid real S3 calls
-        fake_artifact = {
-            "artifact_id": "art_123",
-            "blob_s3_path": "s3://data-lake/blobs/test_hash",
-        }
+        # Mock register_intermediate_from_local_file to capture parquet content
+        import polars as pl
+
+        captured_dfs = []
+
+        def capture_intermediate(
+            *,
+            local_path,
+            batch_id,
+            run_id,
+            producer,
+            label,
+            parameters,
+            content_type,
+            minio,
+            mongodb,
+            log,
+        ):
+            df = pl.read_parquet(local_path)
+            captured_dfs.append(df)
+            return {
+                "artifact_id": "art_123",
+                "blob_s3_path": "s3://data-lake/blobs/test_hash",
+            }
 
         with patch(
             "services.dagster.etl_pipelines.ops.complex_spreadsheet_ops."
             "register_intermediate_from_local_file",
-            return_value=fake_artifact,
+            side_effect=capture_intermediate,
         ):
             result = split_complex_spreadsheet_op(context, manifest)
 
@@ -870,3 +889,17 @@ class TestNonDefaultTemplateParamsPropagation:
         assert child_meta["title"] == "Params Test — Data"
         assert child_meta["tags"]["parent_batch_id"] == "batch_params_test"
         assert child_meta["tags"]["source_sheet"] == "Data"
+
+        # 5. Verify actual parquet content reflects non-default params
+        assert len(captured_dfs) == 1, "Expected exactly one intermediate parquet"
+        df = captured_dfs[0]
+        # With header_rows=2, id_column_count=2:
+        #   Composed headers: ["Region Name", "Category Sub-Region", "Population Male", "Population Female"]
+        #   2 ID cols (Region Name, Category Sub-Region) + 2 value cols melted
+        #   2 data rows × 2 value cols = 4 rows after melt
+        #   Columns: Region Name, Category Sub-Region, variable, value
+        assert df.shape == (4, 4), f"Expected (4, 4) but got {df.shape}"
+        assert "Region Name" in df.columns
+        assert "Category Sub-Region" in df.columns
+        assert "variable" in df.columns
+        assert "value" in df.columns
