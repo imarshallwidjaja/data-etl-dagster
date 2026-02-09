@@ -1,8 +1,9 @@
 # =============================================================================
-# Tabular Ops - CSV to Parquet Pipeline
+# Tabular Ops - Tabular to Parquet Pipeline
 # =============================================================================
-# Operations for ingesting tabular data (CSV) without PostGIS.
-# Direct CSV → Parquet conversion with header cleaning.
+# Operations for ingesting tabular data (CSV, Parquet) without PostGIS.
+# Format-aware reading via the RecipeRegistry, with header cleaning.
+# Output is always Parquet to the data lake.
 # =============================================================================
 
 import hashlib
@@ -14,7 +15,6 @@ from typing import Dict, Any
 
 import pyarrow as pa
 import pyarrow.compute as pc
-import pyarrow.csv as csv
 import pyarrow.parquet as pq
 
 from dagster import op, OpExecutionContext, In, Out
@@ -29,6 +29,7 @@ from libs.models import (
 from libs.s3_utils import extract_s3_key, parse_s3_path
 from libs.spatial_utils import normalize_headers
 from libs.normalization import extract_column_schema
+from libs.transformations.registry import RecipeRegistry
 
 
 def _download_tabular_from_landing(
@@ -84,8 +85,15 @@ def _download_tabular_from_landing(
 
     bucket, s3_key = parse_s3_path(s3_path)
 
+    # Determine temp file suffix from file format (defaults to .csv)
+    file_format = file_entry.format
+    try:
+        suffix = RecipeRegistry.get_tabular_suffix(file_format)
+    except ValueError:
+        suffix = ".csv"
+
     # Create temporary file
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=suffix)
     temp_file_path = temp_file.name
     temp_file.close()
 
@@ -144,14 +152,17 @@ def _load_and_clean_tabular(
     validated_manifest = Manifest(**manifest)
 
     try:
-        log.info(f"Reading CSV file: {local_file_path}")
+        # Determine the reader from the file format in manifest
+        file_format = validated_manifest.files[0].format
+        try:
+            reader = RecipeRegistry.get_tabular_reader(file_format)
+        except ValueError:
+            # Fallback to CSV reader for unknown formats (backward compat)
+            reader = RecipeRegistry.get_tabular_reader("CSV")
+        log.info(f"Reading tabular file ({file_format}): {local_file_path}")
 
-        # Read CSV into Arrow Table
-        table = csv.read_csv(
-            local_file_path,
-            parse_options=csv.ParseOptions(delimiter=","),
-            read_options=csv.ReadOptions(use_threads=True),
-        )
+        # Read file into Arrow Table using the resolved reader
+        table = reader(local_file_path)
 
         original_headers = table.column_names
         log.info(f"Read {len(original_headers)} columns, {len(table)} rows")
