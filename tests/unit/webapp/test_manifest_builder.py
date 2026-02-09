@@ -198,7 +198,7 @@ class TestBuildComplexSpreadsheetManifest:
             ],
             "complex_spreadsheet": {
                 "template_id": "anchor_unpivot_v1",
-                "template_params": {},
+                "template_params": {"anchor_text": "Year"},
             },
         }
 
@@ -232,7 +232,7 @@ class TestBuildComplexSpreadsheetManifest:
             ],
             "complex_spreadsheet": {
                 "template_id": "anchor_unpivot_v1",
-                "template_params": {},
+                "template_params": {"anchor_text": "Year"},
             },
         }
 
@@ -256,7 +256,7 @@ class TestBuildComplexSpreadsheetManifest:
             ],
             "complex_spreadsheet": {
                 "template_id": "anchor_unpivot_v1",
-                "template_params": {},
+                "template_params": {"anchor_text": "Year"},
             },
             # dataset_id intentionally omitted
         }
@@ -282,7 +282,7 @@ class TestBuildComplexSpreadsheetManifest:
             ],
             "complex_spreadsheet": {
                 "template_id": "anchor_unpivot_v1",
-                "template_params": {},
+                "template_params": {"anchor_text": "Year"},
             },
         }
 

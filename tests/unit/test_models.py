@@ -1419,8 +1419,8 @@ class TestComplexSpreadsheetIntent:
             "attribution": "Test",
             "tags": {"dataset_id": "cs_001"},
             "complex_spreadsheet": {
-                "template_id": "abs_lga_2021",
-                "template_params": {},
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {"anchor_text": "Year"},
             },
         }
         meta.update(overrides)
@@ -1452,7 +1452,7 @@ class TestComplexSpreadsheetIntent:
         assert m.files[0].type == FileType.TABULAR
         assert m.files[0].format == "XLSX"
         assert m.metadata.complex_spreadsheet is not None
-        assert m.metadata.complex_spreadsheet.template_id == "abs_lga_2021"
+        assert m.metadata.complex_spreadsheet.template_id == "anchor_unpivot_v1"
 
     # --- file count --------------------------------------------------------
 
@@ -1563,8 +1563,8 @@ class TestComplexSpreadsheetIntent:
 
         with pytest.raises(ValidationError):
             ComplexSpreadsheetConfig(
-                template_id="abs_lga_2021",
-                template_params={},
+                template_id="anchor_unpivot_v1",
+                template_params={"anchor_text": "Year"},
                 unknown="bad",
             )
 
@@ -1573,4 +1573,84 @@ class TestComplexSpreadsheetIntent:
         from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
 
         with pytest.raises(ValidationError):
-            ComplexSpreadsheetTemplateParamsV1(bad_field="nope")
+            ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", bad_field="nope")
+
+    # --- ComplexSpreadsheetTemplateParamsV1 field tests ---------------------
+
+    def test_template_params_v1_requires_anchor_text(self):
+        """anchor_text is required on ComplexSpreadsheetTemplateParamsV1."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        with pytest.raises(ValidationError, match="anchor_text"):
+            ComplexSpreadsheetTemplateParamsV1()
+
+    def test_template_params_v1_defaults(self):
+        """anchor_match, header_rows, id_column_count have sensible defaults."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(anchor_text="Year")
+        assert params.anchor_text == "Year"
+        assert params.anchor_match == "exact"
+        assert params.header_rows == 1
+        assert params.id_column_count == 1
+        assert params.sheet_names is None
+
+    def test_template_params_v1_custom_values(self):
+        """All fields on ComplexSpreadsheetTemplateParamsV1 are settable."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(
+            anchor_text="Region",
+            anchor_match="contains",
+            header_rows=2,
+            id_column_count=3,
+            sheet_names=["Sheet1", "Sheet2"],
+        )
+        assert params.anchor_text == "Region"
+        assert params.anchor_match == "contains"
+        assert params.header_rows == 2
+        assert params.id_column_count == 3
+        assert params.sheet_names == ["Sheet1", "Sheet2"]
+
+    def test_template_params_v1_rejects_invalid_anchor_match(self):
+        """anchor_match only allows 'exact' or 'contains'."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        with pytest.raises(ValidationError, match="anchor_match"):
+            ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", anchor_match="regex")
+
+    def test_template_params_v1_rejects_header_rows_zero(self):
+        """header_rows must be >= 1."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        with pytest.raises(ValidationError, match="header_rows"):
+            ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", header_rows=0)
+
+    def test_template_params_v1_rejects_id_column_count_zero(self):
+        """id_column_count must be >= 1."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        with pytest.raises(ValidationError, match="id_column_count"):
+            ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", id_column_count=0)
+
+    # --- template_id Literal constraint ------------------------------------
+
+    def test_template_id_accepts_anchor_unpivot_v1(self):
+        """template_id='anchor_unpivot_v1' is accepted."""
+        from libs.models.manifest import ComplexSpreadsheetConfig
+
+        cfg = ComplexSpreadsheetConfig(
+            template_id="anchor_unpivot_v1",
+            template_params={"anchor_text": "Year"},
+        )
+        assert cfg.template_id == "anchor_unpivot_v1"
+
+    def test_template_id_rejects_unknown_value(self):
+        """Unknown template_id values are rejected at validation."""
+        from libs.models.manifest import ComplexSpreadsheetConfig
+
+        with pytest.raises(ValidationError, match="template_id"):
+            ComplexSpreadsheetConfig(
+                template_id="unknown_template",
+                template_params={"anchor_text": "Year"},
+            )
