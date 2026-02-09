@@ -71,7 +71,7 @@
 
                 {{ forms.render_text_field('anchor_match', 'Anchor Match Strategy', placeholder='exact', description='How to match anchor text (exact or contains). Default: exact') }}
 
-                {{ forms.render_text_field('header_rows', 'Header Rows', placeholder='1', description='Number of header rows after the anchor row. Default: 1') }}
+                {{ forms.render_text_field('header_rows', 'Header Rows', placeholder='1', description='Number of header rows ending at anchor row (anchor is the last header row). Default: 1') }}
 
                 {{ forms.render_text_field('id_column_count', 'ID Column Count', placeholder='1', description='Number of leading columns that form the row identifier. Default: 1') }}
 
