@@ -472,6 +472,18 @@ class TestProcessWorkbookSheets:
         )
         assert len(results) == 1
 
+    def test_anchor_whitespace_defaults_to_top_left(self, make_xlsx):
+        """When anchor is blank/whitespace, processing starts at top-left cell."""
+        path = make_xlsx({"Data": [["Year", "Value"], [2020, 100]]})
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="   ",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+        assert len(results) == 1
+
 
 # =============================================================================
 # Test: slug uniqueness in split_complex_spreadsheet_op
