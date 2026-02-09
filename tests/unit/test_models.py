@@ -1654,3 +1654,68 @@ class TestComplexSpreadsheetIntent:
                 template_id="unknown_template",
                 template_params={"anchor_text": "Year"},
             )
+
+    # --- empty/None normalization ------------------------------------------
+
+    def test_template_params_v1_empty_anchor_text_normalizes_to_none(self):
+        """Empty-string anchor_text is normalized to None."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(anchor_text="")
+        assert params.anchor_text is None
+
+    def test_template_params_v1_whitespace_anchor_text_normalizes_to_none(self):
+        """Whitespace-only anchor_text is normalized to None."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(anchor_text="   ")
+        assert params.anchor_text is None
+
+    def test_template_params_v1_empty_sheet_names_normalizes_to_none(self):
+        """List of empty/whitespace sheet_names is normalized to None."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(
+            anchor_text="Year", sheet_names=[" ", ""]
+        )
+        assert params.sheet_names is None
+
+    def test_template_params_v1_mixed_sheet_names_filters_blanks(self):
+        """Mixed valid/empty sheet_names filters out blanks, keeps valid."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(
+            anchor_text="Year", sheet_names=["Sheet1", "", " ", "Sheet2"]
+        )
+        assert params.sheet_names == ["Sheet1", "Sheet2"]
+
+    def test_template_params_v1_empty_list_sheet_names_normalizes_to_none(self):
+        """Explicitly empty list of sheet_names is normalized to None."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        params = ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", sheet_names=[])
+        assert params.sheet_names is None
+
+    # --- XLSX format case-insensitivity ------------------------------------
+
+    def test_complex_spreadsheet_format_accepts_lowercase_xlsx(self):
+        """Lowercase 'xlsx' is accepted and normalized to 'XLSX'."""
+        m = Manifest(
+            batch_id="batch_cs_lower",
+            uploader="user_cs",
+            intent="ingest_complex_spreadsheet",
+            files=[self._base_file(format="xlsx")],
+            metadata=self._base_metadata(),
+        )
+        assert m.files[0].format == "XLSX"
+
+    def test_complex_spreadsheet_format_accepts_mixed_case_xlsx(self):
+        """Mixed-case 'Xlsx' is accepted and normalized to 'XLSX'."""
+        m = Manifest(
+            batch_id="batch_cs_mixed",
+            uploader="user_cs",
+            intent="ingest_complex_spreadsheet",
+            files=[self._base_file(format="Xlsx")],
+            metadata=self._base_metadata(),
+        )
+        assert m.files[0].format == "XLSX"
