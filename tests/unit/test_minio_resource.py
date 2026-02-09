@@ -446,3 +446,162 @@ def test_get_presigned_url_respects_custom_expiry(minio_resource):
         # Verify custom expiry used
         call_args = mock_client.presigned_get_object.call_args
         assert call_args[1]["expires"] == 7200
+
+
+# =============================================================================
+# Test: object_exists_in_landing
+# =============================================================================
+
+
+def test_object_exists_in_landing_returns_true_when_object_exists(minio_resource):
+    """Test that object_exists_in_landing returns True when object exists."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        mock_client.stat_object.return_value = Mock()  # stat succeeds
+        mock_minio.return_value = mock_client
+
+        result = minio_resource.object_exists_in_landing("batch_001/data.json")
+
+        assert result is True
+        mock_client.stat_object.assert_called_once_with(
+            "test-landing", "batch_001/data.json"
+        )
+
+
+def test_object_exists_in_landing_returns_false_when_object_missing(minio_resource):
+    """Test that object_exists_in_landing returns False when object does not exist."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        error = S3Error(
+            "NoSuchKey",
+            "The specified key does not exist",
+            resource="batch_001/data.json",
+            request_id="test",
+            host_id="test",
+            response=Mock(status=404),
+        )
+        mock_client.stat_object.side_effect = error
+        mock_minio.return_value = mock_client
+
+        result = minio_resource.object_exists_in_landing("batch_001/data.json")
+
+        assert result is False
+
+
+def test_object_exists_in_landing_raises_on_other_s3_errors(minio_resource):
+    """Test that object_exists_in_landing re-raises non-NoSuchKey S3 errors."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        error = S3Error(
+            "AccessDenied",
+            "Access Denied",
+            resource="batch_001/data.json",
+            request_id="test",
+            host_id="test",
+            response=Mock(status=403),
+        )
+        mock_client.stat_object.side_effect = error
+        mock_minio.return_value = mock_client
+
+        with pytest.raises(S3Error):
+            minio_resource.object_exists_in_landing("batch_001/data.json")
+
+
+# =============================================================================
+# Test: upload_json_to_landing
+# =============================================================================
+
+
+def test_upload_json_to_landing_uploads_json_payload(minio_resource):
+    """Test that upload_json_to_landing serializes and uploads JSON to landing bucket."""
+    payload = {"sheet": "Sheet1", "rows": [1, 2, 3]}
+
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        # stat_object raises NoSuchKey → object doesn't exist yet
+        error = S3Error(
+            "NoSuchKey",
+            "The specified key does not exist",
+            resource="batch_001/config.json",
+            request_id="test",
+            host_id="test",
+            response=Mock(status=404),
+        )
+        mock_client.stat_object.side_effect = error
+        mock_minio.return_value = mock_client
+
+        minio_resource.upload_json_to_landing("batch_001/config.json", payload)
+
+        # Verify put_object called with correct args
+        mock_client.put_object.assert_called_once()
+        call_args = mock_client.put_object.call_args
+        assert call_args[0][0] == "test-landing"  # bucket
+        assert call_args[0][1] == "batch_001/config.json"  # key
+
+        # Read the data stream that was passed
+        data_stream = call_args[0][2]
+        uploaded_bytes = data_stream.read()
+        assert json.loads(uploaded_bytes) == payload
+
+        assert call_args[1]["length"] == len(json.dumps(payload).encode("utf-8"))
+        assert call_args[1]["content_type"] == "application/json"
+
+
+def test_upload_json_to_landing_raises_file_exists_when_if_not_exists_true(
+    minio_resource,
+):
+    """Test that upload_json_to_landing raises FileExistsError when object exists and if_not_exists=True."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        mock_client.stat_object.return_value = Mock()  # object exists
+        mock_minio.return_value = mock_client
+
+        with pytest.raises(
+            FileExistsError,
+            match="Object 'batch_001/config.json' already exists in bucket 'test-landing'",
+        ):
+            minio_resource.upload_json_to_landing(
+                "batch_001/config.json",
+                {"data": "value"},
+                if_not_exists=True,
+            )
+
+        # put_object should NOT have been called
+        mock_client.put_object.assert_not_called()
+
+
+def test_upload_json_to_landing_overwrites_when_if_not_exists_false(minio_resource):
+    """Test that upload_json_to_landing overwrites existing object when if_not_exists=False."""
+    payload = {"overwrite": True}
+
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        mock_minio.return_value = mock_client
+
+        minio_resource.upload_json_to_landing(
+            "batch_001/config.json",
+            payload,
+            if_not_exists=False,
+        )
+
+        # Should NOT have checked existence
+        mock_client.stat_object.assert_not_called()
+
+        # Should have uploaded
+        mock_client.put_object.assert_called_once()
+        call_args = mock_client.put_object.call_args
+        data_stream = call_args[0][2]
+        uploaded_bytes = data_stream.read()
+        assert json.loads(uploaded_bytes) == payload

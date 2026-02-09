@@ -285,6 +285,61 @@ class MinIOResource(ConfigurableResource):
                 content_type=content_type,
             )
 
+    def object_exists_in_landing(self, key: str) -> bool:
+        """
+        Check whether an object exists in the landing zone bucket.
+
+        Args:
+            key: Object key in the landing bucket
+
+        Returns:
+            True if the object exists, False otherwise.
+
+        Raises:
+            S3Error: If an error other than NoSuchKey occurs (e.g. AccessDenied).
+        """
+        try:
+            self.stat_object(self.landing_bucket, key)
+            return True
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                return False
+            raise
+
+    def upload_json_to_landing(
+        self,
+        key: str,
+        payload: dict,
+        if_not_exists: bool = True,
+    ) -> None:
+        """
+        Serialize a dict as JSON and upload it to the landing zone bucket.
+
+        Args:
+            key: Destination object key in landing bucket
+            payload: Dictionary to serialize as JSON
+            if_not_exists: When True (default), raise FileExistsError if
+                the object already exists. When False, overwrite silently.
+
+        Raises:
+            FileExistsError: If if_not_exists is True and the object already exists.
+            S3Error: If the upload fails.
+        """
+        if if_not_exists and self.object_exists_in_landing(key):
+            raise FileExistsError(
+                f"Object '{key}' already exists in bucket '{self.landing_bucket}'"
+            )
+
+        data = json.dumps(payload).encode("utf-8")
+        client = self.get_client()
+        client.put_object(
+            self.landing_bucket,
+            key,
+            io.BytesIO(data),
+            length=len(data),
+            content_type="application/json",
+        )
+
     def stat_object(self, bucket: str, s3_key: str):
         """
         Retrieve object metadata (stat) for an S3 object.
