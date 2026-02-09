@@ -119,7 +119,7 @@ def valid_complex_spreadsheet_manifest_dict():
             },
             "complex_spreadsheet": {
                 "template_id": "anchor_unpivot_v1",
-                "template_params": {},
+                "template_params": {"anchor_text": "Year"},
             },
         },
     }

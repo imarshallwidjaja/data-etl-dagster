@@ -199,3 +199,36 @@ class TestComplexSpreadsheetSchemaDefinitions:
         """ManifestCreateRequest should include complex_spreadsheet field."""
         schema = ManifestCreateRequest.model_json_schema()
         assert "complex_spreadsheet" in schema["properties"]
+
+    def test_template_params_v1_requires_anchor_text(self):
+        """ComplexSpreadsheetTemplateParamsV1 should require anchor_text."""
+        schema = ManifestCreateRequest.model_json_schema()
+        params_def = schema["$defs"]["ComplexSpreadsheetTemplateParamsV1"]
+        assert "required" in params_def
+        assert "anchor_text" in params_def["required"]
+
+    def test_template_params_v1_has_expected_properties(self):
+        """ComplexSpreadsheetTemplateParamsV1 should have all v1 properties."""
+        schema = ManifestCreateRequest.model_json_schema()
+        params_def = schema["$defs"]["ComplexSpreadsheetTemplateParamsV1"]
+        props = params_def.get("properties", {})
+        expected = [
+            "anchor_text",
+            "anchor_match",
+            "header_rows",
+            "id_column_count",
+            "sheet_names",
+        ]
+        for field in expected:
+            assert field in props, f"Missing property: {field}"
+
+    def test_template_id_is_literal_type(self):
+        """template_id in ComplexSpreadsheetConfig should be constrained to a Literal."""
+        schema = ManifestCreateRequest.model_json_schema()
+        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
+        props = config_def.get("properties", {})
+        template_id = props["template_id"]
+        # Literal produces a const or enum in JSON Schema
+        assert "const" in template_id or "enum" in template_id, (
+            f"template_id should be constrained, got: {template_id}"
+        )

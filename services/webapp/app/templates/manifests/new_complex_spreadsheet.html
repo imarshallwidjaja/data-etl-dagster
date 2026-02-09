@@ -107,7 +107,9 @@
     ],
     "complex_spreadsheet": {
         "template_id": "anchor_unpivot_v1",
-        "template_params": {}
+        "template_params": {
+            "anchor_text": "Year"
+        }
     }
 }'></textarea>
         <div id="json-status"></div>
@@ -175,7 +177,13 @@
             }],
             complex_spreadsheet: {
                 template_id: 'anchor_unpivot_v1',
-                template_params: {}
+                template_params: {
+                    anchor_text: formData.get('anchor_text'),
+                    anchor_match: anchorMatch,
+                    header_rows: headerRows,
+                    id_column_count: idColumnCount,
+                    ...(sheetNames ? { sheet_names: sheetNames } : {})
+                }
             },
             tags: {}
         };

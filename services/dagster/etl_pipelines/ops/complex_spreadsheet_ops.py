@@ -275,12 +275,17 @@ def split_complex_spreadsheet_op(
         raise ValueError(f"Unsupported bucket '{bucket}' for XLSX download")
 
     # --- Determine template parameters ---
-    # v1: hardcoded anchor/header/id_col defaults per template_id.
-    # Future versions will read from template_params.
-    anchor = "Year"
-    anchor_mode = "exact"
-    header_rows = 1
-    id_column_count = 1
+    if template_id != "anchor_unpivot_v1":
+        raise ValueError(
+            f"Unsupported template_id '{template_id}'. "
+            "Only 'anchor_unpivot_v1' is currently supported."
+        )
+
+    params = cs_config.template_params
+    anchor = params.anchor_text
+    anchor_mode = params.anchor_match
+    header_rows = params.header_rows
+    id_column_count = params.id_column_count
 
     # --- Step 2: Process workbook ---
     try:
