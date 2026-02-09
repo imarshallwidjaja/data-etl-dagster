@@ -6,6 +6,7 @@
 # =============================================================================
 
 import tempfile
+import importlib
 from pathlib import Path
 from typing import Any, Optional
 
@@ -16,9 +17,20 @@ from openpyxl.worksheet.worksheet import Worksheet
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.s3_utils import parse_s3_path
-from services.dagster.etl_pipelines.ops.intermediate_artifacts import (
-    register_intermediate_from_local_file,
-)
+
+
+def _get_register_intermediate_from_local_file():
+    """Resolve intermediate artifact helper for both repo and user-code layouts."""
+    module_name = (
+        f"{__package__}.intermediate_artifacts"
+        if __package__
+        else "etl_pipelines.ops.intermediate_artifacts"
+    )
+    module = importlib.import_module(module_name)
+    return module.register_intermediate_from_local_file
+
+
+register_intermediate_from_local_file = _get_register_intermediate_from_local_file()
 
 
 # =============================================================================
