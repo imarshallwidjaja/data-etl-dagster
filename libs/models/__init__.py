@@ -28,6 +28,8 @@ from .spatial import (
 
 # Manifest models
 from .manifest import (
+    ComplexSpreadsheetConfig,
+    ComplexSpreadsheetTemplateParamsV1,
     FileEntry,
     JoinConfig,
     ManifestMetadata,
@@ -87,6 +89,8 @@ __all__ = [
     "OutputFormat",
     "validate_crs",
     # Manifest models
+    "ComplexSpreadsheetConfig",
+    "ComplexSpreadsheetTemplateParamsV1",
     "FileEntry",
     "JoinConfig",
     "ManifestMetadata",
