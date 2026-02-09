@@ -180,6 +180,8 @@ class TestComposeCmd:
             "run",
             "--rm",
             "test-runner",
+            "uv",
+            "run",
             "pytest",
         ]
 
@@ -199,6 +201,8 @@ class TestComposeCmd:
             "run",
             "--rm",
             "test-runner",
+            "uv",
+            "run",
             "pytest",
             "-q",
             "--tb=short",
