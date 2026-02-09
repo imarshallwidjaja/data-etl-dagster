@@ -277,6 +277,115 @@ class TestProcessWorkbookSheets:
         # 2 data rows × 1 value column = 2 rows after melt
         assert df.shape[0] == 2
 
+    def test_sheet_names_filter_processes_only_listed_sheets(self):
+        """When sheet_names is provided, only those sheets are processed."""
+        path = _make_xlsx(
+            {
+                "Data1": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                ],
+                "Data2": [
+                    ["Year", "Value"],
+                    [2021, 200],
+                ],
+                "Notes": [
+                    ["Year", "Value"],
+                    [2022, 300],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+            sheet_names=["Data1", "Data2"],
+        )
+        sheet_names_result = [r["sheet_name"] for r in results]
+        assert "Data1" in sheet_names_result
+        assert "Data2" in sheet_names_result
+        assert "Notes" not in sheet_names_result
+        assert len(results) == 2
+
+    def test_sheet_names_none_processes_all_sheets(self):
+        """When sheet_names is None, all sheets with anchors are processed."""
+        path = _make_xlsx(
+            {
+                "Data1": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                ],
+                "Data2": [
+                    ["Year", "Value"],
+                    [2021, 200],
+                ],
+                "Notes": [
+                    ["Year", "Value"],
+                    [2022, 300],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+            sheet_names=None,
+        )
+        sheet_names_result = [r["sheet_name"] for r in results]
+        assert len(results) == 3
+        assert "Data1" in sheet_names_result
+        assert "Data2" in sheet_names_result
+        assert "Notes" in sheet_names_result
+
+    def test_sheet_names_empty_list_raises(self):
+        """When sheet_names=[] filters to nothing, raises ValueError (no anchor found)."""
+        path = _make_xlsx(
+            {
+                "Data1": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                ],
+            }
+        )
+        with pytest.raises(ValueError, match="No sheets.*anchor"):
+            process_workbook_sheets(
+                xlsx_path=path,
+                anchor="Year",
+                anchor_mode="exact",
+                header_rows=1,
+                id_column_count=1,
+                sheet_names=[],
+            )
+
+    def test_sheet_names_nonexistent_sheet_ignored(self):
+        """Non-existent sheet names in filter are silently ignored."""
+        path = _make_xlsx(
+            {
+                "Data1": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                ],
+                "Data2": [
+                    ["Year", "Value"],
+                    [2021, 200],
+                ],
+            }
+        )
+        results = process_workbook_sheets(
+            xlsx_path=path,
+            anchor="Year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+            sheet_names=["Data1", "NonExistent"],
+        )
+        assert len(results) == 1
+        assert results[0]["sheet_name"] == "Data1"
+
     def test_anchor_column_slices_leading_junk_columns(self):
         """When anchor is not in column 0, columns before anchor are dropped."""
         # Layout: col0 is junk, col1 is junk, anchor 'Year' at col2
