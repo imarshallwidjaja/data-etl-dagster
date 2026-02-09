@@ -2,7 +2,6 @@
 # Unit Tests: Recipe Registry
 # =============================================================================
 
-import pyarrow as pa
 import pytest
 
 from libs.transformations import (
