@@ -39,6 +39,12 @@ BLOBS_SCHEMA_V001 = _baseline.BLOBS_SCHEMA_V001
 _activity = load_migration_schema("003_activity_logs.py")
 ACTIVITY_LOGS_SCHEMA_V003 = _activity.ACTIVITY_LOGS_SCHEMA_V003
 
+_manifests_v004 = load_migration_schema("004_manifests_complex_spreadsheet_metadata.py")
+MANIFESTS_SCHEMA_V004 = _manifests_v004.MANIFESTS_SCHEMA_V004
+
+# Single latest pointer for manifest schema parity checks
+MANIFESTS_SCHEMA_LATEST = MANIFESTS_SCHEMA_V004
+
 
 class TestAssetSchemaParity:
     """Verify Asset model matches latest migration schema."""
@@ -113,11 +119,51 @@ class TestManifestSchemaParity:
 
         pydantic_values = {s.value for s in ManifestStatus}
         mongo_values = set(
-            MANIFESTS_SCHEMA_V001["$jsonSchema"]["properties"]["status"]["enum"]
+            MANIFESTS_SCHEMA_LATEST["$jsonSchema"]["properties"]["status"]["enum"]
         )
 
         assert pydantic_values == mongo_values, (
             f"Status enum mismatch. Pydantic: {pydantic_values}, MongoDB: {mongo_values}"
+        )
+
+    def test_manifest_metadata_has_complex_spreadsheet(self):
+        """Test that metadata includes complex_spreadsheet in latest migration."""
+        metadata_props = MANIFESTS_SCHEMA_LATEST["$jsonSchema"]["properties"][
+            "metadata"
+        ]["properties"]
+
+        assert "complex_spreadsheet" in metadata_props, (
+            "Expected metadata.properties.complex_spreadsheet in latest manifest schema. "
+            "Create migration 004 to add it."
+        )
+
+    def test_manifest_complex_spreadsheet_structure(self):
+        """Test that complex_spreadsheet has correct nested structure."""
+        cs_schema = MANIFESTS_SCHEMA_LATEST["$jsonSchema"]["properties"]["metadata"][
+            "properties"
+        ]["complex_spreadsheet"]
+
+        assert cs_schema["bsonType"] == ["object", "null"], (
+            f"Expected bsonType ['object', 'null'], got {cs_schema.get('bsonType')}"
+        )
+
+        nested_props = cs_schema.get("properties", {})
+        assert "template_id" in nested_props, (
+            "Missing template_id in complex_spreadsheet"
+        )
+        assert "template_params" in nested_props, (
+            "Missing template_params in complex_spreadsheet"
+        )
+
+        assert nested_props["template_id"].get("bsonType") == "string", (
+            "Expected template_id bsonType 'string'"
+        )
+        assert nested_props["template_params"].get("bsonType") == "object", (
+            "Expected template_params bsonType 'object'"
+        )
+
+        assert cs_schema.get("required") == ["template_id", "template_params"], (
+            f"Expected required ['template_id', 'template_params'], got {cs_schema.get('required')}"
         )
 
 
@@ -162,6 +208,10 @@ class TestSchemaConstants:
     def test_manifests_schema_has_jsonschema(self):
         """Verify MANIFESTS_SCHEMA_V001 has $jsonSchema wrapper."""
         assert "$jsonSchema" in MANIFESTS_SCHEMA_V001
+
+    def test_manifests_v004_schema_has_jsonschema(self):
+        """Verify MANIFESTS_SCHEMA_V004 has $jsonSchema wrapper."""
+        assert "$jsonSchema" in MANIFESTS_SCHEMA_V004
 
     def test_runs_schema_has_jsonschema(self):
         """Verify RUNS_SCHEMA_V001 has $jsonSchema wrapper."""
