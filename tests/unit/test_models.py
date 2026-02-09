@@ -1397,3 +1397,180 @@ class TestSpatialGeometryTypeEnforcement:
             created_at=datetime.now(timezone.utc),
         )
         assert asset.metadata.geometry_type is None  # OK for tabular
+
+
+# =============================================================================
+# Complex Spreadsheet Intent Tests
+# =============================================================================
+
+
+class TestComplexSpreadsheetIntent:
+    """Test ingest_complex_spreadsheet intent validation."""
+
+    @staticmethod
+    def _base_metadata(**overrides):
+        """Build minimal ManifestMetadata dict for complex spreadsheet tests."""
+        meta = {
+            "title": "Complex Spreadsheet",
+            "description": "Multi-table XLSX workbook",
+            "keywords": [],
+            "source": "Unit Test",
+            "license": "MIT",
+            "attribution": "Test",
+            "tags": {"dataset_id": "cs_001"},
+            "complex_spreadsheet": {
+                "template_id": "abs_lga_2021",
+                "template_params": {},
+            },
+        }
+        meta.update(overrides)
+        return meta
+
+    @staticmethod
+    def _base_file(**overrides):
+        """Build a valid XLSX file entry dict."""
+        f = {
+            "path": "s3://landing-zone/batch_cs/workbook.xlsx",
+            "type": "tabular",
+            "format": "XLSX",
+        }
+        f.update(overrides)
+        return f
+
+    # --- happy path --------------------------------------------------------
+
+    def test_valid_complex_spreadsheet_manifest(self):
+        """Valid ingest_complex_spreadsheet manifest is accepted."""
+        m = Manifest(
+            batch_id="batch_cs_001",
+            uploader="user_cs",
+            intent="ingest_complex_spreadsheet",
+            files=[self._base_file()],
+            metadata=self._base_metadata(),
+        )
+        assert m.intent == "ingest_complex_spreadsheet"
+        assert m.files[0].type == FileType.TABULAR
+        assert m.files[0].format == "XLSX"
+        assert m.metadata.complex_spreadsheet is not None
+        assert m.metadata.complex_spreadsheet.template_id == "abs_lga_2021"
+
+    # --- file count --------------------------------------------------------
+
+    def test_rejects_zero_files(self):
+        """ingest_complex_spreadsheet requires at least one file."""
+        with pytest.raises(ValidationError, match="requires at least one file"):
+            Manifest(
+                batch_id="batch_cs_002",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[],
+                metadata=self._base_metadata(),
+            )
+
+    def test_rejects_multiple_files(self):
+        """ingest_complex_spreadsheet requires exactly one file."""
+        with pytest.raises(ValidationError, match="exactly one file"):
+            Manifest(
+                batch_id="batch_cs_003",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[
+                    self._base_file(),
+                    self._base_file(path="s3://landing-zone/batch_cs/workbook2.xlsx"),
+                ],
+                metadata=self._base_metadata(),
+            )
+
+    # --- file format -------------------------------------------------------
+
+    def test_rejects_non_xlsx_format(self):
+        """ingest_complex_spreadsheet requires format == XLSX."""
+        with pytest.raises(ValidationError, match="XLSX"):
+            Manifest(
+                batch_id="batch_cs_004",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[self._base_file(format="CSV")],
+                metadata=self._base_metadata(),
+            )
+
+    # --- file type ---------------------------------------------------------
+
+    def test_requires_tabular_file_type(self):
+        """ingest_complex_spreadsheet requires files[0].type == tabular."""
+        with pytest.raises(ValidationError, match="type 'tabular'"):
+            Manifest(
+                batch_id="batch_cs_005",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[self._base_file(type="vector")],
+                metadata=self._base_metadata(),
+            )
+
+    # --- metadata.complex_spreadsheet presence -----------------------------
+
+    def test_rejects_missing_complex_spreadsheet_metadata(self):
+        """ingest_complex_spreadsheet requires metadata.complex_spreadsheet."""
+        with pytest.raises(ValidationError, match="complex_spreadsheet"):
+            Manifest(
+                batch_id="batch_cs_006",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[self._base_file()],
+                metadata=self._base_metadata(complex_spreadsheet=None),
+            )
+
+    # --- metadata.tags.dataset_id presence ---------------------------------
+
+    def test_rejects_missing_dataset_id_tag(self):
+        """ingest_complex_spreadsheet requires tags.dataset_id."""
+        with pytest.raises(ValidationError, match="dataset_id"):
+            Manifest(
+                batch_id="batch_cs_007",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[self._base_file()],
+                metadata=self._base_metadata(tags={}),
+            )
+
+    def test_rejects_empty_dataset_id_tag(self):
+        """ingest_complex_spreadsheet rejects empty-string dataset_id."""
+        with pytest.raises(ValidationError, match="dataset_id"):
+            Manifest(
+                batch_id="batch_cs_008",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[self._base_file()],
+                metadata=self._base_metadata(tags={"dataset_id": ""}),
+            )
+
+    def test_rejects_whitespace_only_dataset_id_tag(self):
+        """ingest_complex_spreadsheet rejects whitespace-only dataset_id."""
+        with pytest.raises(ValidationError, match="dataset_id"):
+            Manifest(
+                batch_id="batch_cs_009",
+                uploader="user_cs",
+                intent="ingest_complex_spreadsheet",
+                files=[self._base_file()],
+                metadata=self._base_metadata(tags={"dataset_id": "   "}),
+            )
+
+    # --- ComplexSpreadsheetConfig model tests ------------------------------
+
+    def test_complex_spreadsheet_config_extra_forbid(self):
+        """ComplexSpreadsheetConfig rejects unknown fields."""
+        from libs.models.manifest import ComplexSpreadsheetConfig
+
+        with pytest.raises(ValidationError):
+            ComplexSpreadsheetConfig(
+                template_id="abs_lga_2021",
+                template_params={},
+                unknown="bad",
+            )
+
+    def test_complex_spreadsheet_template_params_extra_forbid(self):
+        """ComplexSpreadsheetTemplateParamsV1 rejects unknown fields."""
+        from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
+
+        with pytest.raises(ValidationError):
+            ComplexSpreadsheetTemplateParamsV1(bad_field="nope")
