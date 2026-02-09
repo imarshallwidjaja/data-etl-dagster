@@ -2,21 +2,35 @@
 # Recipe Registry
 # =============================================================================
 # Intent-based recipe lookup for transformation steps.
+# Format-based tabular reader and suffix lookup.
 # =============================================================================
 
-from typing import List
+from typing import Callable, List
+
+import pyarrow as pa
+
 from .base import VectorStep
 from .vector import NormalizeCRSStep, SimplifyGeometryStep, CreateSpatialIndexStep
+from .tabular_readers import read_csv_to_arrow, read_parquet_to_arrow
 
 __all__ = ["RecipeRegistry"]
+
+# Tabular format registry: normalised-lowercase key → (reader, suffix)
+_TABULAR_FORMATS: dict[str, tuple[Callable[[str], pa.Table], str]] = {
+    "csv": (read_csv_to_arrow, ".csv"),
+    "parquet": (read_parquet_to_arrow, ".parquet"),
+}
 
 
 class RecipeRegistry:
     """
     Registry for transformation recipes by intent.
-    
+
     Maps manifest intent fields to lists of transformation steps.
     Provides default recipe for unknown intents to maintain backward compatibility.
+
+    Also resolves tabular file-format strings to reader callables and temp-file
+    suffixes (case-insensitive).
     """
 
     @staticmethod
@@ -58,3 +72,53 @@ class RecipeRegistry:
 
         return recipes.get(intent, default_recipe)
 
+    # --------------------------------------------------------------------- #
+    # Tabular format helpers
+    # --------------------------------------------------------------------- #
+
+    @staticmethod
+    def get_tabular_reader(file_format: str) -> Callable[[str], pa.Table]:
+        """
+        Resolve a reader callable for *file_format* (case-insensitive).
+
+        Args:
+            file_format: Format string from ``FileEntry.format``
+                         (e.g. ``"CSV"``, ``"Parquet"``).
+
+        Returns:
+            A callable ``(path: str) -> pa.Table``.
+
+        Raises:
+            ValueError: If *file_format* is not supported.
+        """
+        key = file_format.strip().lower()
+        entry = _TABULAR_FORMATS.get(key)
+        if entry is None:
+            supported = ", ".join(sorted(_TABULAR_FORMATS))
+            raise ValueError(
+                f"Unsupported tabular format '{file_format}'. Supported: {supported}"
+            )
+        return entry[0]
+
+    @staticmethod
+    def get_tabular_suffix(file_format: str) -> str:
+        """
+        Return the temp-file suffix for *file_format* (case-insensitive).
+
+        Args:
+            file_format: Format string from ``FileEntry.format``.
+
+        Returns:
+            File extension including the dot (e.g. ``".csv"``).
+
+        Raises:
+            ValueError: If *file_format* is not supported.
+        """
+        key = file_format.strip().lower()
+        entry = _TABULAR_FORMATS.get(key)
+        if entry is None:
+            supported = ", ".join(sorted(_TABULAR_FORMATS))
+            raise ValueError(
+                f"Unsupported tabular format '{file_format}'. Supported: {supported}"
+            )
+        return entry[1]

@@ -294,6 +294,63 @@ def test_download_tabular_from_landing_cleanup_on_error():
         )
 
 
+def test_download_tabular_from_landing_parquet_suffix():
+    """Test that temp file suffix is .parquet when file format is Parquet."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    parquet_manifest = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "s3://landing-zone/batch_001/data.parquet",
+                "type": "tabular",
+                "format": "Parquet",
+            }
+        ],
+    }
+
+    mock_minio.download_from_landing.side_effect = lambda s3_key, local_path: Path(
+        local_path
+    ).write_bytes(b"PAR1dummy")
+
+    result = _download_tabular_from_landing(
+        minio=mock_minio,
+        manifest=parquet_manifest,
+        log=mock_log,
+    )
+
+    try:
+        assert result["local_file_path"].endswith(".parquet")
+    finally:
+        Path(result["local_file_path"]).unlink(missing_ok=True)
+
+
+def test_download_tabular_from_landing_csv_suffix():
+    """Test that temp file suffix remains .csv for CSV format."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    mock_minio.download_from_landing.side_effect = lambda s3_key, local_path: Path(
+        local_path
+    ).write_text("id,name\n1,Alice")
+
+    result = _download_tabular_from_landing(
+        minio=mock_minio,
+        manifest=SAMPLE_TABULAR_MANIFEST,
+        log=mock_log,
+    )
+
+    try:
+        assert result["local_file_path"].endswith(".csv")
+    finally:
+        Path(result["local_file_path"]).unlink(missing_ok=True)
+
+
 # =============================================================================
 # Test: Load and Clean Tabular
 # =============================================================================
@@ -427,6 +484,82 @@ def test_load_and_clean_tabular_join_key_not_found():
                 download_result=download_result,
                 log=mock_log,
             )
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+def test_load_and_clean_tabular_reads_parquet():
+    """Test that Parquet files are read correctly by _load_and_clean_tabular."""
+    # Create a temporary Parquet file
+    table_in = pa.table({"id": [1, 2], "name": ["Alice", "Bob"], "age": [30, 25]})
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:
+        pq.write_table(table_in, f.name)
+        temp_path = f.name
+
+    try:
+        parquet_manifest = {
+            **SAMPLE_TABULAR_MANIFEST,
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.parquet",
+                    "type": "tabular",
+                    "format": "Parquet",
+                }
+            ],
+        }
+
+        download_result = {
+            "local_file_path": temp_path,
+            "manifest": parquet_manifest,
+        }
+
+        mock_log = Mock()
+
+        result = _load_and_clean_tabular(
+            download_result=download_result,
+            log=mock_log,
+        )
+
+        assert result["row_count"] == 2
+        assert result["columns"] == ["id", "name", "age"]
+        # Join key should still work
+        assert result["join_key_clean"] == "id"
+
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+def test_load_and_clean_tabular_csv_still_works():
+    """Test that CSV files continue to work (regression)."""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+        f.write("id,value\n1,100\n2,200\n")
+        temp_path = f.name
+
+    try:
+        manifest_no_join = {
+            **SAMPLE_TABULAR_MANIFEST,
+            "metadata": {
+                **SAMPLE_TABULAR_MANIFEST["metadata"],
+                "join_config": None,
+            },
+        }
+
+        download_result = {
+            "local_file_path": temp_path,
+            "manifest": manifest_no_join,
+        }
+
+        mock_log = Mock()
+
+        result = _load_and_clean_tabular(
+            download_result=download_result,
+            log=mock_log,
+        )
+
+        assert result["row_count"] == 2
+        assert "id" in result["columns"]
+        assert "value" in result["columns"]
+
     finally:
         Path(temp_path).unlink(missing_ok=True)
 
