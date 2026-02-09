@@ -69,7 +69,7 @@
 
                 {{ forms.render_text_field('anchor_text', 'Anchor Text', required=True, placeholder='e.g., TABLE', description='Text pattern that marks the start of each sub-table') }}
 
-                {{ forms.render_text_field('anchor_match', 'Anchor Match Strategy', placeholder='exact', description='How to match anchor text (exact, contains, regex). Default: exact') }}
+                {{ forms.render_text_field('anchor_match', 'Anchor Match Strategy', placeholder='exact', description='How to match anchor text (exact or contains). Default: exact') }}
 
                 {{ forms.render_text_field('header_rows', 'Header Rows', placeholder='1', description='Number of header rows after the anchor row. Default: 1') }}
 
