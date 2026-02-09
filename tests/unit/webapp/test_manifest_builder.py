@@ -270,6 +270,117 @@ class TestBuildComplexSpreadsheetManifest:
         assert "dataset_id" in manifest.metadata.tags
         assert manifest.metadata.tags["dataset_id"]  # non-empty
 
+    def test_missing_complex_spreadsheet_config_raises_value_error(self):
+        """Omitting complex_spreadsheet from form_data should raise ValueError."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            # complex_spreadsheet intentionally omitted
+        }
+
+        with pytest.raises(ValueError, match="complex_spreadsheet"):
+            build_manifest(
+                asset_type="complex_spreadsheet",
+                form_data=form_data,
+                uploader="testuser",
+            )
+
+    def test_metadata_propagation(self):
+        """Title, tags, and template_params should propagate into the built manifest."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "tags": {"source": "ABS", "year": "2024"},
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "header_rows": 2,
+                    "id_column_count": 3,
+                },
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        # Human metadata fields
+        assert manifest.metadata.title == "Complex ABS Data"
+        # Custom tags propagated (plus auto-generated dataset_id)
+        assert manifest.metadata.tags["source"] == "ABS"
+        assert manifest.metadata.tags["year"] == "2024"
+        assert "dataset_id" in manifest.metadata.tags
+        # Template params propagated correctly
+        assert manifest.metadata.complex_spreadsheet is not None
+        params = manifest.metadata.complex_spreadsheet.template_params
+        assert params.anchor_text == "Year"
+        assert params.header_rows == 2
+        assert params.id_column_count == 3
+
+    def test_non_xlsx_format_raises_value_error(self):
+        """CSV format for complex_spreadsheet should raise ValueError."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.csv",
+                    "type": "tabular",
+                    "format": "CSV",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {"anchor_text": "Year"},
+            },
+        }
+
+        with pytest.raises(ValueError, match="XLSX"):
+            build_manifest(
+                asset_type="complex_spreadsheet",
+                form_data=form_data,
+                uploader="testuser",
+            )
+
+    def test_omitted_file_type_defaults_to_tabular(self):
+        """Omitting file type for complex_spreadsheet should default to tabular."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    # type intentionally omitted
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {"anchor_text": "Year"},
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.files[0].type == "tabular"
+
     def test_infer_xlsx_format_from_extension(self):
         """_infer_format should return XLSX for .xlsx paths."""
         form_data = {
