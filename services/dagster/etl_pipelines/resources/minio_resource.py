@@ -285,6 +285,59 @@ class MinIOResource(ConfigurableResource):
                 content_type=content_type,
             )
 
+    def object_exists_in_landing(self, key: str) -> bool:
+        """
+        Check whether an object exists in the landing bucket.
+
+        Args:
+            key: Object key to check
+
+        Returns:
+            True if object exists, False if key does not exist
+
+        Raises:
+            S3Error: If stat fails for reasons other than missing key
+        """
+        try:
+            self.stat_object(self.landing_bucket, key)
+            return True
+        except S3Error as exc:
+            if exc.code == "NoSuchKey":
+                return False
+            raise
+
+    def upload_json_to_landing(
+        self, key: str, payload: dict, if_not_exists: bool = True
+    ) -> None:
+        """
+        Upload JSON payload bytes to the landing bucket.
+
+        Args:
+            key: Destination object key in landing bucket
+            payload: JSON-serializable payload dictionary
+            if_not_exists: If True, raise FileExistsError when object already exists
+
+        Raises:
+            FileExistsError: If object exists and if_not_exists is True
+            S3Error: If upload fails
+        """
+        if if_not_exists and self.object_exists_in_landing(key):
+            raise FileExistsError(
+                f"Object '{key}' already exists in bucket '{self.landing_bucket}'"
+            )
+
+        client = self.get_client()
+        body = json.dumps(payload).encode()
+        stream = io.BytesIO(body)
+
+        client.put_object(
+            self.landing_bucket,
+            key,
+            stream,
+            length=len(body),
+            content_type="application/json",
+        )
+
     def stat_object(self, bucket: str, s3_key: str):
         """
         Retrieve object metadata (stat) for an S3 object.

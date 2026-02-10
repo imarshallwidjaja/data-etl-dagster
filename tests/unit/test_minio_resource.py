@@ -399,6 +399,66 @@ def test_upload_to_lake_infers_correct_content_types(minio_resource, tmp_path):
 
 
 # =============================================================================
+# Test: landing JSON helpers
+# =============================================================================
+
+
+def test_object_exists_in_landing_returns_true_when_object_exists(minio_resource):
+    """Test that object_exists_in_landing returns True when stat succeeds."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        mock_client.stat_object.return_value = Mock()
+        mock_minio.return_value = mock_client
+
+        result = minio_resource.object_exists_in_landing("manifests/existing.json")
+
+        assert result is True
+        mock_client.stat_object.assert_called_once_with(
+            "test-landing", "manifests/existing.json"
+        )
+
+
+def test_object_exists_in_landing_returns_false_when_object_missing(minio_resource):
+    """Test that object_exists_in_landing returns False on NoSuchKey."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        mock_client.stat_object.side_effect = S3Error(
+            "NoSuchKey",
+            "The specified key does not exist",
+            resource="manifests/missing.json",
+            request_id="test",
+            host_id="test",
+            response=Mock(status=404),
+        )
+        mock_minio.return_value = mock_client
+
+        result = minio_resource.object_exists_in_landing("manifests/missing.json")
+
+        assert result is False
+
+
+def test_upload_json_to_landing_raises_if_object_exists(minio_resource):
+    """Test that upload_json_to_landing raises FileExistsError if key already exists."""
+    with patch(
+        "services.dagster.etl_pipelines.resources.minio_resource.Minio"
+    ) as mock_minio:
+        mock_client = Mock()
+        mock_client.stat_object.return_value = Mock()
+        mock_minio.return_value = mock_client
+
+        with pytest.raises(FileExistsError, match="already exists"):
+            minio_resource.upload_json_to_landing(
+                "manifests/existing.json", {"batch_id": "123"}
+            )
+
+        mock_client.put_object.assert_not_called()
+
+
+# =============================================================================
 # Test: get_presigned_url
 # =============================================================================
 
