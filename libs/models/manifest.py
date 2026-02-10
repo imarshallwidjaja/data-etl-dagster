@@ -11,7 +11,7 @@
 import re
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
 from pydantic import (
     BaseModel,
     Field,
@@ -26,7 +26,10 @@ from .base import HumanMetadataMixin
 
 __all__ = [
     "ComplexSpreadsheetConfig",
+    "ComplexSpreadsheetConfigV1",
+    "ComplexSpreadsheetConfigV2",
     "ComplexSpreadsheetTemplateParamsV1",
+    "ComplexSpreadsheetTemplateParamsV2",
     "FileEntry",
     "JoinConfig",
     "ManifestMetadata",
@@ -302,16 +305,73 @@ class ComplexSpreadsheetTemplateParamsV1(BaseModel):
         return v  # type: ignore[return-value]
 
 
-class ComplexSpreadsheetConfig(BaseModel):
+class ComplexSpreadsheetTemplateParamsV2(BaseModel):
     """
-    Configuration for complex spreadsheet ingestion.
+    Template parameters for complex spreadsheet processing (v2).
 
-    Pairs a template identifier with version-specific parameters
+    Extends v1 anchor matching modes by allowing regex matching while
+    preserving the existing splitter controls.
+    """
+
+    anchor_text: str | None = Field(
+        ..., description="Cell value or regex marking the data region start"
+    )
+    anchor_match: Literal["exact", "contains", "regex"] = Field(
+        "exact", description="Anchor matching mode"
+    )
+    header_rows: int = Field(
+        1,
+        ge=1,
+        description="Number of header rows ending at anchor row (anchor is the last header row)",
+    )
+    id_column_count: int = Field(
+        1, ge=1, description="Number of leading ID columns for melt"
+    )
+    sheet_names: list[str] | None = Field(
+        None, description="Optional whitelist of sheet names to process"
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("anchor_text", mode="before")
+    @classmethod
+    def _normalize_anchor_text(cls, v: object) -> str | None:
+        """Coerce empty/whitespace anchor_text to None."""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v  # type: ignore[return-value]
+
+    @field_validator("sheet_names", mode="before")
+    @classmethod
+    def _normalize_sheet_names(cls, v: object) -> list[str] | None:
+        """Filter blank entries from sheet_names; coerce empty list to None."""
+        if v is None:
+            return None
+        if isinstance(v, list):
+            filtered = [s for s in v if isinstance(s, str) and s.strip()]
+            return filtered or None
+        return v  # type: ignore[return-value]
+
+    @model_validator(mode="after")
+    def validate_anchor_regex(self) -> "ComplexSpreadsheetTemplateParamsV2":
+        """Validate anchor_text as a regex when anchor_match='regex'."""
+        if self.anchor_match != "regex":
+            return self
+        if self.anchor_text is None:
+            return self
+        try:
+            re.compile(self.anchor_text)
+        except re.error as exc:
+            raise ValueError("Invalid anchor regex") from exc
+        return self
+
+
+class ComplexSpreadsheetConfigV1(BaseModel):
+    """
+    Configuration for complex spreadsheet ingestion (v1 template).
+
+    Pairs a v1 template identifier with v1 parameters
     that drive the multi-table splitter logic.
-
-    Attributes:
-        template_id: Versioned identifier for the splitting template.
-        template_params: Template-specific parameters (v1: anchor/header/melt config).
     """
 
     template_id: Literal["anchor_unpivot_v1"] = Field(
@@ -323,6 +383,32 @@ class ComplexSpreadsheetConfig(BaseModel):
     )
 
     model_config = ConfigDict(extra="forbid")
+
+
+class ComplexSpreadsheetConfigV2(BaseModel):
+    """
+    Configuration for complex spreadsheet ingestion (v2 template).
+
+    Pairs a v2 template identifier with v2 parameters
+    that drive the multi-table splitter logic.
+    """
+
+    template_id: Literal["anchor_unpivot_v2"] = Field(
+        ..., description="Versioned identifier for the splitting template"
+    )
+    template_params: ComplexSpreadsheetTemplateParamsV2 = Field(
+        ...,
+        description="Template-specific parameters",
+    )
+
+    model_config = ConfigDict(extra="forbid")
+
+
+ComplexSpreadsheetConfig: TypeAlias = Annotated[
+    ComplexSpreadsheetConfigV1 | ComplexSpreadsheetConfigV2,
+    Field(discriminator="template_id"),
+]
+"""Discriminated union for versioned complex spreadsheet template configs."""
 
 
 # =============================================================================

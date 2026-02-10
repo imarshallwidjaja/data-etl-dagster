@@ -156,10 +156,11 @@ class TestComplexSpreadsheetSchemaDefinitions:
     """Tests for ComplexSpreadsheetConfig and related defs in ManifestCreateRequest schema."""
 
     def test_schema_defs_contains_complex_spreadsheet_config(self):
-        """$defs should contain ComplexSpreadsheetConfig."""
+        """$defs should contain discriminated ComplexSpreadsheetConfig variants."""
         schema = ManifestCreateRequest.model_json_schema()
         assert "$defs" in schema
-        assert "ComplexSpreadsheetConfig" in schema["$defs"]
+        assert "ComplexSpreadsheetConfigV1" in schema["$defs"]
+        assert "ComplexSpreadsheetConfigV2" in schema["$defs"]
 
     def test_schema_defs_contains_complex_spreadsheet_template_params_v1(self):
         """$defs should contain ComplexSpreadsheetTemplateParamsV1."""
@@ -167,11 +168,19 @@ class TestComplexSpreadsheetSchemaDefinitions:
         assert "$defs" in schema
         assert "ComplexSpreadsheetTemplateParamsV1" in schema["$defs"]
 
-    def test_complex_spreadsheet_config_forbids_additional_properties(self):
-        """ComplexSpreadsheetConfig should set additionalProperties=false."""
+    def test_schema_defs_contains_complex_spreadsheet_template_params_v2(self):
+        """$defs should contain ComplexSpreadsheetTemplateParamsV2."""
         schema = ManifestCreateRequest.model_json_schema()
-        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
-        assert config_def.get("additionalProperties") is False
+        assert "$defs" in schema
+        assert "ComplexSpreadsheetTemplateParamsV2" in schema["$defs"]
+
+    def test_complex_spreadsheet_config_forbids_additional_properties(self):
+        """Both config variants should set additionalProperties=false."""
+        schema = ManifestCreateRequest.model_json_schema()
+        v1_def = schema["$defs"]["ComplexSpreadsheetConfigV1"]
+        v2_def = schema["$defs"]["ComplexSpreadsheetConfigV2"]
+        assert v1_def.get("additionalProperties") is False
+        assert v2_def.get("additionalProperties") is False
 
     def test_template_params_v1_forbids_additional_properties(self):
         """ComplexSpreadsheetTemplateParamsV1 should set additionalProperties=false."""
@@ -180,19 +189,23 @@ class TestComplexSpreadsheetSchemaDefinitions:
         assert params_def.get("additionalProperties") is False
 
     def test_complex_spreadsheet_config_requires_template_id(self):
-        """ComplexSpreadsheetConfig should require template_id."""
+        """Both config variants should require template_id."""
         schema = ManifestCreateRequest.model_json_schema()
-        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
-        assert "required" in config_def
-        assert "template_id" in config_def["required"]
+        v1_def = schema["$defs"]["ComplexSpreadsheetConfigV1"]
+        v2_def = schema["$defs"]["ComplexSpreadsheetConfigV2"]
+        assert "required" in v1_def
+        assert "required" in v2_def
+        assert "template_id" in v1_def["required"]
+        assert "template_id" in v2_def["required"]
 
     def test_template_id_is_string_type(self):
-        """template_id in ComplexSpreadsheetConfig should be a string type."""
+        """template_id in each config variant should be a string type."""
         schema = ManifestCreateRequest.model_json_schema()
-        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
-        props = config_def.get("properties", {})
-        assert "template_id" in props
-        assert props["template_id"].get("type") == "string"
+        for def_name in ("ComplexSpreadsheetConfigV1", "ComplexSpreadsheetConfigV2"):
+            config_def = schema["$defs"][def_name]
+            props = config_def.get("properties", {})
+            assert "template_id" in props
+            assert props["template_id"].get("type") == "string"
 
     def test_schema_contains_complex_spreadsheet_field(self):
         """ManifestCreateRequest should include complex_spreadsheet field."""
@@ -222,12 +235,30 @@ class TestComplexSpreadsheetSchemaDefinitions:
             assert field in props, f"Missing property: {field}"
 
     def test_template_id_is_literal_type(self):
-        """template_id in ComplexSpreadsheetConfig should be constrained to a Literal."""
+        """template_id in config variants should be constrained to Literal values."""
         schema = ManifestCreateRequest.model_json_schema()
-        config_def = schema["$defs"]["ComplexSpreadsheetConfig"]
-        props = config_def.get("properties", {})
-        template_id = props["template_id"]
-        # Literal produces a const or enum in JSON Schema
-        assert "const" in template_id or "enum" in template_id, (
-            f"template_id should be constrained, got: {template_id}"
+        for def_name in ("ComplexSpreadsheetConfigV1", "ComplexSpreadsheetConfigV2"):
+            config_def = schema["$defs"][def_name]
+            props = config_def.get("properties", {})
+            template_id = props["template_id"]
+            # Literal produces a const or enum in JSON Schema
+            assert "const" in template_id or "enum" in template_id, (
+                f"template_id should be constrained, got: {template_id}"
+            )
+
+    def test_template_id_enum_includes_anchor_unpivot_v2(self):
+        """complex_spreadsheet discriminator mapping should include anchor_unpivot_v2."""
+        schema = ManifestCreateRequest.model_json_schema()
+        cs_field = schema["properties"]["complex_spreadsheet"]
+        any_of = cs_field.get("anyOf", [])
+        assert any_of, "Expected anyOf on complex_spreadsheet"
+
+        discriminated = next(
+            (candidate for candidate in any_of if "discriminator" in candidate),
+            None,
         )
+        assert discriminated is not None, "Expected discriminated union schema"
+
+        mapping = discriminated["discriminator"]["mapping"]
+        assert "anchor_unpivot_v2" in mapping
+        assert mapping["anchor_unpivot_v2"].endswith("/ComplexSpreadsheetConfigV2")
