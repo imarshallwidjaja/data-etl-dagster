@@ -141,6 +141,7 @@ def complex_spreadsheet_sensor(context: SensorEvaluationContext, minio: MinIORes
                         }
                     }
                 },
+                partition_key=partition_key,
                 tags={
                     "batch_id": manifest.batch_id,
                     "uploader": manifest.uploader,
