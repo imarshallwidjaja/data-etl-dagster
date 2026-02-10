@@ -31,6 +31,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock .python-version ./
 COPY libs/ libs/
 RUN uv sync --frozen --group test
+ENV PATH="/app/.venv/bin:${PATH}"
 
 # ---------------------------------------------------------------------------
 # Source code — pytest.ini sets pythonpath to ". services/webapp" so tests
