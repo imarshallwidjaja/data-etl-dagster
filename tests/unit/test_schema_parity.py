@@ -36,6 +36,10 @@ RUNS_SCHEMA_V001 = _baseline.RUNS_SCHEMA_V001
 LINEAGE_SCHEMA_V001 = _baseline.LINEAGE_SCHEMA_V001
 BLOBS_SCHEMA_V001 = _baseline.BLOBS_SCHEMA_V001
 
+_manifests_v004 = load_migration_schema("004_manifests_complex_spreadsheet_metadata.py")
+MANIFESTS_SCHEMA_V004 = _manifests_v004.MANIFESTS_SCHEMA_V004
+MANIFESTS_SCHEMA_LATEST = MANIFESTS_SCHEMA_V004
+
 _activity = load_migration_schema("003_activity_logs.py")
 ACTIVITY_LOGS_SCHEMA_V003 = _activity.ACTIVITY_LOGS_SCHEMA_V003
 
@@ -113,11 +117,22 @@ class TestManifestSchemaParity:
 
         pydantic_values = {s.value for s in ManifestStatus}
         mongo_values = set(
-            MANIFESTS_SCHEMA_V001["$jsonSchema"]["properties"]["status"]["enum"]
+            MANIFESTS_SCHEMA_LATEST["$jsonSchema"]["properties"]["status"]["enum"]
         )
 
         assert pydantic_values == mongo_values, (
             f"Status enum mismatch. Pydantic: {pydantic_values}, MongoDB: {mongo_values}"
+        )
+
+    def test_manifest_metadata_includes_complex_spreadsheet(self):
+        """Test that latest manifest schema supports complex_spreadsheet metadata."""
+        metadata_properties = MANIFESTS_SCHEMA_LATEST["$jsonSchema"]["properties"][
+            "metadata"
+        ]["properties"]
+
+        assert "complex_spreadsheet" in metadata_properties, (
+            "Latest manifest schema must define metadata.complex_spreadsheet. "
+            "If intentional, create a new migration and update parity tests."
         )
 
 
@@ -160,8 +175,8 @@ class TestSchemaConstants:
         assert "$jsonSchema" in ASSETS_SCHEMA_V001
 
     def test_manifests_schema_has_jsonschema(self):
-        """Verify MANIFESTS_SCHEMA_V001 has $jsonSchema wrapper."""
-        assert "$jsonSchema" in MANIFESTS_SCHEMA_V001
+        """Verify latest manifest schema has $jsonSchema wrapper."""
+        assert "$jsonSchema" in MANIFESTS_SCHEMA_LATEST
 
     def test_runs_schema_has_jsonschema(self):
         """Verify RUNS_SCHEMA_V001 has $jsonSchema wrapper."""

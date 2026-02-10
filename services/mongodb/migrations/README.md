@@ -14,6 +14,7 @@ Versioned, idempotent schema migrations for the metadata ledger.
 | 001 | `001_baseline_schema.py` | Complete baseline (assets, manifests, runs, lineage) |
 | 002 | `002_add_text_search.py` | Text index for keyword search |
 | 003 | `003_activity_logs.py` | Activity logging collection and indexes |
+| 004 | `004_manifests_complex_spreadsheet_metadata.py` | Add `metadata.complex_spreadsheet` validator support on manifests |
 
 ## Schema Management Pattern
 
