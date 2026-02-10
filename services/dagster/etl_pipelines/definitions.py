@@ -12,7 +12,7 @@ from .assets import (
     raw_spatial_asset,
     raw_tabular_asset,
 )
-from .jobs import ingest_job  # Only legacy op-based job
+from .jobs import ingest_job, complex_table_splitter_job
 from .partitions import dataset_partitions
 from .resources import GDALResource, MinIOResource, MongoDBResource, PostGISResource
 from .sensors import (
@@ -74,6 +74,7 @@ defs = Definitions(
     jobs=[
         gdal_health_check_job,
         ingest_job,  # Legacy op-based job
+        complex_table_splitter_job,  # Op-based complex spreadsheet splitter
         spatial_asset_job,  # Asset-based spatial
         tabular_asset_job,  # Asset-based tabular
         join_asset_job,  # Asset-based join
