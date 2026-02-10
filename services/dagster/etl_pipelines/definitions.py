@@ -17,6 +17,7 @@ from .partitions import dataset_partitions
 from .resources import GDALResource, MinIOResource, MongoDBResource, PostGISResource
 from .sensors import (
     join_sensor,
+    complex_spreadsheet_sensor,
     manifest_sensor,
     spatial_sensor,
     tabular_sensor,
@@ -111,6 +112,7 @@ defs = Definitions(
         spatial_sensor,  # Asset-based: routes to spatial_asset_job
         tabular_sensor,  # Asset-based: routes to tabular_asset_job
         join_sensor,  # Asset-based: routes to join_asset_job
+        complex_spreadsheet_sensor,  # Complex spreadsheet: routes to complex_table_splitter_job
         manifest_run_failure_sensor,  # Lifecycle: updates manifest on failure
         manifest_run_success_sensor,  # Lifecycle: updates manifest on success
         manifest_run_started_sensor,  # Lifecycle: logs run_started to activity_logs

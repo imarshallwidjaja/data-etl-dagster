@@ -179,7 +179,7 @@ def build_cursor(processed_keys: list[str]) -> str:
 # =============================================================================
 
 
-def determine_lane(manifest: Manifest) -> Lane:
+def determine_lane(manifest: Manifest) -> Lane | None:
     """
     Determine processing lane for the **legacy** ingest_job only.
 
@@ -197,7 +197,14 @@ def determine_lane(manifest: Manifest) -> Lane:
     # - spatial_sensor: ingest_vector, ingest_raster
     # - tabular_sensor: ingest_tabular
     # - join_sensor: join_datasets
-    if intent in ("ingest_tabular", "join_datasets", "ingest_vector", "ingest_raster"):
+    # - complex_spreadsheet_sensor: ingest_complex_spreadsheet
+    if intent in (
+        "ingest_tabular",
+        "join_datasets",
+        "ingest_vector",
+        "ingest_raster",
+        "ingest_complex_spreadsheet",
+    ):
         return None
 
     # Default to ingest lane for all other intents
@@ -401,7 +408,7 @@ def manifest_sensor(context: SensorEvaluationContext, minio: MinIOResource):
                 context.log.info(
                     f"Lane '{lane.value}' is disabled for manifest '{manifest_key}' "
                     f"(batch_id: {manifest.batch_id}). "
-                    f"Enabled lanes: {[l.value for l in enabled]}. "
+                    f"Enabled lanes: {[enabled_lane.value for enabled_lane in enabled]}. "
                     f"Marking as processed (one-shot)."
                 )
                 processed_this_run.append(manifest_key)

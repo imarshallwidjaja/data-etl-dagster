@@ -11,6 +11,9 @@ from unittest.mock import Mock
 from dagster import RunRequest, SkipReason
 
 from services.dagster.etl_pipelines.resources import MinIOResource
+from services.dagster.etl_pipelines.sensors.complex_spreadsheet_sensor import (
+    complex_spreadsheet_sensor,
+)
 from services.dagster.etl_pipelines.sensors.join_sensor import join_sensor
 from services.dagster.etl_pipelines.sensors.spatial_sensor import spatial_sensor
 from services.dagster.etl_pipelines.sensors.tabular_sensor import tabular_sensor
@@ -69,6 +72,52 @@ def test_tabular_sensor_emits_run_request_for_ingest_tabular(
     assert call_args[1]["partition_keys"] == [rr.partition_key]
     mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
     assert rr.tags["operator"] == valid_tabular_manifest_dict["uploader"]
+    assert rr.tags["source"] == "unit-test"
+
+
+def test_complex_spreadsheet_sensor_emits_run_request_for_ingest_complex_spreadsheet(
+    mock_sensor_context, mock_minio_resource, valid_manifest_dict
+):
+    manifest_key = "manifests/batch_complex_001.json"
+    complex_manifest = {
+        **valid_manifest_dict,
+        "intent": "ingest_complex_spreadsheet",
+        "batch_id": "batch_complex_001",
+        "metadata": {
+            **valid_manifest_dict["metadata"],
+            "tags": {
+                **valid_manifest_dict["metadata"]["tags"],
+                "dataset_id": "complex_dataset_001",
+            },
+        },
+    }
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = complex_manifest
+
+    results = list(
+        complex_spreadsheet_sensor._raw_fn(mock_sensor_context, mock_minio_resource)
+    )
+    assert len(results) == 1
+    assert isinstance(results[0], RunRequest)
+    rr = results[0]
+    # job_name is provided by the sensor decorator; RunRequest.job_name is typically None
+    assert rr.job_name is None
+    assert rr.partition_key == "complex_dataset_001"
+    assert (
+        rr.run_config["ops"]["raw_manifest_json"]["config"]["manifest"]["batch_id"]
+        == complex_manifest["batch_id"]
+    )
+    mock_sensor_context.instance.add_dynamic_partitions.assert_called_once_with(
+        partitions_def_name="dataset_id",
+        partition_keys=["complex_dataset_001"],
+    )
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
+    assert rr.tags["batch_id"] == complex_manifest["batch_id"]
+    assert rr.tags["uploader"] == complex_manifest["uploader"]
+    assert rr.tags["intent"] == "ingest_complex_spreadsheet"
+    assert rr.tags["manifest_key"] == manifest_key
+    assert rr.tags["partition_key"] == "complex_dataset_001"
+    assert rr.tags["operator"] == complex_manifest["uploader"]
     assert rr.tags["source"] == "unit-test"
 
 

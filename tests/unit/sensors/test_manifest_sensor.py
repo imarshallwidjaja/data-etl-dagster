@@ -10,9 +10,10 @@ import os
 import pytest
 from unittest.mock import Mock, patch
 from dagster import SkipReason, RunRequest
-from pydantic import ValidationError
-
-from services.dagster.etl_pipelines.sensors.manifest_sensor import manifest_sensor
+from services.dagster.etl_pipelines.sensors.manifest_sensor import (
+    determine_lane,
+    manifest_sensor,
+)
 from services.dagster.etl_pipelines.resources import MinIOResource
 
 
@@ -188,6 +189,19 @@ def test_join_intent_is_skipped_and_not_archived(
     assert mock_sensor_context.update_cursor.called
 
 
+def test_determine_lane_returns_none_for_ingest_complex_spreadsheet(valid_manifest):
+    complex_manifest = valid_manifest.model_copy(
+        update={
+            "intent": "ingest_complex_spreadsheet",
+            "batch_id": "batch_complex_lane",
+        }
+    )
+
+    lane = determine_lane(complex_manifest)
+
+    assert lane is None
+
+
 # =============================================================================
 # Test: Traffic Controller - default to ingest only
 # =============================================================================
@@ -342,8 +356,6 @@ def test_cursor_bounding_preserves_tail_processing_order(
     """Test that cursor bounding keeps the most recently processed keys (tail)."""
     # Create keys in known order, with last few being identifiable
     many_keys = [f"manifests/batch_{i:03d}.json" for i in range(600)]
-    # Last few keys that should survive bounding
-    tail_keys = many_keys[-10:]  # batch_590.json through batch_599.json
     new_key = "manifests/batch_new.json"
 
     # Set cursor with many keys
