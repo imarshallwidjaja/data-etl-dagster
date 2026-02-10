@@ -248,4 +248,5 @@ class TestComplexSpreadsheetRouterAllowlist:
         assert resp.status_code == 200
         assert "regex" in resp.text
         assert "case-insensitive" in resp.text
-        assert "anchor_unpivot_v2" in resp.text
+        # Ensure the default submit payload uses the v2 template id (not just an example snippet).
+        assert "template_id: 'anchor_unpivot_v2'" in resp.text

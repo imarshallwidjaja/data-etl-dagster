@@ -87,6 +87,9 @@ def find_anchor_in_sheet_v2(
         )
 
     anchor_cf = anchor.casefold()
+    regex = None
+    if mode == "regex":
+        regex = re.compile(anchor, flags=re.IGNORECASE)
     for row_idx, row in enumerate(ws.iter_rows(values_only=True)):
         for col_idx, cell_value in enumerate(row):
             if cell_value is None:
@@ -98,7 +101,7 @@ def find_anchor_in_sheet_v2(
                 return (row_idx, col_idx)
             if mode == "contains" and anchor_cf in cell_cf:
                 return (row_idx, col_idx)
-            if mode == "regex" and re.search(anchor, cell_str, flags=re.IGNORECASE):
+            if mode == "regex" and regex.search(cell_str):
                 return (row_idx, col_idx)
 
     return None
@@ -172,22 +175,8 @@ def slugify_sheet_name_v2(name: str) -> str:
 
 
 def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
-    """
-    Validate that sheet names produce unique slugs after normalization.
-
-    Raises:
-        ValueError: If two sheet names normalize to the same slug.
-    """
-    seen_slugs: set[str] = set()
-    for result in sheet_results:
-        sheet_name = result["sheet_name"]
-        safe_sheet = _slugify_sheet_name(sheet_name)
-        if safe_sheet in seen_slugs:
-            raise ValueError(
-                f"Duplicate child key slug '{safe_sheet}' generated from sheet '{sheet_name}'. "
-                "Sheet names must produce unique slugs after normalization."
-            )
-        seen_slugs.add(safe_sheet)
+    """Validate that sheet names produce unique slugs after normalization."""
+    _check_slug_uniqueness_with(sheet_results, _slugify_sheet_name)
 
 
 def _check_slug_uniqueness_with(
