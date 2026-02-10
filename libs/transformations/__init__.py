@@ -18,6 +18,7 @@ This library provides:
 from .base import TransformStep, VectorStep
 from .vector import NormalizeCRSStep, SimplifyGeometryStep, CreateSpatialIndexStep
 from .registry import RecipeRegistry
+from .tabular_readers import read_csv_to_arrow, read_parquet_to_arrow
 
 __all__ = [
     "TransformStep",
@@ -26,5 +27,6 @@ __all__ = [
     "SimplifyGeometryStep",
     "CreateSpatialIndexStep",
     "RecipeRegistry",
+    "read_csv_to_arrow",
+    "read_parquet_to_arrow",
 ]
-

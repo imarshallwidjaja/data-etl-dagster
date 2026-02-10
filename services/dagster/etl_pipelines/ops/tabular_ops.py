@@ -13,8 +13,6 @@ from pathlib import Path
 from typing import Dict, Any
 
 import pyarrow as pa
-import pyarrow.compute as pc
-import pyarrow.csv as csv
 import pyarrow.parquet as pq
 
 from dagster import op, OpExecutionContext, In, Out
@@ -29,6 +27,7 @@ from libs.models import (
 from libs.s3_utils import extract_s3_key, parse_s3_path
 from libs.spatial_utils import normalize_headers
 from libs.normalization import extract_column_schema
+from libs.transformations.registry import RecipeRegistry
 
 
 def _download_tabular_from_landing(
@@ -84,8 +83,10 @@ def _download_tabular_from_landing(
 
     bucket, s3_key = parse_s3_path(s3_path)
 
-    # Create temporary file
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".csv")
+    # Create temporary file with suffix matching source tabular format
+    normalized_format = RecipeRegistry.normalize_tabular_format(file_entry.format)
+    temp_suffix = ".parquet" if normalized_format == "parquet" else ".csv"
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=temp_suffix)
     temp_file_path = temp_file.name
     temp_file.close()
 
@@ -124,7 +125,7 @@ def _load_and_clean_tabular(
     log,
 ) -> Dict[str, Any]:
     """
-    Core logic for loading CSV and cleaning headers.
+    Core logic for loading tabular files and cleaning headers.
 
     This function is extracted for easier unit testing and asset usage.
 
@@ -136,7 +137,7 @@ def _load_and_clean_tabular(
         Dict with table, header_mapping, row_count, columns, join_key_clean, manifest
 
     Raises:
-        RuntimeError: If CSV read or header cleaning fails
+        RuntimeError: If tabular read or header cleaning fails
         ValueError: If join_key is required but missing
     """
     local_file_path = download_result["local_file_path"]
@@ -144,14 +145,12 @@ def _load_and_clean_tabular(
     validated_manifest = Manifest(**manifest)
 
     try:
-        log.info(f"Reading CSV file: {local_file_path}")
+        file_format = validated_manifest.files[0].format
+        reader = RecipeRegistry.get_tabular_reader(file_format)
+        log.info(f"Reading {file_format} file: {local_file_path}")
 
-        # Read CSV into Arrow Table
-        table = csv.read_csv(
-            local_file_path,
-            parse_options=csv.ParseOptions(delimiter=","),
-            read_options=csv.ReadOptions(use_threads=True),
-        )
+        # Read tabular file into Arrow Table
+        table = reader(local_file_path)
 
         original_headers = table.column_names
         log.info(f"Read {len(original_headers)} columns, {len(table)} rows")
@@ -180,8 +179,15 @@ def _load_and_clean_tabular(
                 # Normalize join key column to string type and trim whitespace
                 col_idx = cleaned_headers.index(join_key_clean)
                 col = table.column(join_key_clean).cast(pa.string())
-                col = pc.utf8_trim_whitespace(col)
-                table = table.set_column(col_idx, join_key_clean, col)
+                trimmed_values = [
+                    value.strip() if isinstance(value, str) else value
+                    for value in col.to_pylist()
+                ]
+                table = table.set_column(
+                    col_idx,
+                    join_key_clean,
+                    pa.array(trimmed_values, type=pa.string()),
+                )
                 log.info(
                     f"Normalized join key column '{join_key_clean}' to string (trimmed whitespace)"
                 )

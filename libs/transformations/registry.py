@@ -4,17 +4,46 @@
 # Intent-based recipe lookup for transformation steps.
 # =============================================================================
 
-from typing import List
+from typing import Callable, List
+
+import pyarrow as pa
+
 from .base import VectorStep
+from .tabular_readers import read_csv_to_arrow, read_parquet_to_arrow
 from .vector import NormalizeCRSStep, SimplifyGeometryStep, CreateSpatialIndexStep
 
-__all__ = ["RecipeRegistry"]
+__all__ = [
+    "RecipeRegistry",
+    "normalize_tabular_format",
+    "get_tabular_reader",
+]
+
+
+def normalize_tabular_format(file_format: str) -> str:
+    """Normalize tabular format names into canonical lowercase values."""
+    normalized = file_format.strip().lower() if isinstance(file_format, str) else ""
+    if normalized in {"csv", "parquet"}:
+        return normalized
+
+    raise ValueError(
+        f"Unsupported tabular format '{file_format}'. Supported formats: CSV, Parquet"
+    )
+
+
+def get_tabular_reader(file_format: str) -> Callable[[str], pa.Table]:
+    """Resolve tabular file reader by format (case-insensitive)."""
+    normalized_format = normalize_tabular_format(file_format)
+    readers: dict[str, Callable[[str], pa.Table]] = {
+        "csv": read_csv_to_arrow,
+        "parquet": read_parquet_to_arrow,
+    }
+    return readers[normalized_format]
 
 
 class RecipeRegistry:
     """
     Registry for transformation recipes by intent.
-    
+
     Maps manifest intent fields to lists of transformation steps.
     Provides default recipe for unknown intents to maintain backward compatibility.
     """
@@ -58,3 +87,12 @@ class RecipeRegistry:
 
         return recipes.get(intent, default_recipe)
 
+    @staticmethod
+    def normalize_tabular_format(file_format: str) -> str:
+        """Compatibility wrapper around module-level normalizer."""
+        return normalize_tabular_format(file_format)
+
+    @staticmethod
+    def get_tabular_reader(file_format: str) -> Callable[[str], pa.Table]:
+        """Compatibility wrapper around module-level reader lookup."""
+        return get_tabular_reader(file_format)

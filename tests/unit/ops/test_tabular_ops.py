@@ -90,6 +90,7 @@ def test_download_tabular_from_landing_success():
         assert "manifest" in result
         assert result["manifest"] == SAMPLE_TABULAR_MANIFEST
         assert Path(result["local_file_path"]).exists()
+        assert Path(result["local_file_path"]).suffix == ".csv"
 
         mock_minio.download_from_landing.assert_called_once()
         call_args = mock_minio.download_from_landing.call_args
@@ -98,6 +99,46 @@ def test_download_tabular_from_landing_success():
     finally:
         Path(temp_path).unlink(missing_ok=True)
         if "local_file_path" in locals():
+            Path(result["local_file_path"]).unlink(missing_ok=True)
+
+
+def test_download_tabular_from_landing_parquet_uses_parquet_suffix():
+    """Test that Parquet format uses .parquet temporary file suffix."""
+    mock_minio = Mock()
+    mock_minio.landing_bucket = "landing-zone"
+    mock_minio.lake_bucket = "data-lake"
+    mock_log = Mock()
+
+    manifest = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "s3://landing-zone/batch_tabular_001/data.parquet",
+                "type": "tabular",
+                "format": "Parquet",
+            }
+        ],
+    }
+
+    mock_minio.download_from_landing.side_effect = lambda s3_key, local_path: Path(
+        local_path
+    ).write_text("placeholder")
+
+    result = _download_tabular_from_landing(
+        minio=mock_minio,
+        manifest=manifest,
+        log=mock_log,
+    )
+
+    try:
+        assert Path(result["local_file_path"]).exists()
+        assert Path(result["local_file_path"]).suffix == ".parquet"
+        mock_minio.download_from_landing.assert_called_once_with(
+            "batch_tabular_001/data.parquet",
+            result["local_file_path"],
+        )
+    finally:
+        if "result" in locals():
             Path(result["local_file_path"]).unlink(missing_ok=True)
 
 
@@ -346,6 +387,51 @@ def test_load_and_clean_tabular_success():
         # Verify file was cleaned up
         assert not Path(temp_path).exists()
 
+    finally:
+        Path(temp_path).unlink(missing_ok=True)
+
+
+def test_load_and_clean_tabular_parquet_format_uses_registry_reader():
+    """Test that Parquet file format resolves reader via registry."""
+    # Create a temporary parquet file
+    with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:
+        pq.write_table(pa.table({"id": ["1"], "name": ["Alice"]}), f.name)
+        temp_path = f.name
+
+    manifest_parquet = {
+        **SAMPLE_TABULAR_MANIFEST,
+        "files": [
+            {
+                "path": "s3://landing-zone/batch_tabular_001/data.parquet",
+                "type": "tabular",
+                "format": "Parquet",
+            }
+        ],
+    }
+
+    try:
+        download_result = {
+            "local_file_path": temp_path,
+            "manifest": manifest_parquet,
+        }
+        mock_log = Mock()
+
+        with patch(
+            "services.dagster.etl_pipelines.ops.tabular_ops.RecipeRegistry.get_tabular_reader"
+        ) as mock_get_tabular_reader:
+            mock_reader = Mock(return_value=pa.table({"id": ["1"], "name": ["Alice"]}))
+            mock_get_tabular_reader.return_value = mock_reader
+
+            result = _load_and_clean_tabular(
+                download_result=download_result,
+                log=mock_log,
+            )
+
+        mock_get_tabular_reader.assert_called_once_with("Parquet")
+        mock_reader.assert_called_once_with(temp_path)
+        assert result["row_count"] == 1
+        assert result["columns"] == ["id", "name"]
+        assert not Path(temp_path).exists()
     finally:
         Path(temp_path).unlink(missing_ok=True)
 
