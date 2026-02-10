@@ -47,12 +47,15 @@ def mock_minio_resource():
 
 @pytest.fixture
 def sensor_context(mock_minio_resource):
-    """Build a real SensorEvaluationContext with an ephemeral DagsterInstance."""
-    instance = DagsterInstance.ephemeral()
-    return build_sensor_context(
-        instance=instance,
-        resources={"minio": mock_minio_resource},
-    )
+    """Build a real SensorEvaluationContext with an ephemeral DagsterInstance.
+
+    Uses a yield fixture so the temporary instance is disposed after the test.
+    """
+    with DagsterInstance.ephemeral() as instance:
+        yield build_sensor_context(
+            instance=instance,
+            resources={"minio": mock_minio_resource},
+        )
 
 
 def _evaluate(sensor_context):
