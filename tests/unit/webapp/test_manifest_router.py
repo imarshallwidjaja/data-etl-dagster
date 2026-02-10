@@ -239,3 +239,13 @@ class TestComplexSpreadsheetRouterAllowlist:
             f"Expected non-404 for complex_spreadsheet schema, got {response.status_code}"
         )
         assert response.status_code == 200
+
+    def test_complex_spreadsheet_form_mentions_regex_support(
+        self, client, mock_mongodb_service
+    ):
+        """Complex spreadsheet form should mention regex support and v2 template id."""
+        resp = client.get("/manifests/new/complex_spreadsheet")
+        assert resp.status_code == 200
+        assert "regex" in resp.text
+        assert "case-insensitive" in resp.text
+        assert "anchor_unpivot_v2" in resp.text
