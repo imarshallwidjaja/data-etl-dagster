@@ -187,7 +187,7 @@ def _build_tabular_manifest(
     intent = "ingest_tabular"
 
     # Build file entries (tabular requires exactly one CSV)
-    files = _get_file_entries(form_data)
+    files = _get_file_entries(form_data, default_type=FileType.TABULAR)
 
     if len(files) != 1:
         raise ValueError("Tabular manifest requires exactly one file")
