@@ -1100,3 +1100,129 @@ class TestNonDefaultTemplateParamsPropagation:
         assert "Category Sub-Region" in df.columns
         assert "variable" in df.columns
         assert "value" in df.columns
+
+
+class TestSplitComplexSpreadsheetOpV2:
+    def test_v2_regex_anchor_splits(self, make_xlsx):
+        """v2 template dispatch supports regex anchor matching and v2 slugging."""
+        from dagster import build_op_context
+
+        xlsx_path = make_xlsx(
+            {
+                "Demographics 2024!": [
+                    ["Preamble line"],
+                    ["", "Population (%)", "Population (%)"],
+                    ["REGION name", "Male", "Female"],
+                    ["NSW", 100, 200],
+                    ["VIC", 300, 400],
+                ],
+            }
+        )
+
+        manifest = {
+            "batch_id": "batch_v2_test",
+            "uploader": "test_user",
+            "intent": "ingest_complex_spreadsheet",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_v2_test/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "metadata": {
+                "title": "V2 Params Test",
+                "description": "Test v2 regex dispatch",
+                "keywords": ["test"],
+                "source": "Unit Test",
+                "license": "MIT",
+                "attribution": "Test",
+                "project": "TEST",
+                "tags": {"dataset_id": "v2_test_ds"},
+                "complex_spreadsheet": {
+                    "template_id": "anchor_unpivot_v2",
+                    "template_params": {
+                        "anchor_text": r"region\s+name",
+                        "anchor_match": "regex",
+                        "header_rows": 2,
+                        "id_column_count": 1,
+                    },
+                },
+            },
+        }
+
+        mock_minio = Mock()
+        mock_minio.landing_bucket = "landing-zone"
+        mock_minio.lake_bucket = "data-lake"
+
+        def fake_download(s3_key, local_path):
+            shutil.copy(xlsx_path, local_path)
+
+        mock_minio.download_from_landing.side_effect = fake_download
+        mock_minio.object_exists_in_landing.return_value = False
+        mock_minio.upload_json_to_landing = Mock()
+
+        mock_mongodb = Mock()
+        mock_mongodb.get_run_object_id.return_value = "60a1f77bcf86cd799439022"
+
+        context = build_op_context(
+            resources={"minio": mock_minio, "mongodb": mock_mongodb},
+        )
+
+        import polars as pl
+
+        captured_dfs = []
+
+        def capture_intermediate(
+            *,
+            local_path,
+            batch_id,
+            run_id,
+            producer,
+            label,
+            parameters,
+            content_type,
+            minio,
+            mongodb,
+            log,
+        ):
+            df = pl.read_parquet(local_path)
+            captured_dfs.append(df)
+            return {
+                "artifact_id": "art_456",
+                "blob_s3_path": "s3://data-lake/blobs/test_hash_v2",
+            }
+
+        with patch(
+            "services.dagster.etl_pipelines.ops.complex_spreadsheet_ops."
+            "register_intermediate_from_local_file",
+            side_effect=capture_intermediate,
+        ):
+            result = split_complex_spreadsheet_op(context, manifest)
+
+        assert result == manifest
+        assert mock_minio.upload_json_to_landing.call_count == 1
+
+        call_args = mock_minio.upload_json_to_landing.call_args
+        child_key = call_args[0][0]
+        child_manifest = call_args[0][1]
+
+        assert child_key == "manifests/batch_v2_test__demographics_2024.json"
+        assert child_manifest["batch_id"] == "batch_v2_test__demographics_2024"
+        assert (
+            child_manifest["metadata"]["tags"]["dataset_id"]
+            == "v2_test_ds__demographics_2024"
+        )
+        assert (
+            child_manifest["metadata"]["tags"]["source_sheet"] == "Demographics 2024!"
+        )
+
+        assert len(captured_dfs) == 1
+        df = captured_dfs[0]
+        assert df.shape == (4, 3)
+        assert "region_name" in df.columns
+        assert "variable" in df.columns
+        assert "value" in df.columns
+        assert sorted(df["variable"].unique().to_list()) == sorted(
+            ["population_male", "population_female"]
+        )
