@@ -16,6 +16,8 @@ from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
     compose_multi_row_header,
     melt_to_long_format,
     process_workbook_sheets,
+    process_workbook_sheets_v2,
+    slugify_sheet_name_v2,
     split_complex_spreadsheet_op,
 )
 
@@ -537,6 +539,107 @@ class TestProcessWorkbookSheets:
             id_column_count=1,
         )
         assert len(results) == 1
+
+
+# =============================================================================
+# Test: process_workbook_sheets_v2
+# =============================================================================
+
+
+class TestProcessWorkbookSheetsV2:
+    def test_case_insensitive_exact_anchor_match(self, make_xlsx):
+        """v2 exact matching is case-insensitive."""
+        path = make_xlsx(
+            {
+                "Data": [
+                    ["Year", "Value"],
+                    [2020, 100],
+                ],
+            }
+        )
+
+        results = process_workbook_sheets_v2(
+            xlsx_path=path,
+            anchor="year",
+            anchor_mode="exact",
+            header_rows=1,
+            id_column_count=1,
+        )
+
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        assert set(df.columns) == {"year", "variable", "value"}
+        assert df.shape[0] == 1
+
+    def test_regex_anchor_match_and_header_normalization(self, make_xlsx):
+        """v2 supports regex anchors and normalizes composed headers."""
+        path = make_xlsx(
+            {
+                "Data": [
+                    ["Preamble"],
+                    ["", "Population (%)", "Population (%)"],
+                    ["Region Name", "Male", "Female"],
+                    ["NSW", 100, 200],
+                    ["VIC", 300, 400],
+                ],
+            }
+        )
+
+        results = process_workbook_sheets_v2(
+            xlsx_path=path,
+            anchor=r"region\s+name",
+            anchor_mode="regex",
+            header_rows=2,
+            id_column_count=1,
+        )
+
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        assert set(df.columns) == {"region_name", "variable", "value"}
+        assert df.shape[0] == 4
+        assert sorted(df["variable"].unique().to_list()) == sorted(
+            ["population_male", "population_female"]
+        )
+
+    def test_regex_with_blank_anchor_defaults_to_top_left(self, make_xlsx):
+        """v2 regex mode with blank anchor_text falls back to top-left anchor."""
+        path = make_xlsx(
+            {
+                "Data": [
+                    ["Region", "2020"],
+                    ["NSW", 100],
+                ],
+            }
+        )
+
+        results = process_workbook_sheets_v2(
+            xlsx_path=path,
+            anchor="   ",
+            anchor_mode="regex",
+            header_rows=1,
+            id_column_count=1,
+        )
+
+        assert len(results) == 1
+        df = results[0]["dataframe"]
+        assert set(df.columns) == {"region", "variable", "value"}
+        assert df.shape[0] == 1
+
+
+# =============================================================================
+# Test: slugify_sheet_name_v2
+# =============================================================================
+
+
+class TestSlugifyV2:
+    def test_slugify_sheet_name_v2_normalizes_case_and_symbols(self):
+        assert slugify_sheet_name_v2("  Population (%) 2024 ") == "population_2024"
+
+    def test_slugify_sheet_name_v2_collapses_whitespace_and_underscores(self):
+        assert slugify_sheet_name_v2("Data__   Sheet") == "data_sheet"
+
+    def test_slugify_sheet_name_v2_falls_back_to_sheet(self):
+        assert slugify_sheet_name_v2("!!!") == "sheet"
 
 
 # =============================================================================
