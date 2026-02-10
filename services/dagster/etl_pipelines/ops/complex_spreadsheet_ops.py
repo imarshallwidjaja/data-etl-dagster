@@ -5,6 +5,7 @@
 # plus a Dagster op that splits a complex XLSX into per-sheet parquet files.
 # =============================================================================
 
+import re
 import tempfile
 import importlib
 from pathlib import Path
@@ -63,6 +64,43 @@ def find_anchor_in_sheet(
                 return (row_idx, col_idx)
             if mode == "contains" and anchor in cell_str:
                 return (row_idx, col_idx)
+    return None
+
+
+def find_anchor_in_sheet_v2(
+    ws: Worksheet,
+    anchor: str,
+    mode: str = "exact",
+) -> Optional[tuple[int, int]]:
+    """
+    Search an openpyxl worksheet for a cell matching *anchor* (v2 semantics).
+
+    Args:
+        ws: openpyxl Worksheet (data already loaded).
+        anchor: The string (or regex pattern) to search for.
+        mode: ``"exact"`` for equality, ``"contains"`` for substring,
+            ``"regex"`` for regular-expression search.
+
+    Returns:
+        ``(row_0idx, col_0idx)`` of the first match, or ``None``.
+    """
+    anchor_casefold = anchor.casefold()
+    for row_idx, row in enumerate(ws.iter_rows(values_only=True)):
+        for col_idx, cell_value in enumerate(row):
+            if cell_value is None:
+                continue
+            cell_str = str(cell_value)
+            cell_casefold = cell_str.casefold()
+
+            if mode == "exact" and cell_casefold == anchor_casefold:
+                return (row_idx, col_idx)
+
+            if mode == "contains" and anchor_casefold in cell_casefold:
+                return (row_idx, col_idx)
+
+            if mode == "regex" and re.search(anchor, cell_str, re.IGNORECASE):
+                return (row_idx, col_idx)
+
     return None
 
 
