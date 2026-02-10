@@ -13,6 +13,7 @@ Dagster code location: assets, ops, sensors, resources, and partitioning logic.
 - Raw source archival writes `artifacts` that reference content-addressed `blobs` in `data-lake/blobs/`.
 - Archive flow is hash-first, upload-second to avoid memory-heavy hashing when a blob already exists.
 - Rerun flows rewrite manifest file paths to `s3://data-lake/blobs/...` using the latest raw_source artifact per source path.
+- Complex spreadsheet splitter behavior dispatches by `template_id`; new templates are additive handlers and must remain backward compatible with existing template versions.
 
 ## References
 - Pipeline behavior: `docs/agents/pipelines.md`

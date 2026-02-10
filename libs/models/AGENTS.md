@@ -22,6 +22,14 @@ These are the core contracts for ingestion and persistence.
 - Canonical settings live in `libs/models/config.py`.
 - `MINIO_ENDPOINT` must be `host:port` without scheme.
 
+## Complex spreadsheet templates
+- `manifests.metadata.complex_spreadsheet` is per-manifest processing config, not a stored template library.
+- `template_id` is a versioned discriminator. New behavior is additive via new IDs (for example `anchor_unpivot_v2`).
+- `template_params` schema is versioned in code via typed models (for example `ComplexSpreadsheetTemplateParamsV1` and future `...V2`).
+- Backwards compatibility rule: never change the meaning of an existing `*_v1` template; introduce a new `*_v2` template ID instead.
+- Implementation rule: once multiple versions exist, model complex spreadsheet config as a discriminated union on `template_id`.
+- Mongo migration rule: the current migration only allows the `complex_spreadsheet` field. Adding new template versions typically does not require a Mongo migration unless DB-level `template_params` shape enforcement is introduced.
+
 ## References
 - Root guide: `AGENTS.md`
 - MongoDB migrations: `services/mongodb/AGENTS.md`
