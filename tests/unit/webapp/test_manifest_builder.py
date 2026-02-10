@@ -97,6 +97,22 @@ class TestBuildManifest:
         assert manifest.intent == "ingest_tabular"
         assert manifest.files[0].type == "tabular"
 
+    def test_tabular_manifest_omitted_file_type_defaults_to_tabular(self):
+        """Omitting file type for tabular manifests should default to tabular."""
+        form_data = {
+            "project": "CENSUS_DATA",
+            "files": [{"path": "s3://bucket/data.csv", "format": "CSV"}],
+        }
+
+        manifest = build_manifest(
+            asset_type="tabular",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.intent == "ingest_tabular"
+        assert manifest.files[0].type == "tabular"
+
     def test_build_joined_manifest(self):
         """Joined manifest should have join config."""
         form_data = {
