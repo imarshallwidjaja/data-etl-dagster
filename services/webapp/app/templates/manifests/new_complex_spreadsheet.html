@@ -69,7 +69,7 @@
 
                 {{ forms.render_text_field('anchor_text', 'Anchor Text', required=True, placeholder='e.g., TABLE', description='Text pattern that marks the start of each sub-table') }}
 
-                {{ forms.render_text_field('anchor_match', 'Anchor Match Strategy', placeholder='exact', description='How to match anchor text (exact or contains). Default: exact') }}
+                {{ forms.render_text_field('anchor_match', 'Anchor Match Strategy', placeholder='exact', description='How to match anchor text (exact, contains, or regex). Regex matching is case-insensitive. Default: exact') }}
 
                 {{ forms.render_text_field('header_rows', 'Header Rows', placeholder='1', description='Number of header rows ending at anchor row (anchor is the last header row). Default: 1') }}
 
@@ -106,7 +106,7 @@
         }
     ],
     "complex_spreadsheet": {
-        "template_id": "anchor_unpivot_v1",
+        "template_id": "anchor_unpivot_v2",
         "template_params": {
             "anchor_text": "Year"
         }
@@ -183,7 +183,7 @@
                 format: 'XLSX'
             }],
             complex_spreadsheet: {
-                template_id: 'anchor_unpivot_v1',
+                template_id: 'anchor_unpivot_v2',
                 template_params: templateParams
             },
             tags: {}
