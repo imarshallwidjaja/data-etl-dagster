@@ -131,9 +131,13 @@ def complex_spreadsheet_sensor(context: SensorEvaluationContext, minio: MinIORes
                 run_key=f"complex_spreadsheet:{manifest.batch_id}:{partition_key}",
                 run_config={
                     "ops": {
-                        "raw_manifest_json": {
-                            "config": {"manifest": manifest.model_dump(mode="json")}
-                        },
+                        "init_mongo_run_op": {
+                            "inputs": {
+                                "payload": {
+                                    "value": manifest.model_dump(mode="json"),
+                                }
+                            }
+                        }
                     }
                 },
                 partition_key=partition_key,

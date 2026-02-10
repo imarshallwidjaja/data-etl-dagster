@@ -120,8 +120,13 @@ def test_complex_spreadsheet_sensor_emits_run_request_for_ingest_complex_spreads
     # job_name is provided by the sensor decorator; RunRequest.job_name is typically None
     assert rr.job_name is None
     assert rr.partition_key == "complex_dataset_001"
+    assert "init_mongo_run_op" in rr.run_config["ops"]
+    assert "inputs" in rr.run_config["ops"]["init_mongo_run_op"]
+    assert "payload" in rr.run_config["ops"]["init_mongo_run_op"]["inputs"]
     assert (
-        rr.run_config["ops"]["raw_manifest_json"]["config"]["manifest"]["batch_id"]
+        rr.run_config["ops"]["init_mongo_run_op"]["inputs"]["payload"]["value"][
+            "batch_id"
+        ]
         == complex_manifest["batch_id"]
     )
     mock_sensor_context.instance.add_dynamic_partitions.assert_called_once_with(

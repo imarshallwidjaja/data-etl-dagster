@@ -216,34 +216,26 @@ def _launch_job_from_run_request(
             raise RuntimeError(
                 "Expected sensor run_config.ops for complex_table_splitter_job"
             )
-        raw_manifest_json = sensor_ops.get("raw_manifest_json")
-        if not isinstance(raw_manifest_json, dict):
+        init_mongo_op = sensor_ops.get("init_mongo_run_op")
+        if not isinstance(init_mongo_op, dict):
             raise RuntimeError(
-                "Expected run_config.ops.raw_manifest_json for complex_table_splitter_job"
+                "Expected run_config.ops.init_mongo_run_op for complex_table_splitter_job"
             )
-        raw_manifest_config = raw_manifest_json.get("config")
-        if not isinstance(raw_manifest_config, dict):
+        init_mongo_inputs = init_mongo_op.get("inputs")
+        if not isinstance(init_mongo_inputs, dict):
             raise RuntimeError(
-                "Expected run_config.ops.raw_manifest_json.config for complex_table_splitter_job"
+                "Expected run_config.ops.init_mongo_run_op.inputs for complex_table_splitter_job"
             )
-        manifest = raw_manifest_config.get("manifest")
-        if not isinstance(manifest, dict):
+        payload_input = init_mongo_inputs.get("payload")
+        if not isinstance(payload_input, dict):
             raise RuntimeError(
-                "Expected manifest dict in run_config.ops.raw_manifest_json.config"
+                "Expected run_config.ops.init_mongo_run_op.inputs.payload for complex_table_splitter_job"
             )
-
-        # Op-based splitter job starts at init_mongo_run_op(payload).
-        run_config_data = {
-            "ops": {
-                "init_mongo_run_op": {
-                    "inputs": {
-                        "payload": {
-                            "value": manifest,
-                        }
-                    }
-                }
-            }
-        }
+        manifest_value = payload_input.get("value")
+        if not isinstance(manifest_value, dict):
+            raise RuntimeError(
+                "Expected manifest dict in run_config.ops.init_mongo_run_op.inputs.payload.value"
+            )
 
     variables = {
         "executionParams": {
@@ -467,6 +459,13 @@ class TestComplexSpreadsheetE2E:
 
             assert splitter_run_request.partition_key == parent_dataset_id
             assert splitter_run_request.tags.get("testing") == "true"
+            assert "init_mongo_run_op" in splitter_run_request.run_config["ops"]
+            assert (
+                splitter_run_request.run_config["ops"]["init_mongo_run_op"]["inputs"][
+                    "payload"
+                ]["value"]["batch_id"]
+                == parent_batch_id
+            )
 
             _assert_minio_object_exists(
                 minio_client,

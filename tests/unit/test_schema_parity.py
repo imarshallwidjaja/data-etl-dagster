@@ -135,6 +135,24 @@ class TestManifestSchemaParity:
             "If intentional, create a new migration and update parity tests."
         )
 
+    def test_manifest_complex_spreadsheet_validator_shape(self):
+        """Complex spreadsheet metadata validator should enforce template contract keys."""
+        metadata_properties = MANIFESTS_SCHEMA_LATEST["$jsonSchema"]["properties"][
+            "metadata"
+        ]["properties"]
+        complex_schema = metadata_properties["complex_spreadsheet"]
+
+        bson_type = complex_schema.get("bsonType")
+        assert isinstance(bson_type, list)
+        assert set(bson_type) == {"object", "null"}
+
+        required_keys = set(complex_schema.get("required", []))
+        assert required_keys == {"template_id", "template_params"}
+
+        complex_properties = complex_schema.get("properties", {})
+        assert complex_properties.get("template_id", {}).get("bsonType") == "string"
+        assert complex_properties.get("template_params", {}).get("bsonType") == "object"
+
 
 class TestRunSchemaParity:
     """Verify Run model matches latest migration schema."""
