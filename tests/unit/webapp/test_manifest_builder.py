@@ -3,6 +3,7 @@
 # =============================================================================
 
 import pytest
+from pydantic import ValidationError
 
 from app.services.manifest_builder import (
     generate_batch_id,
@@ -229,6 +230,63 @@ class TestBuildComplexSpreadsheetManifest:
         assert manifest.metadata.complex_spreadsheet.template_id == "anchor_unpivot_v1"
         assert len(manifest.files) == 1
         assert manifest.files[0].format == "XLSX"
+
+    def test_build_complex_spreadsheet_manifest_v2_basic(self):
+        """complex_spreadsheet v2 config should parse and attach successfully."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v2",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "anchor_match": "regex",
+                },
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.intent == "ingest_complex_spreadsheet"
+        assert manifest.metadata.complex_spreadsheet is not None
+        assert manifest.metadata.complex_spreadsheet.template_id == "anchor_unpivot_v2"
+
+    def test_build_complex_spreadsheet_manifest_v2_invalid_regex_raises(self):
+        """complex_spreadsheet v2 should reject invalid regex anchor_text."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v2",
+                "template_params": {
+                    "anchor_text": "[",
+                    "anchor_match": "regex",
+                },
+            },
+        }
+
+        with pytest.raises(ValidationError, match="Invalid anchor regex"):
+            build_manifest(
+                asset_type="complex_spreadsheet",
+                form_data=form_data,
+                uploader="testuser",
+            )
 
     def test_build_complex_spreadsheet_requires_one_file(self):
         """complex_spreadsheet manifest should enforce exactly one file."""

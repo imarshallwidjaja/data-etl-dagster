@@ -8,6 +8,8 @@ import re
 import uuid
 from typing import Any
 
+from pydantic import TypeAdapter
+
 from libs.models import (
     ComplexSpreadsheetConfig,
     FileEntry,
@@ -268,12 +270,10 @@ def _build_complex_spreadsheet_manifest(
         raise ValueError("Complex spreadsheet manifest requires exactly one file")
 
     # Build ComplexSpreadsheetConfig (validates via Pydantic)
-    if isinstance(cs_config_data, dict):
-        cs_config = ComplexSpreadsheetConfig(**cs_config_data)
-    elif isinstance(cs_config_data, ComplexSpreadsheetConfig):
-        cs_config = cs_config_data
-    else:
+    if not isinstance(cs_config_data, dict):
         raise ValueError("Invalid complex_spreadsheet config format")
+
+    cs_config = TypeAdapter(ComplexSpreadsheetConfig).validate_python(cs_config_data)
 
     # Attach complex_spreadsheet to metadata
     metadata_with_cs = metadata.model_copy(update={"complex_spreadsheet": cs_config})

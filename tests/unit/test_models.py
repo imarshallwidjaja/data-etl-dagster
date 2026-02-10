@@ -6,7 +6,7 @@ Tests validation logic, type checking, and model behavior for all Pydantic model
 
 import pytest
 from datetime import datetime
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from libs.models import (
     CRS,
@@ -1559,10 +1559,12 @@ class TestComplexSpreadsheetIntent:
         from libs.models.manifest import ComplexSpreadsheetConfig
 
         with pytest.raises(ValidationError):
-            ComplexSpreadsheetConfig(
-                template_id="anchor_unpivot_v1",
-                template_params={"anchor_text": "Year"},
-                unknown="bad",
+            TypeAdapter(ComplexSpreadsheetConfig).validate_python(
+                {
+                    "template_id": "anchor_unpivot_v1",
+                    "template_params": {"anchor_text": "Year"},
+                    "unknown": "bad",
+                }
             )
 
     def test_complex_spreadsheet_template_params_extra_forbid(self):
@@ -1570,7 +1572,9 @@ class TestComplexSpreadsheetIntent:
         from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
 
         with pytest.raises(ValidationError):
-            ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", bad_field="nope")
+            ComplexSpreadsheetTemplateParamsV1.model_validate(
+                {"anchor_text": "Year", "bad_field": "nope"}
+            )
 
     # --- ComplexSpreadsheetTemplateParamsV1 field tests ---------------------
 
@@ -1614,7 +1618,9 @@ class TestComplexSpreadsheetIntent:
         from libs.models.manifest import ComplexSpreadsheetTemplateParamsV1
 
         with pytest.raises(ValidationError, match="anchor_match"):
-            ComplexSpreadsheetTemplateParamsV1(anchor_text="Year", anchor_match="regex")
+            ComplexSpreadsheetTemplateParamsV1.model_validate(
+                {"anchor_text": "Year", "anchor_match": "regex"}
+            )
 
     def test_template_params_v1_rejects_header_rows_zero(self):
         """header_rows must be >= 1."""
@@ -1636,20 +1642,54 @@ class TestComplexSpreadsheetIntent:
         """template_id='anchor_unpivot_v1' is accepted."""
         from libs.models.manifest import ComplexSpreadsheetConfig
 
-        cfg = ComplexSpreadsheetConfig(
-            template_id="anchor_unpivot_v1",
-            template_params={"anchor_text": "Year"},
+        cfg = TypeAdapter(ComplexSpreadsheetConfig).validate_python(
+            {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {"anchor_text": "Year"},
+            }
         )
         assert cfg.template_id == "anchor_unpivot_v1"
+
+    def test_template_id_accepts_anchor_unpivot_v2(self):
+        """template_id='anchor_unpivot_v2' is accepted."""
+        from libs.models.manifest import ComplexSpreadsheetConfig
+
+        cfg = TypeAdapter(ComplexSpreadsheetConfig).validate_python(
+            {
+                "template_id": "anchor_unpivot_v2",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "anchor_match": "regex",
+                },
+            }
+        )
+        assert cfg.template_id == "anchor_unpivot_v2"
+
+    def test_template_params_v2_rejects_invalid_anchor_regex(self):
+        """Invalid regex in v2 anchor_text is rejected when anchor_match='regex'."""
+        from libs.models.manifest import ComplexSpreadsheetConfig
+
+        with pytest.raises(ValidationError, match="Invalid anchor regex"):
+            TypeAdapter(ComplexSpreadsheetConfig).validate_python(
+                {
+                    "template_id": "anchor_unpivot_v2",
+                    "template_params": {
+                        "anchor_text": "[",
+                        "anchor_match": "regex",
+                    },
+                }
+            )
 
     def test_template_id_rejects_unknown_value(self):
         """Unknown template_id values are rejected at validation."""
         from libs.models.manifest import ComplexSpreadsheetConfig
 
         with pytest.raises(ValidationError, match="template_id"):
-            ComplexSpreadsheetConfig(
-                template_id="unknown_template",
-                template_params={"anchor_text": "Year"},
+            TypeAdapter(ComplexSpreadsheetConfig).validate_python(
+                {
+                    "template_id": "unknown_template",
+                    "template_params": {"anchor_text": "Year"},
+                }
             )
 
     # --- empty/None normalization ------------------------------------------
