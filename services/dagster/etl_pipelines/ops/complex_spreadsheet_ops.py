@@ -18,6 +18,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from dagster import op, OpExecutionContext, In, Out
 
 from libs.s3_utils import parse_s3_path
+from libs.spatial_utils.tabular_headers import normalize_headers
 
 
 def _get_register_intermediate_from_local_file():
@@ -75,30 +76,29 @@ def find_anchor_in_sheet_v2(
     """
     Search an openpyxl worksheet for a cell matching *anchor* (v2 semantics).
 
-    Args:
-        ws: openpyxl Worksheet (data already loaded).
-        anchor: The string (or regex pattern) to search for.
-        mode: ``"exact"`` for equality, ``"contains"`` for substring,
-            ``"regex"`` for regular-expression search.
-
-    Returns:
-        ``(row_0idx, col_0idx)`` of the first match, or ``None``.
+    Semantics:
+    - exact/contains are case-insensitive
+    - regex uses ``re.search(..., re.IGNORECASE)``
     """
-    anchor_casefold = anchor.casefold()
+    if mode not in {"exact", "contains", "regex"}:
+        raise ValueError(
+            f"Unsupported anchor_mode '{mode}'. "
+            "Expected one of: exact, contains, regex."
+        )
+
+    anchor_cf = anchor.casefold()
     for row_idx, row in enumerate(ws.iter_rows(values_only=True)):
         for col_idx, cell_value in enumerate(row):
             if cell_value is None:
                 continue
             cell_str = str(cell_value)
-            cell_casefold = cell_str.casefold()
+            cell_cf = cell_str.casefold()
 
-            if mode == "exact" and cell_casefold == anchor_casefold:
+            if mode == "exact" and cell_cf == anchor_cf:
                 return (row_idx, col_idx)
-
-            if mode == "contains" and anchor_casefold in cell_casefold:
+            if mode == "contains" and anchor_cf in cell_cf:
                 return (row_idx, col_idx)
-
-            if mode == "regex" and re.search(anchor, cell_str, re.IGNORECASE):
+            if mode == "regex" and re.search(anchor, cell_str, flags=re.IGNORECASE):
                 return (row_idx, col_idx)
 
     return None
@@ -162,6 +162,13 @@ def melt_to_long_format(
 def _slugify_sheet_name(name: str) -> str:
     """Normalize sheet names to safe, stable child-key slugs."""
     return name.replace(" ", "_").lower()
+
+
+def slugify_sheet_name_v2(name: str) -> str:
+    """Normalize sheet names for v2 child-key slugs with safe fallback."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", name.strip().lower())
+    normalized = re.sub(r"_+", "_", normalized).strip("_")
+    return normalized or "sheet"
 
 
 def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
@@ -298,6 +305,128 @@ def process_workbook_sheets(
             # Melt to long format
             melted = melt_to_long_format(data, id_column_count=id_column_count)
 
+            results.append({"sheet_name": sheet_name, "dataframe": melted})
+    finally:
+        wb.close()
+
+    if not results:
+        if use_default_anchor:
+            raise ValueError(
+                "No sheets produced data using the default top-left anchor (0, 0). "
+                "All sheets were skipped."
+            )
+        raise ValueError(
+            f"No sheets contained the anchor '{anchor_text}' (mode={anchor_mode}). "
+            "All sheets were skipped."
+        )
+
+    return results
+
+
+def process_workbook_sheets_v2(
+    *,
+    xlsx_path: str,
+    anchor: Optional[str],
+    anchor_mode: str = "exact",
+    header_rows: int = 1,
+    id_column_count: int = 1,
+    sheet_names: Optional[list[str]] = None,
+) -> list[dict[str, Any]]:
+    """
+    v2 workbook processing:
+    - case-insensitive exact/contains + regex anchor matching
+    - composed headers normalized via ``normalize_headers``
+    - v1 behavior remains unchanged in ``process_workbook_sheets``
+    """
+    if header_rows < 1:
+        raise ValueError("header_rows must be >= 1")
+    if id_column_count < 1:
+        raise ValueError("id_column_count must be >= 1")
+    if anchor_mode not in {"exact", "contains", "regex"}:
+        raise ValueError(
+            f"Unsupported anchor_mode '{anchor_mode}'. "
+            "Expected one of: exact, contains, regex."
+        )
+
+    wb = openpyxl.load_workbook(xlsx_path, read_only=True, data_only=True)
+    results: list[dict[str, Any]] = []
+    anchor_text = anchor.strip() if isinstance(anchor, str) else ""
+    use_default_anchor = not anchor_text
+
+    try:
+        sheets_to_process = wb.sheetnames
+        if sheet_names:
+            sheets_to_process = [s for s in wb.sheetnames if s in sheet_names]
+
+        for sheet_name in sheets_to_process:
+            ws = wb[sheet_name]
+
+            if use_default_anchor:
+                pos = (0, 0)
+            else:
+                try:
+                    pos = find_anchor_in_sheet_v2(
+                        ws,
+                        anchor=anchor_text,
+                        mode=anchor_mode,
+                    )
+                except re.error as e:
+                    raise ValueError(
+                        f"Invalid regex anchor pattern '{anchor_text}': {e}"
+                    )
+
+            if pos is None:
+                continue
+
+            anchor_row, anchor_col = pos
+            header_start = max(0, anchor_row - (header_rows - 1))
+
+            raw_df = pl.read_excel(
+                xlsx_path,
+                sheet_name=sheet_name,
+                engine="calamine",
+                has_header=False,
+                drop_empty_rows=False,
+                drop_empty_cols=False,
+                raise_if_empty=False,
+            )
+
+            if raw_df.is_empty():
+                continue
+
+            sliced = raw_df.slice(header_start)
+            if anchor_col > 0:
+                sliced = sliced.select(sliced.columns[anchor_col:])
+
+            header_raw_rows: list[list[Any]] = []
+            for i in range(header_rows):
+                if i < sliced.height:
+                    header_raw_rows.append(list(sliced.row(i, named=False)))
+            headers = compose_multi_row_header(header_raw_rows)
+
+            data = sliced.slice(header_rows)
+
+            adjusted_headers = headers[: data.width] + [
+                f"_col{i}" for i in range(len(headers), data.width)
+            ]
+            _, normalized_headers = normalize_headers(
+                [str(h) if h is not None else "" for h in adjusted_headers]
+            )
+            data = data.rename(dict(zip(data.columns, normalized_headers)))
+
+            while data.height > 0:
+                last_row = data.tail(1)
+                if last_row.select(pl.all().is_null()).row(0) == tuple(
+                    [True] * data.width
+                ):
+                    data = data.head(data.height - 1)
+                else:
+                    break
+
+            if data.is_empty():
+                continue
+
+            melted = melt_to_long_format(data, id_column_count=id_column_count)
             results.append({"sheet_name": sheet_name, "dataframe": melted})
     finally:
         wb.close()
