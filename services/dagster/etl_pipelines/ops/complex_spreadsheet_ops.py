@@ -9,7 +9,7 @@ import re
 import tempfile
 import importlib
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 
 import openpyxl
 import polars as pl
@@ -182,6 +182,23 @@ def _check_slug_uniqueness(sheet_results: list[dict[str, Any]]) -> None:
     for result in sheet_results:
         sheet_name = result["sheet_name"]
         safe_sheet = _slugify_sheet_name(sheet_name)
+        if safe_sheet in seen_slugs:
+            raise ValueError(
+                f"Duplicate child key slug '{safe_sheet}' generated from sheet '{sheet_name}'. "
+                "Sheet names must produce unique slugs after normalization."
+            )
+        seen_slugs.add(safe_sheet)
+
+
+def _check_slug_uniqueness_with(
+    sheet_results: list[dict[str, Any]],
+    slugify: Callable[[str], str],
+) -> None:
+    """Validate unique slugs using a provided slugifier."""
+    seen_slugs: set[str] = set()
+    for result in sheet_results:
+        sheet_name = result["sheet_name"]
+        safe_sheet = slugify(sheet_name)
         if safe_sheet in seen_slugs:
             raise ValueError(
                 f"Duplicate child key slug '{safe_sheet}' generated from sheet '{sheet_name}'. "
@@ -506,12 +523,6 @@ def split_complex_spreadsheet_op(
             raise ValueError(f"Unsupported bucket '{bucket}' for XLSX download")
 
         # --- Determine template parameters ---
-        if template_id != "anchor_unpivot_v1":
-            raise ValueError(
-                f"Unsupported template_id '{template_id}'. "
-                "Only 'anchor_unpivot_v1' is currently supported."
-            )
-
         params = cs_config.template_params
         anchor = params.anchor_text
         anchor_mode = params.anchor_match
@@ -520,25 +531,42 @@ def split_complex_spreadsheet_op(
         sheet_names = params.sheet_names
 
         # --- Step 2: Process workbook ---
-        sheet_results = process_workbook_sheets(
-            xlsx_path=tmp_xlsx_path,
-            anchor=anchor,
-            anchor_mode=anchor_mode,
-            header_rows=header_rows,
-            id_column_count=id_column_count,
-            sheet_names=sheet_names,
-        )
+        if template_id == "anchor_unpivot_v1":
+            sheet_results = process_workbook_sheets(
+                xlsx_path=tmp_xlsx_path,
+                anchor=anchor,
+                anchor_mode=anchor_mode,
+                header_rows=header_rows,
+                id_column_count=id_column_count,
+                sheet_names=sheet_names,
+            )
+            slugify_sheet_name = _slugify_sheet_name
+        elif template_id == "anchor_unpivot_v2":
+            sheet_results = process_workbook_sheets_v2(
+                xlsx_path=tmp_xlsx_path,
+                anchor=anchor,
+                anchor_mode=anchor_mode,
+                header_rows=header_rows,
+                id_column_count=id_column_count,
+                sheet_names=sheet_names,
+            )
+            slugify_sheet_name = slugify_sheet_name_v2
+        else:
+            raise ValueError(
+                f"Unsupported template_id '{template_id}'. "
+                "Supported templates: 'anchor_unpivot_v1', 'anchor_unpivot_v2'."
+            )
     finally:
         Path(tmp_xlsx_path).unlink(missing_ok=True)
 
     # --- Step 3: Preflight collision check ---
     # First, check for duplicate slugs within this run
-    _check_slug_uniqueness(sheet_results)
+    _check_slug_uniqueness_with(sheet_results, slugify_sheet_name)
 
     child_manifest_keys: list[str] = []
     for result in sheet_results:
         sheet_name = result["sheet_name"]
-        safe_sheet = _slugify_sheet_name(sheet_name)
+        safe_sheet = slugify_sheet_name(sheet_name)
         child_batch_id = f"{batch_id}__{safe_sheet}"
         child_key = f"manifests/{child_batch_id}.json"
         child_manifest_keys.append(child_key)
@@ -557,7 +585,7 @@ def split_complex_spreadsheet_op(
     for idx, result in enumerate(sheet_results):
         sheet_name = result["sheet_name"]
         df: pl.DataFrame = result["dataframe"]
-        safe_sheet = _slugify_sheet_name(sheet_name)
+        safe_sheet = slugify_sheet_name(sheet_name)
         child_batch_id = f"{batch_id}__{safe_sheet}"
         child_dataset_id = f"{dataset_id_base}__{safe_sheet}"
 
