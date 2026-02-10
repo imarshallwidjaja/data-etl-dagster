@@ -3,8 +3,9 @@
 # =============================================================================
 
 import pytest
-from unittest.mock import Mock, MagicMock, patch, PropertyMock
+from unittest.mock import Mock, PropertyMock
 from dagster import build_op_context
+from libs.models import Manifest
 
 from services.dagster.etl_pipelines.ops.load_op import (
     load_to_postgis,
@@ -40,6 +41,10 @@ SAMPLE_MANIFEST = {
         "join_config": None,
     },
 }
+
+NORMALIZED_SAMPLE_MANIFEST = Manifest.model_validate(SAMPLE_MANIFEST).model_dump(
+    mode="json"
+)
 
 MULTI_FILE_MANIFEST = {
     "batch_id": "batch_002",
@@ -117,7 +122,7 @@ def test_load_files_to_postgis_success():
 
     # Verify result
     assert result["schema"] == "proc_abc12345_def6_7890_abcd_ef1234567890"
-    assert result["manifest"] == SAMPLE_MANIFEST
+    assert result["manifest"] == NORMALIZED_SAMPLE_MANIFEST
     assert result["tables"] == ["raw_data"]
     assert result["run_id"] == "abc12345-def6-7890-abcd-ef1234567890"
     assert result["geom_column"] == "geom"
@@ -181,7 +186,7 @@ def test_load_files_to_postgis_multiple_files():
     mock_log = Mock()
 
     # Call core function
-    result = _load_files_to_postgis(
+    _load_files_to_postgis(
         gdal=mock_gdal,
         postgis=mock_postgis,
         manifest=MULTI_FILE_MANIFEST,
@@ -403,7 +408,7 @@ def test_load_to_postgis_op():
 
     # Verify result
     assert result["schema"] == "proc_abc12345_def6_7890_abcd_ef1234567890"
-    assert result["manifest"] == SAMPLE_MANIFEST
+    assert result["manifest"] == NORMALIZED_SAMPLE_MANIFEST
     assert result["tables"] == ["raw_data"]
     assert result["run_id"] == "abc12345-def6-7890-abcd-ef1234567890"
     assert result["geom_column"] == "geom"

@@ -76,17 +76,34 @@ def test_tabular_sensor_emits_run_request_for_ingest_tabular(
 
 
 def test_complex_spreadsheet_sensor_emits_run_request_for_ingest_complex_spreadsheet(
-    mock_sensor_context, mock_minio_resource, valid_manifest_dict
+    mock_sensor_context, mock_minio_resource, valid_tabular_manifest_dict
 ):
     manifest_key = "manifests/batch_complex_001.json"
     complex_manifest = {
-        **valid_manifest_dict,
+        **valid_tabular_manifest_dict,
         "intent": "ingest_complex_spreadsheet",
         "batch_id": "batch_complex_001",
+        "files": [
+            {
+                **valid_tabular_manifest_dict["files"][0],
+                "path": "s3://landing-zone/batch_complex_001/data.xlsx",
+                "format": "XLSX",
+            }
+        ],
         "metadata": {
-            **valid_manifest_dict["metadata"],
+            **valid_tabular_manifest_dict["metadata"],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {
+                    "anchor_text": "Region",
+                    "anchor_match": "exact",
+                    "header_rows": 1,
+                    "id_column_count": 1,
+                    "sheet_names": None,
+                },
+            },
             "tags": {
-                **valid_manifest_dict["metadata"]["tags"],
+                **valid_tabular_manifest_dict["metadata"]["tags"],
                 "dataset_id": "complex_dataset_001",
             },
         },
