@@ -180,3 +180,134 @@ class TestBuildManifest:
                 form_data=form_data,
                 uploader="testuser",
             )
+
+
+class TestBuildComplexSpreadsheetManifest:
+    """Tests for complex_spreadsheet manifest building."""
+
+    def test_build_complex_spreadsheet_manifest(self):
+        """complex_spreadsheet should set intent and attach template config."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "header_rows": 1,
+                    "id_column_count": 1,
+                },
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.intent == "ingest_complex_spreadsheet"
+        assert len(manifest.files) == 1
+        assert manifest.files[0].format == "XLSX"
+        assert manifest.metadata.complex_spreadsheet is not None
+        assert manifest.metadata.complex_spreadsheet.template_id == "anchor_unpivot_v1"
+
+    def test_complex_spreadsheet_requires_exactly_one_file(self):
+        """complex_spreadsheet should reject manifests with multiple files."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data_1.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                },
+                {
+                    "path": "s3://landing-zone/batch_001/data_2.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                },
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "header_rows": 1,
+                    "id_column_count": 1,
+                },
+            },
+        }
+
+        with pytest.raises(ValueError, match="exactly one file"):
+            build_manifest(
+                asset_type="complex_spreadsheet",
+                form_data=form_data,
+                uploader="testuser",
+            )
+
+    def test_blank_dataset_id_still_gets_auto_generated(self):
+        """Blank dataset_id should still produce metadata.tags.dataset_id."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "dataset_id": "",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "header_rows": 1,
+                    "id_column_count": 1,
+                },
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.metadata.tags is not None
+        assert "dataset_id" in manifest.metadata.tags
+        assert isinstance(manifest.metadata.tags["dataset_id"], str)
+        assert manifest.metadata.tags["dataset_id"]
+
+    def test_infer_xlsx_format_from_extension(self):
+        """.xlsx files should infer XLSX format when omitted."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {
+                    "anchor_text": "Year",
+                    "header_rows": 1,
+                    "id_column_count": 1,
+                },
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.files[0].format == "XLSX"

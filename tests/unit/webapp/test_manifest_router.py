@@ -7,8 +7,13 @@
 
 import pytest
 from pydantic import ValidationError
+from starlette.testclient import TestClient
+from unittest.mock import MagicMock, patch
 
 from libs.models import FileEntry, JoinConfig, TagValue
+from app.auth.dependencies import get_current_user
+from app.auth.providers import AuthenticatedUser
+from app.main import app
 
 
 class TestFileEntryValidation:
@@ -172,3 +177,47 @@ class TestTagValueValidation:
         """TagValue should accept bool."""
         tags: dict[str, TagValue] = {"active": True}
         assert tags["active"] is True
+
+
+@pytest.fixture
+def auth_override():
+    app.dependency_overrides[get_current_user] = lambda: AuthenticatedUser(
+        username="testuser",
+        display_name="Test User",
+    )
+    yield
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def mock_mongodb_service():
+    with patch("app.routers.manifests.get_mongodb_service") as mock_factory:
+        mock_service = MagicMock()
+        mock_service.list_assets.return_value = []
+        mock_factory.return_value = mock_service
+        yield mock_service
+
+
+@pytest.fixture
+def client(auth_override):
+    return TestClient(app)
+
+
+class TestComplexSpreadsheetRouterAllowlist:
+    """Tests that complex_spreadsheet routes are accepted by router allowlists."""
+
+    def test_get_new_complex_spreadsheet_form_json_does_not_404(
+        self, client, mock_mongodb_service
+    ):
+        """GET /manifests/new/complex_spreadsheet?format=json should not 404."""
+        response = client.get("/manifests/new/complex_spreadsheet?format=json")
+        assert response.status_code != 404
+        assert response.status_code == 200
+
+    def test_get_schema_complex_spreadsheet_does_not_404(
+        self, client, mock_mongodb_service
+    ):
+        """GET /manifests/schemas/complex_spreadsheet should not 404."""
+        response = client.get("/manifests/schemas/complex_spreadsheet")
+        assert response.status_code != 404
+        assert response.status_code == 200

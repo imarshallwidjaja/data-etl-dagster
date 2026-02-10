@@ -6,7 +6,6 @@
 # =============================================================================
 
 import pytest
-from unittest.mock import Mock, patch
 
 import sys
 import os
@@ -151,3 +150,41 @@ class TestManifestCreateRequestValidation:
         assert request.intent is None
         assert request.files is None
         assert request.tags is None
+
+
+class TestComplexSpreadsheetSchemaDefinitions:
+    """Tests for ComplexSpreadsheet config JSON Schema exposure."""
+
+    def test_schema_defs_contains_complex_spreadsheet_models(self):
+        """$defs should include complex spreadsheet config models."""
+        schema = ManifestCreateRequest.model_json_schema()
+        defs = schema.get("$defs", {})
+        assert "ComplexSpreadsheetConfig" in defs
+        assert "ComplexSpreadsheetTemplateParamsV1" in defs
+
+    def test_complex_spreadsheet_defs_forbid_additional_properties(self):
+        """Complex spreadsheet defs should expose additionalProperties=false."""
+        schema = ManifestCreateRequest.model_json_schema()
+        defs = schema["$defs"]
+
+        assert defs["ComplexSpreadsheetConfig"].get("additionalProperties") is False
+        assert (
+            defs["ComplexSpreadsheetTemplateParamsV1"].get("additionalProperties")
+            is False
+        )
+
+    def test_template_params_required_fields_are_present(self):
+        """Template params should require key extraction controls."""
+        schema = ManifestCreateRequest.model_json_schema()
+        params_def = schema["$defs"]["ComplexSpreadsheetTemplateParamsV1"]
+        required = set(params_def.get("required", []))
+
+        assert {"anchor_text", "header_rows", "id_column_count"}.issubset(required)
+
+    def test_template_id_enum_includes_anchor_unpivot_v1(self):
+        """Template ID enum should include anchor_unpivot_v1."""
+        schema = ManifestCreateRequest.model_json_schema()
+        template_id_schema = schema["$defs"]["ComplexSpreadsheetConfig"]["properties"][
+            "template_id"
+        ]
+        assert "anchor_unpivot_v1" in template_id_schema.get("enum", [])
