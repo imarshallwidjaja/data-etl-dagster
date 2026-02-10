@@ -108,6 +108,60 @@ class TestFindAnchorContains:
         assert result is None
 
 
+class TestFindAnchorV2:
+    def test_exact_match_is_case_insensitive(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["year"])
+
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            find_anchor_in_sheet_v2,
+        )
+
+        result = find_anchor_in_sheet_v2(ws, anchor="Year", mode="exact")
+        assert result == (0, 0)
+
+    def test_contains_match_is_case_insensitive(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["", "REGION NAME", "Count"])
+
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            find_anchor_in_sheet_v2,
+        )
+
+        result = find_anchor_in_sheet_v2(ws, anchor="region", mode="contains")
+        assert result == (0, 1)
+
+    def test_regex_match_is_case_insensitive(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["", "Region Name", "Count"])
+
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            find_anchor_in_sheet_v2,
+        )
+
+        result = find_anchor_in_sheet_v2(
+            ws,
+            anchor=r"^region\s+name$",
+            mode="regex",
+        )
+        assert result == (0, 1)
+
+    def test_regex_no_match_returns_none(self):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(["", "Region Name", "Count"])
+
+        from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
+            find_anchor_in_sheet_v2,
+        )
+
+        result = find_anchor_in_sheet_v2(ws, anchor=r"^year$", mode="regex")
+        assert result is None
+
+
 # =============================================================================
 # Test: compose_multi_row_header
 # =============================================================================
