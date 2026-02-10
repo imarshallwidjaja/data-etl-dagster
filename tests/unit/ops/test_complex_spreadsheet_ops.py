@@ -651,7 +651,8 @@ class TestSlugUniqueness:
     def test_duplicate_slug_raises_valueerror(self):
         """Sheet names that normalize to the same slug must raise ValueError."""
         from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
-            _check_slug_uniqueness,
+            _check_slug_uniqueness_with,
+            slugify_sheet_name_v2,
         )
 
         # "Data 1" and "Data_1" both normalize to "data_1"
@@ -660,12 +661,13 @@ class TestSlugUniqueness:
             {"sheet_name": "Data_1", "dataframe": None},
         ]
         with pytest.raises(ValueError, match="Duplicate child key slug"):
-            _check_slug_uniqueness(sheet_results)
+            _check_slug_uniqueness_with(sheet_results, slugify_sheet_name_v2)
 
     def test_unique_slugs_pass(self):
         """Distinct slugs should not raise."""
         from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
-            _check_slug_uniqueness,
+            _check_slug_uniqueness_with,
+            slugify_sheet_name_v2,
         )
 
         sheet_results = [
@@ -673,12 +675,13 @@ class TestSlugUniqueness:
             {"sheet_name": "Data 2", "dataframe": None},
         ]
         # Should not raise
-        _check_slug_uniqueness(sheet_results)
+        _check_slug_uniqueness_with(sheet_results, slugify_sheet_name_v2)
 
     def test_case_collision_raises(self):
         """Sheet names differing only in case normalize to same slug."""
         from services.dagster.etl_pipelines.ops.complex_spreadsheet_ops import (
-            _check_slug_uniqueness,
+            _check_slug_uniqueness_with,
+            slugify_sheet_name_v2,
         )
 
         sheet_results = [
@@ -686,7 +689,7 @@ class TestSlugUniqueness:
             {"sheet_name": "Data 1", "dataframe": None},
         ]
         with pytest.raises(ValueError, match="Duplicate child key slug"):
-            _check_slug_uniqueness(sheet_results)
+            _check_slug_uniqueness_with(sheet_results, slugify_sheet_name_v2)
 
 
 # =============================================================================
