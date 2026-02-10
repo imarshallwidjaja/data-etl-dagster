@@ -185,8 +185,16 @@ def test_valid_manifest_triggers_run_and_archives(
         valid_complex_spreadsheet_manifest_dict
     )
 
-    tick = _evaluate(sensor_context)
-    assert len(tick.run_requests) == 1
+    # Evaluate raw sensor fn directly so we can inspect partitioned RunRequest
+    # without requiring a repository definition in build_sensor_context.
+    results = list(
+        complex_spreadsheet_sensor._raw_fn(sensor_context, mock_minio_resource)
+    )
+    run_requests = [r for r in results if isinstance(r, RunRequest)]
+    assert len(run_requests) == 1
+    run_request = run_requests[0]
+    assert isinstance(run_request, RunRequest)
+    assert run_request.partition_key == run_request.tags["partition_key"]
     mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
     cursor_data = json.loads(sensor_context.cursor)
     assert manifest_key in cursor_data["processed_keys"]
