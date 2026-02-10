@@ -9,8 +9,9 @@ from datetime import datetime
 from pydantic import ValidationError
 
 from libs.models import (
-    CRS,
     Bounds,
+    ComplexSpreadsheetConfig,
+    ComplexSpreadsheetTemplateParamsV1,
     FileEntry,
     Manifest,
     ManifestMetadata,
@@ -351,6 +352,239 @@ class TestManifestValidation:
                     "attribution": "Test",
                     "project": "ALPHA",
                 },
+            )
+
+    def test_intent_ingest_complex_spreadsheet_accepts_tabular_xlsx(self):
+        """Test complex spreadsheet intent accepts a single tabular XLSX file."""
+        manifest = Manifest(
+            batch_id="batch_complex_001",
+            uploader="user_123",
+            intent="ingest_complex_spreadsheet",
+            files=[
+                {
+                    "path": "s3://landing-zone/batch_complex_001/workbook.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            metadata={
+                "title": "Complex Spreadsheet",
+                "description": "Complex spreadsheet import",
+                "keywords": ["spreadsheet"],
+                "source": "Test",
+                "license": "MIT",
+                "attribution": "Test",
+                "project": "ALPHA",
+                "tags": {"dataset_id": "complex_dataset_001"},
+                "complex_spreadsheet": {
+                    "template_id": "anchor_unpivot_v1",
+                    "template_params": {
+                        "anchor_text": "Region",
+                        "anchor_match": "exact",
+                        "header_rows": 2,
+                        "id_column_count": 1,
+                    },
+                },
+            },
+        )
+
+        assert manifest.intent == "ingest_complex_spreadsheet"
+        assert len(manifest.files) == 1
+        assert manifest.files[0].type == FileType.TABULAR
+
+    def test_intent_ingest_complex_spreadsheet_requires_exactly_one_file(self):
+        """Test complex spreadsheet intent rejects manifests with multiple files."""
+        with pytest.raises(ValueError, match="requires exactly one file"):
+            Manifest(
+                batch_id="batch_complex_002",
+                uploader="user_123",
+                intent="ingest_complex_spreadsheet",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_complex_002/workbook_a.xlsx",
+                        "type": "tabular",
+                        "format": "XLSX",
+                    },
+                    {
+                        "path": "s3://landing-zone/batch_complex_002/workbook_b.xlsx",
+                        "type": "tabular",
+                        "format": "XLSX",
+                    },
+                ],
+                metadata={
+                    "title": "Complex Spreadsheet",
+                    "description": "Complex spreadsheet import",
+                    "keywords": ["spreadsheet"],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                    "tags": {"dataset_id": "complex_dataset_002"},
+                    "complex_spreadsheet": {
+                        "template_id": "anchor_unpivot_v1",
+                        "template_params": {
+                            "anchor_text": "Region",
+                            "anchor_match": "exact",
+                            "header_rows": 2,
+                            "id_column_count": 1,
+                        },
+                    },
+                },
+            )
+
+    def test_intent_ingest_complex_spreadsheet_requires_xlsx_format(self):
+        """Test complex spreadsheet intent requires canonical XLSX format string."""
+        with pytest.raises(ValueError, match="format 'XLSX'"):
+            Manifest(
+                batch_id="batch_complex_003",
+                uploader="user_123",
+                intent="ingest_complex_spreadsheet",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_complex_003/workbook.xlsx",
+                        "type": "tabular",
+                        "format": "xlsx",
+                    }
+                ],
+                metadata={
+                    "title": "Complex Spreadsheet",
+                    "description": "Complex spreadsheet import",
+                    "keywords": ["spreadsheet"],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                    "tags": {"dataset_id": "complex_dataset_003"},
+                    "complex_spreadsheet": {
+                        "template_id": "anchor_unpivot_v1",
+                        "template_params": {
+                            "anchor_text": "Region",
+                            "anchor_match": "exact",
+                            "header_rows": 2,
+                            "id_column_count": 1,
+                        },
+                    },
+                },
+            )
+
+    def test_intent_ingest_complex_spreadsheet_requires_metadata_complex_spreadsheet(
+        self,
+    ):
+        """Test complex spreadsheet intent requires metadata.complex_spreadsheet."""
+        with pytest.raises(ValueError, match="requires metadata.complex_spreadsheet"):
+            Manifest(
+                batch_id="batch_complex_004",
+                uploader="user_123",
+                intent="ingest_complex_spreadsheet",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_complex_004/workbook.xlsx",
+                        "type": "tabular",
+                        "format": "XLSX",
+                    }
+                ],
+                metadata={
+                    "title": "Complex Spreadsheet",
+                    "description": "Complex spreadsheet import",
+                    "keywords": ["spreadsheet"],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                    "tags": {"dataset_id": "complex_dataset_004"},
+                },
+            )
+
+    def test_intent_ingest_complex_spreadsheet_requires_dataset_id(self):
+        """Test complex spreadsheet intent requires non-empty metadata.tags.dataset_id."""
+        with pytest.raises(ValueError, match="requires metadata.tags.dataset_id"):
+            Manifest(
+                batch_id="batch_complex_005",
+                uploader="user_123",
+                intent="ingest_complex_spreadsheet",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_complex_005/workbook.xlsx",
+                        "type": "tabular",
+                        "format": "XLSX",
+                    }
+                ],
+                metadata={
+                    "title": "Complex Spreadsheet",
+                    "description": "Complex spreadsheet import",
+                    "keywords": ["spreadsheet"],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                    "tags": {},
+                    "complex_spreadsheet": {
+                        "template_id": "anchor_unpivot_v1",
+                        "template_params": {
+                            "anchor_text": "Region",
+                            "anchor_match": "exact",
+                            "header_rows": 2,
+                            "id_column_count": 1,
+                        },
+                    },
+                },
+            )
+
+        with pytest.raises(ValueError, match="requires metadata.tags.dataset_id"):
+            Manifest(
+                batch_id="batch_complex_006",
+                uploader="user_123",
+                intent="ingest_complex_spreadsheet",
+                files=[
+                    {
+                        "path": "s3://landing-zone/batch_complex_006/workbook.xlsx",
+                        "type": "tabular",
+                        "format": "XLSX",
+                    }
+                ],
+                metadata={
+                    "title": "Complex Spreadsheet",
+                    "description": "Complex spreadsheet import",
+                    "keywords": ["spreadsheet"],
+                    "source": "Test",
+                    "license": "MIT",
+                    "attribution": "Test",
+                    "project": "ALPHA",
+                    "tags": {"dataset_id": "   "},
+                    "complex_spreadsheet": {
+                        "template_id": "anchor_unpivot_v1",
+                        "template_params": {
+                            "anchor_text": "Region",
+                            "anchor_match": "exact",
+                            "header_rows": 2,
+                            "id_column_count": 1,
+                        },
+                    },
+                },
+            )
+
+    def test_complex_spreadsheet_config_template_id_is_versioned_literal(self):
+        """Test complex spreadsheet config enforces versioned template_id literal."""
+        with pytest.raises(ValidationError):
+            ComplexSpreadsheetConfig(
+                template_id="anchor_unpivot_v2",
+                template_params={
+                    "anchor_text": "Region",
+                    "anchor_match": "exact",
+                    "header_rows": 2,
+                    "id_column_count": 1,
+                },
+            )
+
+    def test_complex_spreadsheet_template_params_forbid_extra_fields(self):
+        """Test template params model forbids unknown keys."""
+        with pytest.raises(ValidationError):
+            ComplexSpreadsheetTemplateParamsV1(
+                anchor_text="Region",
+                anchor_match="exact",
+                header_rows=2,
+                id_column_count=1,
+                unexpected=True,
             )
 
 
