@@ -1,7 +1,7 @@
 """Integration test: End-to-end complex spreadsheet pipeline via Dagster GraphQL.
 
 This test validates the complex spreadsheet ETL loop:
-1. Programmatically create a tiny XLSX fixture (two sheets, one with anchor)
+1. Load a tiny XLSX fixture from disk (two sheets, one with anchor)
 2. Upload XLSX + parent manifest (intent=ingest_complex_spreadsheet) to landing-zone
 3. Launch complex_table_splitter_job via GraphQL (op-based)
 4. Verify splitter job completes, child manifests published, intermediate artifacts exist
@@ -16,12 +16,11 @@ Run with:
 from __future__ import annotations
 
 import json
-from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-from openpyxl import Workbook
 
 from .helpers import (
     DagsterGraphQLClient,
@@ -43,42 +42,22 @@ from .helpers import (
 
 pytestmark = [pytest.mark.integration, pytest.mark.e2e]
 
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+XLSX_FIXTURE_PATH = FIXTURES_DIR / "e2e_complex_spreadsheet.xlsx"
+
 
 # =============================================================================
-# XLSX Fixture Generation
+# XLSX Fixture
 # =============================================================================
 
 
-def _create_test_xlsx() -> bytes:
-    """Build a tiny XLSX in memory with two sheets.
+def _load_test_xlsx_fixture() -> bytes:
+    """Load the XLSX fixture from disk.
 
-    Sheet A ("Data Sheet"):
-      - Row 1: title/junk row (no anchor)
-      - Row 2: header row containing anchor "Year" and value column headers
-      - Rows 3-5: data rows
-
-    Sheet B ("Notes"):
-      - Contains text but NO anchor string "Year" => splitter will skip it.
+    The fixture is intentionally committed as a real .xlsx file so this test
+    exercises the same IO path as real uploads.
     """
-    wb = Workbook()
-
-    # Sheet A - has anchor "Year"
-    ws_a = wb.active
-    ws_a.title = "Data Sheet"
-    ws_a.append(["Region Statistics", None, None, None])  # row 1 - junk
-    ws_a.append(["Year", "Metric A", "Metric B", "Metric C"])  # row 2 - anchor
-    ws_a.append([2020, 10, 20, 30])
-    ws_a.append([2021, 11, 21, 31])
-    ws_a.append([2022, 12, 22, 32])
-
-    # Sheet B - no anchor
-    ws_b = wb.create_sheet("Notes")
-    ws_b.append(["This sheet has no anchor"])
-    ws_b.append(["Just some notes"])
-
-    buf = BytesIO()
-    wb.save(buf)
-    return buf.getvalue()
+    return XLSX_FIXTURE_PATH.read_bytes()
 
 
 # =============================================================================
@@ -576,8 +555,8 @@ class TestComplexSpreadsheetE2E:
         created_partitions: set[str] = set()
 
         try:
-            # --- Step 1: Create and upload XLSX ---
-            xlsx_bytes = _create_test_xlsx()
+            # --- Step 1: Load and upload XLSX fixture ---
+            xlsx_bytes = _load_test_xlsx_fixture()
             upload_bytes_to_minio(
                 minio_client,
                 minio_settings.landing_bucket,
