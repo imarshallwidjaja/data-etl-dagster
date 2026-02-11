@@ -288,6 +288,39 @@ class TestBuildComplexSpreadsheetManifest:
                 uploader="testuser",
             )
 
+    def test_build_complex_spreadsheet_accepts_validated_model_instance(self):
+        """complex_spreadsheet config may already be a validated model at API boundary."""
+        from libs.models import ComplexSpreadsheetConfigV2
+
+        cs_config = ComplexSpreadsheetConfigV2(
+            template_id="anchor_unpivot_v2",
+            template_params={
+                "anchor_text": "Year",
+                "anchor_match": "regex",
+            },
+        )
+
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsx",
+                    "type": "tabular",
+                    "format": "XLSX",
+                }
+            ],
+            "complex_spreadsheet": cs_config,
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.metadata.complex_spreadsheet is not None
+        assert manifest.metadata.complex_spreadsheet.template_id == "anchor_unpivot_v2"
+
     def test_build_complex_spreadsheet_requires_one_file(self):
         """complex_spreadsheet manifest should enforce exactly one file."""
         form_data = {
