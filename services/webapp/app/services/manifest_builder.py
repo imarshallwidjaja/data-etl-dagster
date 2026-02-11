@@ -270,9 +270,7 @@ def _build_complex_spreadsheet_manifest(
         raise ValueError("Complex spreadsheet manifest requires exactly one file")
 
     # Build ComplexSpreadsheetConfig (validates via Pydantic)
-    if not isinstance(cs_config_data, dict):
-        raise ValueError("Invalid complex_spreadsheet config format")
-
+    # Note: at the API boundary this may already be a validated model instance.
     cs_config = TypeAdapter(ComplexSpreadsheetConfig).validate_python(cs_config_data)
 
     # Attach complex_spreadsheet to metadata
