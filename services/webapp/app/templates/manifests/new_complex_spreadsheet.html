@@ -212,6 +212,7 @@
             const response = await fetch('/manifests/new/complex_spreadsheet', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
                 body: JSON.stringify(data)
             });
 
@@ -228,16 +229,30 @@
         }
     }
 
-    // Initialize validator with collectData hook and onValid callback for form submission
+    // Initialize validator for schema validation.
+    // Submission is handled by the explicit submit listener below so the form
+    // still works when Ajv/schema validation is unavailable.
     const validator = new ManifestFormValidator('manifest-form', 'complex_spreadsheet', {
-        collectData: collectComplexSpreadsheetData,
-        onValid: submitManifest
+        collectData: collectComplexSpreadsheetData
     });
 
-    // Always prevent native form submission (we use fetch); validator.handleSubmit
-    // already runs via the listener registered in ManifestFormValidator.init().
-    document.getElementById('manifest-form').addEventListener('submit', function(e) {
+    // Submit handler with graceful fallback when validator/Ajv is unavailable.
+    document.getElementById('manifest-form').addEventListener('submit', function (e) {
         e.preventDefault();
+
+        const data = collectComplexSpreadsheetData(e.target);
+
+        // If schema validator is ready, enforce validation before submit.
+        if (validator && validator.validate) {
+            validator.clearErrors();
+            const valid = validator.validate(data);
+            if (!valid) {
+                validator.displayErrors(validator.validate.errors || []);
+                return;
+            }
+        }
+
+        submitManifest(data);
     });
 
     // Mode toggle
@@ -295,6 +310,7 @@
             const response = await fetch('/manifests/new/complex_spreadsheet', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
                 body: JSON.stringify(data)
             });
 

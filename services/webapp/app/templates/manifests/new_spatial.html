@@ -203,6 +203,7 @@
             const response = await fetch('/manifests/new/spatial', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
                 body: JSON.stringify(data)
             });
 
@@ -250,6 +251,7 @@
             const response = await fetch('/manifests/new/spatial', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
                 body: JSON.stringify(data)
             });
 
