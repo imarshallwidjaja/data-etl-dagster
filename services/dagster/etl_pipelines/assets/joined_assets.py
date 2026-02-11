@@ -60,6 +60,11 @@ def joined_spatial_asset(
     manifest_dict = raw_manifest_json["manifest"]
     run_id = raw_manifest_json["run_id"]
     dagster_run_id = raw_manifest_json["dagster_run_id"]
+    if dagster_run_id != context.run_id:
+        raise RuntimeError(
+            "raw_manifest_json handoff mismatch: "
+            f"expected dagster_run_id={context.run_id}, got {dagster_run_id}"
+        )
 
     validated_manifest = Manifest(**manifest_dict)
     join_resolution = _resolve_join_assets(

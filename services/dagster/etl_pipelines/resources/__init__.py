@@ -4,11 +4,12 @@ from .minio_resource import MinIOResource
 from .mongodb_resource import MongoDBResource
 from .postgis_resource import PostGISResource
 from .gdal_resource import GDALResource
+from .run_scoped_manifest_io_manager import RunScopedManifestIOManager
 
 __all__ = [
     "MinIOResource",
     "MongoDBResource",
     "PostGISResource",
     "GDALResource",
+    "RunScopedManifestIOManager",
 ]
-

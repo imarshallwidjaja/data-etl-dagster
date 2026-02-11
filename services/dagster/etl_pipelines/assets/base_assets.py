@@ -32,6 +32,7 @@ class ManifestConfig(Config):
     group_name="ingestion",
     compute_kind="validation",
     required_resource_keys={"mongodb", "minio"},
+    io_manager_key="raw_manifest_io_manager",
     description="Validates manifest JSON and initializes run in MongoDB.",
 )
 def raw_manifest_json(
@@ -148,6 +149,11 @@ def raw_spatial_asset(
     manifest = raw_manifest_json["manifest"]
     run_id = raw_manifest_json["run_id"]
     dagster_run_id = raw_manifest_json["dagster_run_id"]
+    if dagster_run_id != context.run_id:
+        raise RuntimeError(
+            "raw_manifest_json handoff mismatch: "
+            f"expected dagster_run_id={context.run_id}, got {dagster_run_id}"
+        )
 
     # Register dynamic partition key (idempotent)
     partition_key = context.partition_key
@@ -250,6 +256,11 @@ def raw_tabular_asset(
     manifest = raw_manifest_json["manifest"]
     run_id = raw_manifest_json["run_id"]
     dagster_run_id = raw_manifest_json["dagster_run_id"]
+    if dagster_run_id != context.run_id:
+        raise RuntimeError(
+            "raw_manifest_json handoff mismatch: "
+            f"expected dagster_run_id={context.run_id}, got {dagster_run_id}"
+        )
 
     # Register dynamic partition key (idempotent)
     partition_key = context.partition_key
