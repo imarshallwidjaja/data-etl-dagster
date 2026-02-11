@@ -286,12 +286,11 @@ async def create_manifest(
 @router.get("/schemas/{asset_type}")
 async def get_manifest_schema(
     asset_type: str,
-    current_user: AuthenticatedUser = Depends(get_current_user),
 ):
     """Return JSON Schema for manifest creation forms.
 
-    Exposes the ManifestCreateRequest schema for client-side validation.
-    The asset_type is included as x-asset-type metadata hint.
+    No authentication required — the schema is non-sensitive metadata
+    used by the client-side Ajv validator before form submission.
     """
     if asset_type not in ("spatial", "tabular", "joined", "complex_spreadsheet"):
         raise HTTPException(status_code=404, detail=f"Unknown asset type: {asset_type}")

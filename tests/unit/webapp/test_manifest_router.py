@@ -248,5 +248,14 @@ class TestComplexSpreadsheetRouterAllowlist:
         assert resp.status_code == 200
         assert "regex" in resp.text
         assert "case-insensitive" in resp.text
+
+    def test_complex_spreadsheet_form_has_submit_fallback(
+        self, client, mock_mongodb_service
+    ):
+        """Complex spreadsheet form should submit even when schema validation is unavailable."""
+        resp = client.get("/manifests/new/complex_spreadsheet")
+        assert resp.status_code == 200
+        assert "const data = collectComplexSpreadsheetData(e.target);" in resp.text
+        assert "submitManifest(data);" in resp.text
         # Ensure the default submit payload uses the v2 template id (not just an example snippet).
         assert "template_id: 'anchor_unpivot_v2'" in resp.text
