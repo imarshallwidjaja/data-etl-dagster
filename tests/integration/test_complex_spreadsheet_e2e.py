@@ -69,8 +69,13 @@ def _build_parent_manifest(
     batch_id: str,
     xlsx_s3_path: str,
     dataset_id: str,
+    *,
+    template_id: str = "anchor_unpivot_v1",
+    template_params: dict | None = None,
 ) -> dict:
     """Build a valid parent manifest for ingest_complex_spreadsheet."""
+    if template_params is None:
+        template_params = {"anchor_text": "Year"}
     return {
         "batch_id": batch_id,
         "uploader": "integration-test",
@@ -95,8 +100,8 @@ def _build_parent_manifest(
                 "testing": True,
             },
             "complex_spreadsheet": {
-                "template_id": "anchor_unpivot_v1",
-                "template_params": {"anchor_text": "Year"},
+                "template_id": template_id,
+                "template_params": template_params,
             },
         },
     }
@@ -529,6 +534,22 @@ class TestComplexSpreadsheetE2ECleanup:
 class TestComplexSpreadsheetE2E:
     """End-to-end test: XLSX -> splitter -> child manifests -> tabular assets."""
 
+    @pytest.mark.parametrize(
+        "template_id,template_params,expected_safe_sheet",
+        [
+            (
+                "anchor_unpivot_v1",
+                {"anchor_text": "Year"},
+                "data_sheet",
+            ),
+            (
+                "anchor_unpivot_v2",
+                {"anchor_text": r"yea+r", "anchor_match": "regex"},
+                "data_sheet",
+            ),
+        ],
+        ids=["v1-exact", "v2-regex"],
+    )
     def test_complex_spreadsheet_full_pipeline(
         self,
         dagster_client,
@@ -536,6 +557,9 @@ class TestComplexSpreadsheetE2E:
         minio_settings,
         mongo_client,
         mongo_settings,
+        template_id: str,
+        template_params: dict,
+        expected_safe_sheet: str,
     ):
         """Splitter splits XLSX, produces child manifest, tabular job produces asset."""
         uid = uuid4().hex[:12]
@@ -543,8 +567,8 @@ class TestComplexSpreadsheetE2E:
         dataset_id = f"complex_dataset_{uid}"
         xlsx_key = f"e2e/{parent_batch_id}/spreadsheet.xlsx"
 
-        # Expected child: only "Data Sheet" has anchor "Year"
-        safe_sheet = "data_sheet"  # "Data Sheet" -> "data_sheet"
+        # Expected child: only "Data Sheet" has anchor
+        safe_sheet = expected_safe_sheet  # "Data Sheet" -> "data_sheet"
         child_batch_id = f"{parent_batch_id}__{safe_sheet}"
         child_dataset_id = f"{dataset_id}__{safe_sheet}"
         child_batch_ids = [child_batch_id]
@@ -571,6 +595,8 @@ class TestComplexSpreadsheetE2E:
                 batch_id=parent_batch_id,
                 xlsx_s3_path=xlsx_s3_path,
                 dataset_id=dataset_id,
+                template_id=template_id,
+                template_params=template_params,
             )
 
             splitter_run_id = _launch_splitter_job(dagster_client, parent_manifest)
