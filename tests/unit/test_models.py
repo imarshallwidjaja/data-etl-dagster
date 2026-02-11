@@ -1756,3 +1756,25 @@ class TestComplexSpreadsheetIntent:
             metadata=self._base_metadata(),
         )
         assert m.files[0].format == "XLSX"
+
+    def test_complex_spreadsheet_format_accepts_uppercase_xlsm(self):
+        """Uppercase 'XLSM' is accepted for complex spreadsheets."""
+        m = Manifest(
+            batch_id="batch_cs_xlsm",
+            uploader="user_cs",
+            intent="ingest_complex_spreadsheet",
+            files=[self._base_file(format="XLSM")],
+            metadata=self._base_metadata(),
+        )
+        assert m.files[0].format == "XLSM"
+
+    def test_complex_spreadsheet_format_accepts_lowercase_xlsm(self):
+        """Lowercase 'xlsm' is accepted and normalized to 'XLSM'."""
+        m = Manifest(
+            batch_id="batch_cs_xlsm_lower",
+            uploader="user_cs",
+            intent="ingest_complex_spreadsheet",
+            files=[self._base_file(format="xlsm")],
+            metadata=self._base_metadata(),
+        )
+        assert m.files[0].format == "XLSM"

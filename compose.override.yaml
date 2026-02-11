@@ -2,51 +2,35 @@
 # Spatial Data ETL Pipeline - Dev Override
 # =============================================================================
 # Loaded automatically by `docker compose up`.
-# Adds host-exposed ports and stable container names for local development.
+# Adds host-exposed ports for local development.
 # =============================================================================
 
 services:
   dagster-postgres:
-    container_name: dagster-postgres
     ports:
       - "5433:5432"
 
   dagster-webserver:
-    container_name: dagster-webserver
     ports:
       - "3000:3000"
 
-  dagster-daemon:
-    container_name: dagster-daemon
-
   user-code:
-    container_name: dagster-user-code
     ports:
       - "4000:4000"
 
   minio:
-    container_name: minio
     ports:
       - "9000:9000" # S3 API
       - "9001:9001" # MinIO Console
 
-  minio-init:
-    container_name: minio-init
-
   mongodb:
-    container_name: mongodb
     ports:
       - "27017:27017"
 
-  mongo-migration:
-    container_name: mongo-migration
-
   postgis:
-    container_name: postgis
     ports:
       - "5432:5432"
 
   webapp:
-    container_name: webapp
     ports:
       - "8080:8080"

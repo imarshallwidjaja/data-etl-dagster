@@ -17,18 +17,8 @@ import time
 from typing import Dict, List, Optional
 
 
-# Critical containers to monitor (names match compose.override.yaml container_name values)
-CRITICAL_CONTAINERS = [
-    "dagster-webserver",
-    "dagster-daemon",
-    "dagster-user-code",
-    "mongodb",
-    "postgis",
-    "minio",
-]
-
-# Compose service names corresponding to CRITICAL_CONTAINERS
-# (used to derive project-scoped container names: <project>-<service>-1)
+# Compose service names to monitor.
+# Container names are derived as: <project>-<service>-1
 CRITICAL_SERVICES = [
     "dagster-webserver",
     "dagster-daemon",
@@ -39,24 +29,34 @@ CRITICAL_SERVICES = [
 ]
 
 
+def default_compose_project_name() -> str:
+    """Derive Docker Compose's default project name from current directory."""
+    cwd = os.getcwd().rstrip(os.sep)
+    project = os.path.basename(cwd)
+    return project or "default"
+
+
+def resolve_compose_project_name() -> str:
+    """Resolve compose project name from env or directory-derived default."""
+    return (
+        os.getenv("COMPOSE_PROJECT_NAME", "").strip() or default_compose_project_name()
+    )
+
+
 def resolve_container_names() -> List[str]:
     """Resolve container names for the current environment.
 
     If CHECK_CONTAINERS is set, uses those names directly.
-    If COMPOSE_PROJECT_NAME is set, derives ``<project>-<service>-1`` names
-    from the compose service definitions.
-    Otherwise falls back to the hardcoded CRITICAL_CONTAINERS (matching
-    the ``container_name`` values from ``compose.override.yaml``).
+    Otherwise derives ``<project>-<service>-1`` names from compose service
+    definitions using ``COMPOSE_PROJECT_NAME`` or Compose's default project
+    name (current directory basename).
     """
     containers_env = os.getenv("CHECK_CONTAINERS", "").strip()
     if containers_env:
         return [c.strip() for c in containers_env.split(",")]
 
-    project = os.getenv("COMPOSE_PROJECT_NAME", "").strip()
-    if project:
-        return [f"{project}-{svc}-1" for svc in CRITICAL_SERVICES]
-
-    return list(CRITICAL_CONTAINERS)
+    project = resolve_compose_project_name()
+    return [f"{project}-{svc}-1" for svc in CRITICAL_SERVICES]
 
 
 def get_restart_count(container_name: str) -> Optional[int]:
@@ -157,17 +157,18 @@ def main():
     Containers can be configured via CHECK_CONTAINERS environment variable.
     Comma-separated list of container names to check.
 
-    Default: dagster-webserver, dagster-daemon, dagster-user-code, mongodb, postgis, minio
-    Example: CHECK_CONTAINERS=minio,mongodb,postgis (infrastructure only)
+    Default: <project>-dagster-webserver-1, <project>-dagster-daemon-1,
+    <project>-user-code-1, <project>-mongodb-1, <project>-postgis-1,
+    <project>-minio-1
+    Example: CHECK_CONTAINERS=wt-smoke-minio-1,wt-smoke-mongodb-1,wt-smoke-postgis-1
     """
     # Get monitoring duration from environment (default 30 seconds)
     monitor_duration = int(os.getenv("CONTAINER_STABILITY_MONITOR_DURATION", "30"))
 
     # Resolve container names (project-scoped, env override, or defaults)
     containers = resolve_container_names()
-    project = os.getenv("COMPOSE_PROJECT_NAME", "").strip()
-    if project:
-        print(f"Using compose project: {project}")
+    project = resolve_compose_project_name()
+    print(f"Using compose project: {project}")
     print(f"Checking containers: {', '.join(containers)}")
 
     # Check stability of containers

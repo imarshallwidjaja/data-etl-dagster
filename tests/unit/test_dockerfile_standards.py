@@ -212,6 +212,17 @@ class TestBuildContexts:
         )
 
 
+class TestComposeOverrideConventions:
+    """compose.override.yaml should avoid fixed container_name declarations."""
+
+    def test_compose_override_has_no_container_name_keys(self):
+        path = REPO_ROOT / "compose.override.yaml"
+        content = path.read_text()
+        assert "container_name:" not in content, (
+            "compose.override.yaml must not pin container_name; use compose project scoping"
+        )
+
+
 class TestTestRunnerDockerfile:
     """test-runner image must install workspace deps needed by scripts/tests."""
 

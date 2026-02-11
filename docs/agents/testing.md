@@ -96,5 +96,5 @@ Some notes:
 - Replace `<project>` with a unique name (e.g. `wt-smoke`, branch slug) to
   avoid collisions with the dev stack.
 - The `-f` flag is required; without it, Compose auto-loads
-  `compose.override.yaml` which exposes host ports and sets `container_name`,
-  causing conflicts when another stack is already running.
+  `compose.override.yaml` which exposes host ports, causing conflicts when
+  another stack is already running.

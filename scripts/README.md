@@ -79,7 +79,7 @@ Monitors container restart counts over a period to detect restart loops.
 ### Usage
 
 ```bash
-# Default (30s monitoring window, dev-stack container names)
+# Default (30s monitoring window, current compose project)
 uv run python scripts/check_container_stability.py
 
 # Custom monitoring duration
@@ -91,23 +91,22 @@ COMPOSE_PROJECT_NAME=wt-smoke uv run python scripts/check_container_stability.py
 
 ### What it monitors
 
-Default containers (dev stack, using `compose.override.yaml` container names):
+By default, derives container names as `<project>-<service>-1`, where `<project>` is:
 
-- `dagster-webserver`
-- `dagster-daemon`
-- `dagster-user-code`
-- `mongodb`
-- `postgis`
-- `minio`
+- `COMPOSE_PROJECT_NAME` when set, otherwise
+- Docker Compose's default project name (current directory basename)
 
-When `COMPOSE_PROJECT_NAME` is set, derives names as `<project>-<service>-1`:
+Default monitored services:
 
-- `<project>-dagster-webserver-1`
-- `<project>-dagster-daemon-1`
-- `<project>-user-code-1`
-- `<project>-mongodb-1`
-- `<project>-postgis-1`
-- `<project>-minio-1`
+- `dagster-webserver` → `<project>-dagster-webserver-1`
+- `dagster-daemon` → `<project>-dagster-daemon-1`
+- `user-code` → `<project>-user-code-1`
+- `mongodb` → `<project>-mongodb-1`
+- `postgis` → `<project>-postgis-1`
+- `minio` → `<project>-minio-1`
+
+For project-scoped stacks, set `COMPOSE_PROJECT_NAME` explicitly so this script
+targets the same stack.
 
 ### How it works
 
@@ -122,16 +121,16 @@ When `COMPOSE_PROJECT_NAME` is set, derives names as `<project>-<service>-1`:
 ============================================================
 Container Stability Check
 ============================================================
-Monitoring containers for 30 seconds...
+  Monitoring containers for 30 seconds...
 
-  dagster-webserver: initial restart count = 0
-  dagster-daemon: initial restart count = 0
+  <project>-dagster-webserver-1: initial restart count = 0
+  <project>-dagster-daemon-1: initial restart count = 0
   ...
 
 Waiting 30 seconds...
 
-[OK] dagster-webserver: stable (restart count = 0)
-[OK] dagster-daemon: stable (restart count = 0)
+[OK] <project>-dagster-webserver-1: stable (restart count = 0)
+[OK] <project>-dagster-daemon-1: stable (restart count = 0)
 ...
 ============================================================
 SUCCESS: All containers are stable
@@ -147,7 +146,7 @@ SUCCESS: All containers are stable
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CONTAINER_STABILITY_MONITOR_DURATION` | `30` | Monitoring window (seconds) |
-| `COMPOSE_PROJECT_NAME` | — | Compose project name; derives container names as `<project>-<service>-1` |
+| `COMPOSE_PROJECT_NAME` | current directory basename | Compose project name used to derive `<project>-<service>-1` |
 | `CHECK_CONTAINERS` | — | Comma-separated list of explicit container names (overrides project-derived names) |
 
 ---
@@ -242,5 +241,5 @@ docker logs <container-name>
 View container logs to see crash cause:
 
 ```bash
-docker logs dagster-user-code --tail 100
+docker compose logs user-code --tail 100
 ```
