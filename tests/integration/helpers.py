@@ -15,7 +15,7 @@ from __future__ import annotations
 import os
 import time
 from io import BytesIO
-from typing import TYPE_CHECKING, Callable, Mapping
+from typing import TYPE_CHECKING, Callable, Mapping, cast
 
 import requests
 from requests.exceptions import RequestException, Timeout
@@ -256,17 +256,19 @@ def _validate_delete_partition_response(result: JsonDict, partition_key: str) ->
             f"GraphQL errors while deleting partition '{partition_key}': {result}"
         )
 
-    data = result.get("data")
-    if not isinstance(data, dict):
+    data_obj = result.get("data")
+    if not isinstance(data_obj, dict):
         raise RuntimeError(
             f"No 'data' in response while deleting partition '{partition_key}': {result}"
         )
+    data = cast(JsonDict, data_obj)
 
-    delete_result = data.get("deleteDynamicPartitions")
-    if not isinstance(delete_result, dict):
+    delete_result_obj = data.get("deleteDynamicPartitions")
+    if not isinstance(delete_result_obj, dict):
         raise RuntimeError(
             f"Invalid deleteDynamicPartitions result for partition '{partition_key}': {result}"
         )
+    delete_result = cast(JsonDict, delete_result_obj)
 
     typename = delete_result.get("__typename")
     if typename == "PythonError":
@@ -277,6 +279,236 @@ def _validate_delete_partition_response(result: JsonDict, partition_key: str) ->
         raise RuntimeError(
             f"Unexpected __typename '{typename}' while deleting partition "
             f"'{partition_key}': {result}"
+        )
+
+
+# =============================================================================
+# Sensor Control (GraphQL-based)
+# =============================================================================
+
+
+def _query_sensor_state(
+    client: DagsterGraphQLClient,
+    sensor_name: str,
+    repository_location: str,
+    repository_name: str,
+) -> tuple[str, str]:
+    """Fetch sensor state id/status for a sensor.
+
+    Returns:
+        Tuple of (sensor_state_id, status)
+
+    Raises:
+        RuntimeError: If GraphQL request fails or response shape is unexpected
+    """
+    query = """
+    query GetSensorState(
+        $repositoryLocationName: String!
+        $repositoryName: String!
+        $sensorName: String!
+    ) {
+        sensorOrError(
+            sensorSelector: {
+                repositoryLocationName: $repositoryLocationName
+                repositoryName: $repositoryName
+                sensorName: $sensorName
+            }
+        ) {
+            __typename
+            ... on Sensor {
+                sensorState { id status }
+            }
+            ... on PythonError { message }
+            ... on SensorNotFoundError { message }
+            ... on UnauthorizedError { message }
+        }
+    }
+    """
+
+    variables = {
+        "repositoryLocationName": repository_location,
+        "repositoryName": repository_name,
+        "sensorName": sensor_name,
+    }
+    result = client.query(query, variables=variables, timeout=10)
+
+    if "errors" in result:
+        raise RuntimeError(
+            f"Failed to query sensor state for '{sensor_name}': {result}"
+        )
+
+    data_obj = result.get("data")
+    if not isinstance(data_obj, dict):
+        raise RuntimeError(
+            f"No 'data' in sensor state response for '{sensor_name}': {result}"
+        )
+    data = cast(JsonDict, data_obj)
+
+    sensor_or_error_obj = data.get("sensorOrError")
+    if not isinstance(sensor_or_error_obj, dict):
+        raise RuntimeError(
+            f"Invalid sensorOrError response for '{sensor_name}': {result}"
+        )
+    sensor_or_error = cast(JsonDict, sensor_or_error_obj)
+
+    typename = sensor_or_error.get("__typename")
+    if typename != "Sensor":
+        message = sensor_or_error.get("message", "")
+        raise RuntimeError(
+            f"Failed to query sensor state for '{sensor_name}': "
+            f"__typename={typename}, message={message}"
+        )
+
+    sensor_state_obj = sensor_or_error.get("sensorState")
+    if not isinstance(sensor_state_obj, dict):
+        raise RuntimeError(
+            f"Missing sensorState in response for '{sensor_name}': {result}"
+        )
+    sensor_state = cast(JsonDict, sensor_state_obj)
+
+    sensor_state_id = sensor_state.get("id")
+    status = sensor_state.get("status")
+    if not isinstance(sensor_state_id, str) or not isinstance(status, str):
+        raise RuntimeError(
+            f"Invalid sensor state payload for '{sensor_name}': {result}"
+        )
+
+    return sensor_state_id, status
+
+
+def stop_sensor(
+    client: DagsterGraphQLClient,
+    sensor_name: str,
+    repository_location: str = "etl_pipelines",
+    repository_name: str = "__repository__",
+) -> None:
+    """Stop a Dagster sensor using GraphQL.
+
+    If the sensor is already STOPPED, this is a no-op.
+    """
+    sensor_state_id, status = _query_sensor_state(
+        client,
+        sensor_name,
+        repository_location,
+        repository_name,
+    )
+    if status == "STOPPED":
+        return
+
+    mutation = """
+    mutation StopRunningSensor($id: String!) {
+        stopSensor(id: $id) {
+            __typename
+            ... on StopSensorMutationResult {
+                instigationState { id status }
+            }
+            ... on PythonError { message }
+            ... on UnauthorizedError { message }
+        }
+    }
+    """
+
+    result = client.query(
+        mutation,
+        variables={"id": sensor_state_id},
+        timeout=10,
+    )
+    if "errors" in result:
+        raise RuntimeError(f"Failed to stop sensor '{sensor_name}': {result}")
+
+    data_obj = result.get("data")
+    if not isinstance(data_obj, dict):
+        raise RuntimeError(
+            f"No 'data' in stopSensor response for '{sensor_name}': {result}"
+        )
+    data = cast(JsonDict, data_obj)
+
+    stop_result_obj = data.get("stopSensor")
+    if not isinstance(stop_result_obj, dict):
+        raise RuntimeError(f"Invalid stopSensor response for '{sensor_name}': {result}")
+    stop_result = cast(JsonDict, stop_result_obj)
+
+    typename = stop_result.get("__typename")
+    if typename != "StopSensorMutationResult":
+        message = stop_result.get("message", "")
+        raise RuntimeError(
+            f"Failed to stop sensor '{sensor_name}': "
+            f"__typename={typename}, message={message}"
+        )
+
+
+def start_sensor(
+    client: DagsterGraphQLClient,
+    sensor_name: str,
+    repository_location: str = "etl_pipelines",
+    repository_name: str = "__repository__",
+) -> None:
+    """Start a Dagster sensor using GraphQL.
+
+    If the sensor is already RUNNING, this is a no-op.
+    """
+    _sensor_state_id, status = _query_sensor_state(
+        client,
+        sensor_name,
+        repository_location,
+        repository_name,
+    )
+    if status == "RUNNING":
+        return
+
+    mutation = """
+    mutation StartSensor(
+        $repositoryLocationName: String!
+        $repositoryName: String!
+        $sensorName: String!
+    ) {
+        startSensor(
+            sensorSelector: {
+                repositoryLocationName: $repositoryLocationName
+                repositoryName: $repositoryName
+                sensorName: $sensorName
+            }
+        ) {
+            __typename
+            ... on Sensor {
+                sensorState { id status }
+            }
+            ... on PythonError { message }
+            ... on UnauthorizedError { message }
+        }
+    }
+    """
+
+    variables = {
+        "repositoryLocationName": repository_location,
+        "repositoryName": repository_name,
+        "sensorName": sensor_name,
+    }
+    result = client.query(mutation, variables=variables, timeout=10)
+
+    if "errors" in result:
+        raise RuntimeError(f"Failed to start sensor '{sensor_name}': {result}")
+
+    data_obj = result.get("data")
+    if not isinstance(data_obj, dict):
+        raise RuntimeError(
+            f"No 'data' in startSensor response for '{sensor_name}': {result}"
+        )
+    data = cast(JsonDict, data_obj)
+
+    start_result_obj = data.get("startSensor")
+    if not isinstance(start_result_obj, dict):
+        raise RuntimeError(
+            f"Invalid startSensor response for '{sensor_name}': {result}"
+        )
+    start_result = cast(JsonDict, start_result_obj)
+
+    typename = start_result.get("__typename")
+    if typename != "Sensor":
+        message = start_result.get("message", "")
+        raise RuntimeError(
+            f"Failed to start sensor '{sensor_name}': "
+            f"__typename={typename}, message={message}"
         )
 
 
@@ -330,17 +562,19 @@ def poll_run_to_completion(
         if "errors" in result:
             raise RuntimeError(f"Failed to query run status: {result.get('errors')}")
 
-        data = result.get("data")
-        if not isinstance(data, dict):
+        data_obj = result.get("data")
+        if not isinstance(data_obj, dict):
             time.sleep(current_interval)
             current_interval = min(current_interval * 2, max_interval)
             continue
+        data = cast(JsonDict, data_obj)
 
-        run_or_error = data.get("runOrError")
-        if not isinstance(run_or_error, dict) or "id" not in run_or_error:
+        run_or_error_obj = data.get("runOrError")
+        if not isinstance(run_or_error_obj, dict) or "id" not in run_or_error_obj:
             time.sleep(current_interval)
             current_interval = min(current_interval * 2, max_interval)
             continue
+        run_or_error = cast(JsonDict, run_or_error_obj)
 
         status_val = run_or_error.get("status")
         if isinstance(status_val, str) and status_val in terminal_statuses:
@@ -395,18 +629,24 @@ def get_run_error_details(client: DagsterGraphQLClient, run_id: str) -> JsonDict
     except Exception as e:
         return {"error": f"Could not fetch logs: {e}"}
 
-    data = log_result.get("data")
-    if not isinstance(data, dict):
+    data_obj = log_result.get("data")
+    if not isinstance(data_obj, dict):
         return {"error": "Could not fetch logs", "raw": log_result}
+    data = cast(JsonDict, data_obj)
 
-    logs = data.get("logsForRun")
-    if not isinstance(logs, dict) or logs.get("__typename") != "EventConnection":
+    logs_obj = data.get("logsForRun")
+    if not isinstance(logs_obj, dict):
+        return {"error": "Could not fetch logs", "raw": log_result}
+    logs = cast(JsonDict, logs_obj)
+    if logs.get("__typename") != "EventConnection":
         return {"error": "Could not fetch logs", "raw": log_result}
 
     events_raw = logs.get("events")
     events_list: list[JsonDict] = []
     if isinstance(events_raw, list):
-        events_list = [e for e in events_raw if isinstance(e, dict)]
+        for event in events_raw:
+            if isinstance(event, dict):
+                events_list.append(cast(JsonDict, event))
 
     failure_events = [
         e
@@ -440,37 +680,50 @@ def format_error_details(error_details: JsonDict | None) -> str:
     for i, event in enumerate(failure_events, 1):
         if not isinstance(event, dict):
             continue
-        event_type = event.get("__typename", "Unknown")
+        event_dict = cast(JsonDict, event)
+        event_type = event_dict.get("__typename", "Unknown")
         lines.append(f"\n--- Failure Event {i}: {event_type} ---")
 
         if event_type == "ExecutionStepFailureEvent":
-            lines.append(f"Step: {event.get('stepKey', 'unknown')}")
-            error = event.get("error")
-            if isinstance(error, dict):
+            lines.append(f"Step: {event_dict.get('stepKey', 'unknown')}")
+            error_obj = event_dict.get("error")
+            if isinstance(error_obj, dict):
+                error = cast(JsonDict, error_obj)
                 lines.append(f"\nError Message:\n{error.get('message', 'N/A')}")
                 stack = error.get("stack")
                 if isinstance(stack, list):
                     lines.append("\nStack Trace:")
-                    for frame in stack[-10:]:
+                    stack_list = cast(list[object], stack)
+                    start_idx = max(len(stack_list) - 10, 0)
+                    for frame in stack_list[start_idx:]:
                         if isinstance(frame, str):
                             lines.append(f"  {frame.strip()}")
                 error_chain = error.get("errorChain")
                 if isinstance(error_chain, list):
                     for j, chain_item in enumerate(error_chain, 1):
                         if isinstance(chain_item, dict):
-                            chain_error = chain_item.get("error", {})
-                            if isinstance(chain_error, dict):
+                            chain_item_dict = cast(JsonDict, chain_item)
+                            chain_error_obj = chain_item_dict.get("error", {})
+                            if isinstance(chain_error_obj, dict):
+                                chain_error = cast(JsonDict, chain_error_obj)
                                 lines.append(f"\n--- Caused By ({j}) ---")
                                 lines.append(
                                     f"Message: {chain_error.get('message', 'N/A')}"
                                 )
-                cause = error.get("cause")
-                if isinstance(cause, dict) and cause.get("message"):
+                cause_obj = error.get("cause")
+                if isinstance(cause_obj, dict):
+                    cause = cast(JsonDict, cause_obj)
+                    cause_message = cause.get("message")
+                else:
+                    cause = None
+                    cause_message = None
+
+                if isinstance(cause_message, str) and cause_message:
                     lines.append("\n--- Root Cause ---")
-                    lines.append(f"Message: {cause.get('message', 'N/A')}")
+                    lines.append(f"Message: {cause_message}")
         else:
-            if event.get("message"):
-                lines.append(f"Message: {event.get('message')}")
+            if event_dict.get("message"):
+                lines.append(f"Message: {event_dict.get('message')}")
 
     lines.append("\n" + "=" * 80)
     return "\n".join(lines)
@@ -763,9 +1016,7 @@ def cleanup_mongodb_runs_by_batch_id(
         return
     try:
         db = mongo_client[mongo_settings.database]
-        run_docs = list(
-            db["runs"].find({"batch_id": batch_id}, {"dagster_run_id": 1})
-        )
+        run_docs = list(db["runs"].find({"batch_id": batch_id}, {"dagster_run_id": 1}))
         for run_doc in run_docs:
             dagster_run_id = run_doc.get("dagster_run_id")
             if isinstance(dagster_run_id, str):

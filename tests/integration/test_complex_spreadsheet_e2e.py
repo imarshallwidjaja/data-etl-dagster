@@ -16,13 +16,15 @@ Run with:
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 from uuid import uuid4
 
 import pytest
 
-from .helpers import (
+from tests.integration.helpers import (
     DagsterGraphQLClient,
     add_dynamic_partition,
     assert_datalake_object_exists,
@@ -36,7 +38,10 @@ from .helpers import (
     cleanup_mongodb_run,
     format_error_details,
     poll_run_to_completion,
+    start_sensor,
+    stop_sensor,
     upload_bytes_to_minio,
+    wait_for_graphql_ready,
 )
 
 
@@ -174,12 +179,28 @@ def _launch_splitter_job(
         f"Failed to launch splitter job: {result.get('errors')}"
     )
 
-    launch_data = result["data"]["launchRun"]
+    data_obj = result.get("data")
+    assert isinstance(data_obj, dict), f"Invalid launch response payload: {result}"
+    data = cast(dict[str, object], data_obj)
+    launch_data_obj = data.get("launchRun")
+    assert isinstance(launch_data_obj, dict), (
+        f"Missing launchRun payload in splitter response: {result}"
+    )
+    launch_data = cast(dict[str, object], launch_data_obj)
     assert "run" in launch_data, (
         f"Splitter job launch failed: {launch_data.get('message', 'Unknown error')}"
     )
 
-    run_id = launch_data["run"]["runId"]
+    run_obj = launch_data.get("run")
+    assert isinstance(run_obj, dict), (
+        f"Missing run payload in splitter launch response: {launch_data}"
+    )
+    run_data = cast(dict[str, object], run_obj)
+    run_id_obj = run_data.get("runId")
+    assert isinstance(run_id_obj, str), (
+        f"No run_id returned from splitter job launch: {launch_data}"
+    )
+    run_id = run_id_obj
     assert run_id, "No run_id returned from splitter job launch"
     return run_id
 
@@ -211,12 +232,28 @@ def _launch_tabular_asset_job(
         f"Failed to launch tabular job: {result.get('errors')}"
     )
 
-    launch_data = result["data"]["launchRun"]
+    data_obj = result.get("data")
+    assert isinstance(data_obj, dict), f"Invalid launch response payload: {result}"
+    data = cast(dict[str, object], data_obj)
+    launch_data_obj = data.get("launchRun")
+    assert isinstance(launch_data_obj, dict), (
+        f"Missing launchRun payload in tabular response: {result}"
+    )
+    launch_data = cast(dict[str, object], launch_data_obj)
     assert "run" in launch_data, (
         f"Tabular job launch failed: {launch_data.get('message', 'Unknown error')}"
     )
 
-    run_id = launch_data["run"]["runId"]
+    run_obj = launch_data.get("run")
+    assert isinstance(run_obj, dict), (
+        f"Missing run payload in tabular launch response: {launch_data}"
+    )
+    run_data = cast(dict[str, object], run_obj)
+    run_id_obj = run_data.get("runId")
+    assert isinstance(run_id_obj, str), (
+        f"No run_id returned from tabular job launch: {launch_data}"
+    )
+    run_id = run_id_obj
     assert run_id, "No run_id returned from tabular job launch"
     return run_id
 
@@ -448,6 +485,32 @@ def _cleanup_all(
 # =============================================================================
 
 
+@pytest.fixture(scope="module")
+def tabular_sensor_module_guard():
+    dagster_graphql_url = os.getenv("DAGSTER_GRAPHQL_URL")
+    if not dagster_graphql_url:
+        dagster_port = os.getenv("DAGSTER_WEBSERVER_PORT", "3000")
+        dagster_graphql_url = f"http://localhost:{dagster_port}/graphql"
+
+    dagster_client = wait_for_graphql_ready(dagster_graphql_url, timeout=30)
+    yield from _tabular_sensor_module_guard_impl(dagster_client)
+
+
+def _tabular_sensor_module_guard_impl(dagster_client: DagsterGraphQLClient):
+    """Disable tabular_sensor for this module's E2E tests.
+
+    Teardown restart is best-effort so cleanup issues don't mask test failures.
+    """
+    stop_sensor(dagster_client, "tabular_sensor")
+    try:
+        yield
+    finally:
+        try:
+            start_sensor(dagster_client, "tabular_sensor")
+        except Exception:
+            pass
+
+
 class TestComplexSpreadsheetE2ECleanup:
     def test_cleanup_all_deletes_assets_for_run_id_even_when_multiple_exist(
         self, monkeypatch
@@ -531,6 +594,60 @@ class TestComplexSpreadsheetE2ECleanup:
         assert db["assets"].count_documents({"run_id": str(run_doc_id)}) == 0
 
 
+class TestTabularSensorModuleGuard:
+    def test_tabular_sensor_module_guard_calls_stop_then_start(self, monkeypatch):
+        calls: list[tuple[str, str]] = []
+
+        def _stop_sensor(_client, sensor_name: str) -> None:
+            calls.append(("stop", sensor_name))
+
+        def _start_sensor(_client, sensor_name: str) -> None:
+            calls.append(("start", sensor_name))
+
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.stop_sensor",
+            _stop_sensor,
+        )
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.start_sensor",
+            _start_sensor,
+        )
+
+        guard = _tabular_sensor_module_guard_impl(cast(DagsterGraphQLClient, object()))
+
+        next(guard)
+        assert calls == [("stop", "tabular_sensor")]
+
+        with pytest.raises(StopIteration):
+            next(guard)
+
+        assert calls == [
+            ("stop", "tabular_sensor"),
+            ("start", "tabular_sensor"),
+        ]
+
+    def test_tabular_sensor_module_guard_swallows_restart_errors(self, monkeypatch):
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.stop_sensor",
+            lambda *_args, **_kwargs: None,
+        )
+
+        def _raise_on_start(*_args, **_kwargs) -> None:
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            "tests.integration.test_complex_spreadsheet_e2e.start_sensor",
+            _raise_on_start,
+        )
+
+        guard = _tabular_sensor_module_guard_impl(cast(DagsterGraphQLClient, object()))
+
+        next(guard)
+        with pytest.raises(StopIteration):
+            next(guard)
+
+
+@pytest.mark.usefixtures("tabular_sensor_module_guard")
 class TestComplexSpreadsheetE2E:
     """End-to-end test: XLSX -> splitter -> child manifests -> tabular assets."""
 
