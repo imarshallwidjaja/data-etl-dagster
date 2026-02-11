@@ -231,6 +231,33 @@ class TestBuildComplexSpreadsheetManifest:
         assert len(manifest.files) == 1
         assert manifest.files[0].format == "XLSX"
 
+    def test_build_complex_spreadsheet_manifest_accepts_xlsm(self):
+        """complex_spreadsheet manifest should accept XLSM format."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsm",
+                    "type": "tabular",
+                    "format": "XLSM",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {"anchor_text": "Year"},
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.intent == "ingest_complex_spreadsheet"
+        assert len(manifest.files) == 1
+        assert manifest.files[0].format == "XLSM"
+
     def test_build_complex_spreadsheet_manifest_v2_basic(self):
         """complex_spreadsheet v2 config should parse and attach successfully."""
         form_data = {
@@ -456,7 +483,7 @@ class TestBuildComplexSpreadsheetManifest:
             },
         }
 
-        with pytest.raises(ValueError, match="XLSX"):
+        with pytest.raises(ValueError, match="XLSX.*XLSM"):
             build_manifest(
                 asset_type="complex_spreadsheet",
                 form_data=form_data,
@@ -511,3 +538,27 @@ class TestBuildComplexSpreadsheetManifest:
         )
 
         assert manifest.files[0].format == "XLSX"
+
+    def test_infer_xlsm_format_from_extension(self):
+        """_infer_format should return XLSM for .xlsm paths."""
+        form_data = {
+            "title": "Complex ABS Data",
+            "files": [
+                {
+                    "path": "s3://landing-zone/batch_001/data.xlsm",
+                    "type": "tabular",
+                }
+            ],
+            "complex_spreadsheet": {
+                "template_id": "anchor_unpivot_v1",
+                "template_params": {"anchor_text": "Year"},
+            },
+        }
+
+        manifest = build_manifest(
+            asset_type="complex_spreadsheet",
+            form_data=form_data,
+            uploader="testuser",
+        )
+
+        assert manifest.files[0].format == "XLSM"

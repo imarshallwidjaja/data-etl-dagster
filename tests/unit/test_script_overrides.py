@@ -74,19 +74,25 @@ class TestWebappURLOverride:
 class TestComposeProjectContainerNames:
     """Container names should be derived from COMPOSE_PROJECT_NAME when set."""
 
-    def test_default_container_names_without_project(self):
-        """Without COMPOSE_PROJECT_NAME, uses hardcoded container names."""
+    def test_default_container_names_use_directory_project_name(self):
+        """Without COMPOSE_PROJECT_NAME, derives names from cwd project name."""
         from scripts.check_container_stability import resolve_container_names
 
-        with patch.dict(os.environ, {}, clear=True):
+        with (
+            patch.dict(os.environ, {}, clear=True),
+            patch(
+                "scripts.check_container_stability.os.getcwd",
+                return_value="/tmp/data-etl-dagster",
+            ),
+        ):
             names = resolve_container_names()
         assert names == [
-            "dagster-webserver",
-            "dagster-daemon",
-            "dagster-user-code",
-            "mongodb",
-            "postgis",
-            "minio",
+            "data-etl-dagster-dagster-webserver-1",
+            "data-etl-dagster-dagster-daemon-1",
+            "data-etl-dagster-user-code-1",
+            "data-etl-dagster-mongodb-1",
+            "data-etl-dagster-postgis-1",
+            "data-etl-dagster-minio-1",
         ]
 
     def test_project_scoped_container_names(self):

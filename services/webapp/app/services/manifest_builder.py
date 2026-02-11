@@ -263,11 +263,16 @@ def _build_complex_spreadsheet_manifest(
             "Complex spreadsheet manifest requires complex_spreadsheet config"
         )
 
-    # Build file entries (complex spreadsheet requires exactly one XLSX file)
+    # Build file entries (complex spreadsheet requires exactly one Excel file)
     files = _get_file_entries(form_data, default_type=FileType.TABULAR)
 
     if len(files) != 1:
         raise ValueError("Complex spreadsheet manifest requires exactly one file")
+
+    if files[0].format.upper() not in {"XLSX", "XLSM"}:
+        raise ValueError(
+            "Complex spreadsheet manifest requires file format 'XLSX' or 'XLSM'"
+        )
 
     # Build ComplexSpreadsheetConfig (validates via Pydantic)
     # Note: at the API boundary this may already be a validated model instance.
@@ -353,6 +358,7 @@ def _infer_format(path: str) -> str:
         "csv": "CSV",
         "parquet": "Parquet",
         "xlsx": "XLSX",
+        "xlsm": "XLSM",
     }
 
     return format_map.get(ext, "GeoJSON")

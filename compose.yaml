@@ -2,7 +2,7 @@
 # Spatial Data ETL Pipeline - Docker Compose Configuration (Base)
 # =============================================================================
 # Base service definitions for the spatial ETL pipeline.
-# Dev overrides (ports, container names) live in compose.override.yaml.
+# Dev overrides (ports) live in compose.override.yaml.
 #
 # Services:
 #   - dagster-webserver: Dagster UI

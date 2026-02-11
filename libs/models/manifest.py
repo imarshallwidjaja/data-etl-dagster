@@ -582,7 +582,7 @@ class Manifest(BaseModel):
 
         Rules:
         - Exactly one file
-        - File format must be XLSX
+        - File format must be XLSX or XLSM
         - metadata.complex_spreadsheet must be present (non-None)
         - metadata.tags.dataset_id must be present and non-empty
         """
@@ -596,13 +596,14 @@ class Manifest(BaseModel):
                 f"got {len(self.files)}"
             )
 
-        # File format must be XLSX (case-insensitive; normalize to uppercase)
-        if self.files[0].format.upper() != "XLSX":
+        # File format must be Excel (case-insensitive; normalize to uppercase)
+        normalized_format = self.files[0].format.upper()
+        if normalized_format not in {"XLSX", "XLSM"}:
             raise ValueError(
-                f"Manifest with intent 'ingest_complex_spreadsheet' requires file format 'XLSX', "
+                f"Manifest with intent 'ingest_complex_spreadsheet' requires file format 'XLSX' or 'XLSM', "
                 f"got '{self.files[0].format}'"
             )
-        self.files[0].format = self.files[0].format.upper()
+        self.files[0].format = normalized_format
 
         # metadata.complex_spreadsheet must be present
         if self.metadata.complex_spreadsheet is None:
