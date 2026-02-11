@@ -14,7 +14,13 @@ from .assets import (
 )
 from .jobs import ingest_job, complex_table_splitter_job  # Op-based jobs
 from .partitions import dataset_partitions
-from .resources import GDALResource, MinIOResource, MongoDBResource, PostGISResource
+from .resources import (
+    GDALResource,
+    MinIOResource,
+    MongoDBResource,
+    PostGISResource,
+    RunScopedManifestIOManager,
+)
 from .sensors import (
     join_sensor,
     manifest_sensor,
@@ -106,6 +112,7 @@ defs = Definitions(
             gdal_data_path="",
             proj_lib_path="",
         ),
+        "raw_manifest_io_manager": RunScopedManifestIOManager(),
     },
     schedules=[],
     sensors=[
