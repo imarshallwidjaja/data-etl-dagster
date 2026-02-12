@@ -71,3 +71,26 @@ def test_test_runner_waits_for_dagster_daemon_start():
     assert depends_on["dagster-daemon"]["condition"] == "service_started", (
         "compose.test.yaml test-runner must wait for dagster-daemon to start"
     )
+
+
+def test_test_overlay_provides_webapp_session_secret():
+    """compose.test.yaml must set WEBAPP_SESSION_SECRET for the webapp service.
+
+    The base compose.yaml uses ``${WEBAPP_SESSION_SECRET:-}`` which resolves to
+    empty when no host ``.env`` supplies the value.  Since the test stack sets
+    ``ENVIRONMENT=ci`` (via compose.test.yaml or ``.env.ci``), the webapp
+    Settings validator requires a non-empty secret.  The test overlay must
+    therefore hardcode a stable, non-production secret so the webapp container
+    starts healthy without relying on host-side env files.
+    """
+    overlay = _load_yaml(REPO_ROOT / "compose.test.yaml")
+    webapp_env = overlay["services"]["webapp"]["environment"]
+
+    assert "WEBAPP_SESSION_SECRET" in webapp_env, (
+        "compose.test.yaml webapp.environment must include WEBAPP_SESSION_SECRET; "
+        "without it, ENVIRONMENT=ci causes a Settings ValidationError at startup"
+    )
+    secret = webapp_env["WEBAPP_SESSION_SECRET"]
+    assert secret and len(str(secret).strip()) > 0, (
+        "WEBAPP_SESSION_SECRET in compose.test.yaml must be a non-empty string"
+    )
