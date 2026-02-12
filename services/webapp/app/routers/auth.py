@@ -5,6 +5,7 @@
 # safe redirect, CSRF enforcement, and audit logging.
 # =============================================================================
 
+import hmac
 import logging
 from typing import Optional
 from urllib.parse import urlparse
@@ -109,9 +110,9 @@ async def login_submit(
     """
     next_url = request.query_params.get("next", "")
 
-    # --- CSRF check ---------------------------------------------------------
+    # --- CSRF check (timing-safe) -------------------------------------------
     session_csrf = request.session.get("csrf", "")
-    if not csrf_token or csrf_token != session_csrf:
+    if not csrf_token or not hmac.compare_digest(csrf_token, session_csrf):
         return HTMLResponse(
             content="CSRF validation failed",
             status_code=status.HTTP_403_FORBIDDEN,

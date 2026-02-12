@@ -102,6 +102,68 @@ class TestHybridBasicFallback:
         assert response.status_code == 401
 
 
+class TestMalformedBasicHeader:
+    """Malformed Authorization: Basic headers must not trigger WWW-Authenticate.
+
+    A malformed Basic header (e.g. non-base64 payload) should result in a
+    clean 401 JSON or 303 redirect, *never* a 401 with WWW-Authenticate: Basic
+    which would trigger the browser's native auth popup.
+    """
+
+    def test_malformed_basic_no_www_authenticate_json(self):
+        """GET /whoami with malformed Basic header → 401 without WWW-Authenticate."""
+        response = client.get(
+            "/whoami",
+            headers={"Authorization": "Basic !!!not-base64!!!"},
+        )
+        assert response.status_code == 401
+        assert "www-authenticate" not in response.headers
+
+    def test_malformed_basic_no_www_authenticate_html(self):
+        """GET / with malformed Basic header → 303 redirect (not 401 with WWW-Auth)."""
+        response = client.get(
+            "/",
+            headers={"Authorization": "Basic !!!not-base64!!!"},
+            follow_redirects=False,
+        )
+        # Should redirect to login, NOT 401 with WWW-Authenticate
+        assert response.status_code == 303
+        assert "www-authenticate" not in response.headers
+
+    def test_malformed_basic_hybrid_no_www_authenticate(self):
+        """GET /whoami with malformed Basic in hybrid mode → 401 without WWW-Authenticate."""
+        _real_settings = get_settings()
+        hybrid_settings = Settings(
+            webapp_auth_mode="hybrid",
+            webapp_username=_real_settings.webapp_username,
+            webapp_password=_real_settings.webapp_password,
+            webapp_session_secret=_real_settings.webapp_session_secret,
+        )
+        app.dependency_overrides[get_settings] = lambda: hybrid_settings
+        try:
+            response = client.get(
+                "/whoami",
+                headers={"Authorization": "Basic !!!not-base64!!!"},
+            )
+            assert response.status_code == 401
+            assert "www-authenticate" not in response.headers
+        finally:
+            app.dependency_overrides.pop(get_settings, None)
+
+    def test_basic_header_missing_colon_no_www_authenticate(self):
+        """Basic header with base64 that decodes but has no colon → clean 401."""
+        import base64 as b64
+
+        # "nocolon" base64-encodes fine but has no ':' separator
+        bad_creds = b64.b64encode(b"nocolon").decode()
+        response = client.get(
+            "/whoami",
+            headers={"Authorization": f"Basic {bad_creds}"},
+        )
+        assert response.status_code == 401
+        assert "www-authenticate" not in response.headers
+
+
 class TestSessionAuthenticatedAccess:
     """Session-authenticated requests should pass through normally."""
 

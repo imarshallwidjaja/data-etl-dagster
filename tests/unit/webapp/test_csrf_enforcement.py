@@ -6,12 +6,10 @@
 # and succeed with a valid token (from session).
 # =============================================================================
 
-import hmac
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
-from starlette.testclient import TestClient as StarletteTestClient
 
 from app.config import get_settings
 from app.main import app
@@ -90,59 +88,6 @@ def _noop():
 # ---------------------------------------------------------------------------
 # Helper: create an authenticated session and extract CSRF token
 # ---------------------------------------------------------------------------
-
-
-def _authenticated_client() -> tuple[TestClient, str]:
-    """
-    Return a (client, csrf_token) pair with a valid session.
-
-    Logs in via POST /login to establish the session, then reads the
-    csrf token from the session.
-    """
-    settings = get_settings()
-    client = TestClient(app, raise_server_exceptions=False)
-
-    # GET /login to seed CSRF
-    resp = client.get("/login")
-    assert resp.status_code == 200
-
-    # Extract CSRF token from the HTML hidden field
-    import re
-
-    match = re.search(r'name="csrf_token"\s+value="([^"]+)"', resp.text)
-    assert match, "csrf_token hidden field not found in login form"
-    csrf_token = match.group(1)
-
-    # POST /login with valid credentials
-    resp = client.post(
-        "/login",
-        data={
-            "username": settings.webapp_username,
-            "password": settings.webapp_password,
-            "csrf_token": csrf_token,
-        },
-        follow_redirects=False,
-    )
-    assert resp.status_code == 303, f"Login failed: {resp.status_code} {resp.text}"
-
-    # After login the session has a new CSRF token (rotated).
-    # We need to read it. GET / will use the session; we can read the
-    # meta tag from base.html once we add it.  For now, hit GET /login
-    # which seeds CSRF if missing.
-    # Actually the session already has csrf set by set_session_user.
-    # We need to obtain it. The simplest way: GET any page that includes
-    # the csrf meta tag (which we'll add to base.html).
-    # For testing we'll read it from the homepage after login.
-    # Since we haven't added the meta tag yet, we'll use a workaround:
-    # access the session cookie and decode it.
-    # However, the TestClient preserves session across requests.
-    # We can grab the csrf from a GET that renders it. We'll add a
-    # csrf meta tag and read it.  But for now, let's use the session
-    # directly.  Starlette's test client stores the session in the
-    # cookies and we need the signed session to get the csrf.
-    # Instead, let's load any page and parse the csrf meta tag.
-
-    return client, ""  # Placeholder; we'll fix after adding meta tag
 
 
 def _get_csrf_from_page(client: TestClient) -> str:

@@ -24,6 +24,24 @@ logger = logging.getLogger(__name__)
 security = HTTPBasic(auto_error=False)
 
 
+async def _safe_basic_credentials(
+    request: Request,
+) -> Optional[HTTPBasicCredentials]:
+    """Extract Basic credentials, returning ``None`` for malformed headers.
+
+    ``HTTPBasic(auto_error=False)`` still raises ``401 + WWW-Authenticate``
+    when the Authorization header carries the ``Basic`` scheme but contains
+    invalid base64 or is missing the ``:`` separator.  We wrap the call so
+    that any such parse failure is silently swallowed — the request is then
+    treated as unauthenticated (no WWW-Authenticate header emitted).
+    """
+    try:
+        return await security(request)
+    except HTTPException:
+        # Malformed Basic header — treat as no credentials.
+        return None
+
+
 class _LoginRedirectException(Exception):
     """Raised when an unauthenticated browser request should redirect to /login."""
 
@@ -78,7 +96,7 @@ def get_auth_provider(settings: Settings = Depends(get_settings)) -> BasicAuthPr
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPBasicCredentials] = Depends(security),
+    credentials: Optional[HTTPBasicCredentials] = Depends(_safe_basic_credentials),
     auth_provider: BasicAuthProvider = Depends(get_auth_provider),
     settings: Settings = Depends(get_settings),
 ) -> AuthenticatedUser:
