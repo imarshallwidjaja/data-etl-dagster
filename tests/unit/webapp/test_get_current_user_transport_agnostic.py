@@ -43,6 +43,15 @@ class TestUnauthenticatedRedirect:
         assert response.status_code == 303
         assert "/login?next=" in response.headers["location"]
 
+    def test_unauth_get_with_query_preserves_query_in_next(self):
+        """GET with query should preserve query string in next redirect param."""
+        response = client.get("/manifests/?status=active", follow_redirects=False)
+        assert response.status_code == 303
+        assert (
+            response.headers["location"]
+            == "/login?next=%2Fmanifests%2F%3Fstatus%3Dactive"
+        )
+
 
 class TestUnauthenticatedJson401:
     """Unauthenticated JSON/API requests should get 401 JSON, not redirect."""

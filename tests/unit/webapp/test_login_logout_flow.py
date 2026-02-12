@@ -47,6 +47,20 @@ class TestGetLogin:
         assert 'name="csrf_token"' in body
         assert 'type="hidden"' in body
 
+    def test_form_action_encodes_next_query_delimiters(self):
+        """Login form action should URL-encode next to preserve full path+query."""
+        import re
+
+        client = TestClient(app, raise_server_exceptions=False)
+        resp = client.get("/login?next=%2Fmanifests%2F%3Fstatus%3Dactive%26owner%3Dme")
+        assert resp.status_code == 200
+        match = re.search(r'action="([^"]+)"', resp.text)
+        assert match, "login form action not found"
+        action = match.group(1)
+        assert action.startswith("/login?next=")
+        assert "%3F" in action
+        assert "%26" in action
+
 
 # ---------------------------------------------------------------------------
 # POST /login — CSRF enforcement

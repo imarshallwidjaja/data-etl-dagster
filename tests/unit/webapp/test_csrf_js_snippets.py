@@ -20,3 +20,14 @@ def test_csrf_js_handles_request_input_method():
     # Ensure we look at input.method when input is a Request.
     assert "input instanceof Request" in content
     assert ".method" in content
+
+
+def test_csrf_js_preserves_request_headers_when_injecting_token():
+    js_path = (
+        Path(__file__).resolve().parents[3] / "services/webapp/app/static/js/csrf.js"
+    )
+    content = js_path.read_text(encoding="utf-8")
+
+    # When input is Request and init.headers is absent, we must clone existing
+    # Request headers before adding X-CSRF-Token.
+    assert "new Headers(input.headers)" in content
