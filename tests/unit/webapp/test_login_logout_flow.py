@@ -84,6 +84,33 @@ class TestPostLoginCsrf:
 
 
 # ---------------------------------------------------------------------------
+# POST /login — CSRF uses timing-safe compare
+# ---------------------------------------------------------------------------
+
+
+class TestPostLoginCsrfTimingSafe:
+    """POST /login CSRF check must use hmac.compare_digest, not bare ``!=``."""
+
+    def test_csrf_compare_uses_compare_digest(self):
+        """Verify the login route uses hmac.compare_digest for CSRF comparison.
+
+        Inspects the source of the login_submit function to confirm it calls
+        ``compare_digest`` rather than using a plain ``!=`` / ``==`` operator
+        for CSRF token comparison.
+        """
+        import inspect
+
+        from app.routers.auth import login_submit
+
+        source = inspect.getsource(login_submit)
+
+        assert "compare_digest" in source, (
+            "login_submit does NOT call compare_digest for CSRF comparison — "
+            "it likely uses bare '!=' or '==' which is timing-vulnerable"
+        )
+
+
+# ---------------------------------------------------------------------------
 # POST /login — wrong credentials
 # ---------------------------------------------------------------------------
 
@@ -168,6 +195,86 @@ class TestPostLoginSuccess:
             )
             assert resp.status_code == 303
             assert resp.headers["location"] == "/landing/"
+
+
+# ---------------------------------------------------------------------------
+# Cookie attribute assertions
+# ---------------------------------------------------------------------------
+
+
+class TestSessionCookieAttributes:
+    """Set-Cookie header must include correct security attributes."""
+
+    def _login_and_get_set_cookie(self) -> str:
+        """Login and return the raw Set-Cookie header value for the session cookie."""
+        settings = get_settings()
+        cookie_name = settings.webapp_session_cookie_name
+        with TestClient(app, raise_server_exceptions=False) as client:
+            csrf = _extract_csrf(client.get("/login").text)
+            resp = client.post(
+                "/login",
+                data={
+                    "username": "admin",
+                    "password": "admin",
+                    "csrf_token": csrf,
+                },
+                follow_redirects=False,
+            )
+            assert resp.status_code == 303
+            # Get all Set-Cookie headers
+            # httpx stores them as a list of values in resp.headers.get_list()
+            set_cookies = resp.headers.get_list("set-cookie")
+            session_cookies = [
+                sc for sc in set_cookies if sc.startswith(f"{cookie_name}=")
+            ]
+            assert session_cookies, f"No Set-Cookie header found for '{cookie_name}'"
+            return session_cookies[0]
+
+    def test_cookie_name_matches_setting(self):
+        """Cookie name must match WEBAPP_SESSION_COOKIE_NAME."""
+        settings = get_settings()
+        cookie = self._login_and_get_set_cookie()
+        assert cookie.startswith(f"{settings.webapp_session_cookie_name}=")
+
+    def test_cookie_httponly(self):
+        """Session cookie must have HttpOnly attribute."""
+        cookie = self._login_and_get_set_cookie()
+        assert "httponly" in cookie.lower(), f"HttpOnly not in Set-Cookie: {cookie}"
+
+    def test_cookie_samesite_lax(self):
+        """Session cookie must have SameSite=Lax."""
+        cookie = self._login_and_get_set_cookie()
+        assert "samesite=lax" in cookie.lower(), (
+            f"SameSite=Lax not in Set-Cookie: {cookie}"
+        )
+
+    def test_cookie_max_age(self):
+        """Session cookie must have a Max-Age matching the setting."""
+        settings = get_settings()
+        cookie = self._login_and_get_set_cookie()
+        expected = f"Max-Age={settings.webapp_session_max_age_seconds}"
+        assert expected.lower() in cookie.lower(), (
+            f"Expected '{expected}' in Set-Cookie: {cookie}"
+        )
+
+    def test_cookie_path_root(self):
+        """Session cookie must have Path=/."""
+        cookie = self._login_and_get_set_cookie()
+        assert "path=/" in cookie.lower(), f"Path=/ not in Set-Cookie: {cookie}"
+
+    def test_cookie_secure_off_by_default(self):
+        """When WEBAPP_SESSION_SECURE=false (default), Secure flag should be absent."""
+        settings = get_settings()
+        if settings.webapp_session_secure:
+            pytest.skip("WEBAPP_SESSION_SECURE is true in test env")
+        cookie = self._login_and_get_set_cookie()
+        # "secure" should not appear as a standalone attribute
+        # Be careful: "secure" could appear in the cookie value itself
+        parts = cookie.split(";")
+        attrs = [p.strip().lower() for p in parts[1:]]  # skip the name=value part
+        assert "secure" not in attrs, (
+            f"Secure flag should be absent when WEBAPP_SESSION_SECURE=false: {cookie}"
+        )
 
 
 # ---------------------------------------------------------------------------
