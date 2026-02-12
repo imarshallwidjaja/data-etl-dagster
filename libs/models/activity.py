@@ -26,9 +26,13 @@ ActivityAction = Literal[
     "run_success",
     "run_failure",
     "run_canceled",
+    "login_success",
+    "login_failure",
+    "logout",
+    "unauthorized_access",
 ]
 
-ActivityResourceType = Literal["manifest", "file", "asset", "artifact", "run"]
+ActivityResourceType = Literal["manifest", "file", "asset", "artifact", "run", "auth"]
 
 
 class ActivityLog(BaseModel):
@@ -41,10 +45,11 @@ class ActivityLog(BaseModel):
     Attributes:
         timestamp: When the action occurred (UTC)
         user: User or system identifier who performed the action
-        action: Type of action performed (e.g., create_manifest, run_success)
-        resource_type: Type of resource affected (manifest, file, asset, run)
+        action: Type of action performed (e.g., create_manifest, login_success)
+        resource_type: Type of resource affected (manifest, file, asset, run, auth)
         resource_id: Identifier of the affected resource
         details: Additional context about the action (flexible dict)
+        ip_address: Client IP address (for auth-related actions)
     """
 
     timestamp: datetime = Field(
@@ -60,4 +65,8 @@ class ActivityLog(BaseModel):
     details: dict[str, Any] = Field(
         default_factory=dict,
         description="Additional context about the action",
+    )
+    ip_address: str | None = Field(
+        default=None,
+        description="Client IP address (for auth-related actions)",
     )
