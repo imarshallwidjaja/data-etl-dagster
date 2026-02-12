@@ -273,13 +273,16 @@ class TestWebappAssets:
             assert asset["kind"] == "spatial"
 
     def test_assets_requires_auth(self, webapp_url):
-        """Assets endpoint should require authentication."""
+        """Assets endpoint should require authentication (redirects to login)."""
         response = requests.get(
             f"{webapp_url}/assets/",
             timeout=10,
+            allow_redirects=False,
         )
 
-        assert response.status_code == 401
+        # Session auth: unauthenticated HTML requests redirect to /login.
+        assert response.status_code == 303
+        assert "/login" in response.headers.get("location", "")
 
     def test_asset_detail_with_seeded_data(self, seeded_asset, webapp_url):
         response = requests.get(
