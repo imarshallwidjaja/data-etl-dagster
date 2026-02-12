@@ -31,7 +31,9 @@ docker compose up -d dagster-webserver dagster-daemon user-code minio minio-init
 
 | URL | Credentials |
 |-----|-------------|
-| http://localhost:8080 | `admin:admin` (default) |
+| http://localhost:8080 | `admin:admin` (default, via form login) |
+
+Navigate to http://localhost:8080 — unauthenticated requests redirect to `/login` where you enter credentials. On success you receive a signed session cookie that authenticates subsequent requests.
 
 ### Health Check
 
@@ -39,7 +41,7 @@ docker compose up -d dagster-webserver dagster-daemon user-code minio minio-init
 # Health endpoint (no auth)
 curl http://localhost:8080/health
 
-# Authenticated endpoint
+# Authenticated endpoint (hybrid mode allows Basic auth fallback)
 curl -u admin:admin http://localhost:8080/whoami
 ```
 
@@ -69,7 +71,7 @@ Set environment variables in `.env` or `compose.yaml`:
 | Frontend | Jinja2 templates |
 | CSS | PicoCSS (semantic, dark theme) |
 | JavaScript | Vanilla JS (form interactivity) |
-| Authentication | HTTP Basic Auth (extensible) |
+| Authentication | Signed session cookies (form login) with optional HTTP Basic fallback |
 
 ## Directory Structure
 
@@ -81,7 +83,8 @@ services/webapp/
 └── app/
     ├── main.py            # FastAPI entry point
     ├── config.py          # Pydantic Settings
-    ├── auth/              # Authentication module
+    ├── auth/              # Authentication (providers, session helpers, dependencies)
+    ├── security/          # CSRF enforcement
     ├── routers/           # API endpoints
     ├── services/          # Service wrappers (MinIO, MongoDB, Dagster)
     ├── templates/         # Jinja2 templates
@@ -94,6 +97,14 @@ tests/
 ```
 
 ## API Endpoints
+
+### Auth (No Session Required)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/login` | Renders the login form (username, password, CSRF token) |
+| POST | `/login` | Validates credentials, issues session cookie, redirects to `next` or `/` |
+| POST | `/logout` | Clears session and redirects to `/login` (requires CSRF token) |
 
 ### Health (No Auth)
 
@@ -186,6 +197,54 @@ uv run pytest -m integration tests/integration/test_webapp*.py -v
 - **Observability** - Comprehensive activity logging and platform-wide audit trail.
 
 
+## Authentication
+
+The webapp uses form-based login with signed session cookies. A single credential pair is configured via `WEBAPP_USERNAME` / `WEBAPP_PASSWORD` (no user database).
+
+### Auth Modes
+
+| Mode | Behaviour |
+|------|-----------|
+| `session` (default) | Session cookies are the only accepted transport. Unauthenticated browser requests redirect to `/login`. |
+| `hybrid` | Session-first resolution with HTTP Basic auth fallback. Useful for API clients and backward compatibility. |
+
+Set the mode with `WEBAPP_AUTH_MODE`.
+
+### Login Flow
+
+1. Unauthenticated request to a protected route → 303 redirect to `/login?next=<path>`.
+2. User submits username + password via the login form (CSRF-protected).
+3. On success, the server issues a signed session cookie and redirects to `next` (or `/`).
+4. Session identifier is rotated on login (fixation protection).
+5. Logout clears the session and redirects to `/login`.
+
+### API / Fetch Behaviour
+
+- Requests with `Accept: application/json`, `?format=json`, or to `/whoami` receive `401 JSON` when unauthenticated (no redirect).
+- In `hybrid` mode, HTTP Basic auth is accepted as a fallback for these requests.
+
+### CSRF Protection
+
+All state-changing endpoints (POST/PUT/PATCH/DELETE) enforce a synchronizer CSRF token when the request has an active session. The token is accepted from:
+- `X-CSRF-Token` header (fetch / HTMX)
+- `csrf_token` form field (HTML forms)
+
+A `<meta name="csrf-token">` tag in the base template and `static/js/csrf.js` auto-inject the token for `window.fetch` and HTMX requests.
+
+### Session Cookie Properties
+
+| Property | Value |
+|----------|-------|
+| Signed | Yes (via `WEBAPP_SESSION_SECRET`) |
+| HttpOnly | Yes |
+| SameSite | Lax |
+| Secure | Configurable (`WEBAPP_SESSION_SECURE`) |
+| Max Age | `WEBAPP_SESSION_MAX_AGE_SECONDS` (default 8 hours) |
+
+### Audit Logging
+
+Auth lifecycle events (`login_success`, `login_failure`, `logout`, `unauthorized_access`) are logged to `activity_logs` with the client IP address.
+
 ## Schema-Driven Form Validation
 
 The webapp uses JSON Schema for client-side form validation before server submission.
@@ -200,7 +259,7 @@ The webapp uses JSON Schema for client-side form validation before server submis
 ### Using the Schema Endpoint
 
 ```bash
-# Get schema for spatial manifest form
+# Get schema for spatial manifest form (hybrid mode with Basic auth)
 curl -u admin:admin http://localhost:8080/manifests/schemas/spatial | jq
 
 # Get schema for tabular manifest form
