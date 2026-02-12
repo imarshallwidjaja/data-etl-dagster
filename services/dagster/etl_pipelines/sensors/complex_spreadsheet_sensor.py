@@ -7,6 +7,7 @@ and triggers ``complex_table_splitter_job`` to split multi-table XLSX files.
 from __future__ import annotations
 
 import json
+from typing import cast
 
 from dagster import (
     DefaultSensorStatus,
@@ -122,8 +123,9 @@ def complex_spreadsheet_sensor(context: SensorEvaluationContext, minio: MinIORes
 
             partition_key = extract_partition_key(manifest)
             # Register dynamic partition key before creating RunRequest (idempotent)
+            partitions_def_name = cast(str, dataset_partitions.name)
             context.instance.add_dynamic_partitions(
-                partitions_def_name=dataset_partitions.name,
+                partitions_def_name=partitions_def_name,
                 partition_keys=[partition_key],
             )
 
@@ -141,7 +143,6 @@ def complex_spreadsheet_sensor(context: SensorEvaluationContext, minio: MinIORes
                         }
                     }
                 },
-                partition_key=partition_key,
                 tags={
                     "batch_id": manifest.batch_id,
                     "uploader": manifest.uploader,
