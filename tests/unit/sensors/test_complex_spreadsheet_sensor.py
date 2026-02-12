@@ -185,7 +185,7 @@ def test_valid_manifest_triggers_run_and_archives(
         valid_complex_spreadsheet_manifest_dict
     )
 
-    # Evaluate raw sensor fn directly so we can inspect partitioned RunRequest
+    # Evaluate raw sensor fn directly so we can inspect RunRequest details
     # without requiring a repository definition in build_sensor_context.
     results = list(
         complex_spreadsheet_sensor._raw_fn(sensor_context, mock_minio_resource)
@@ -197,11 +197,35 @@ def test_valid_manifest_triggers_run_and_archives(
     expected_partition_key = valid_complex_spreadsheet_manifest_dict["metadata"][
         "tags"
     ]["dataset_id"]
-    assert run_request.partition_key == expected_partition_key
+    assert run_request.partition_key is None
     assert run_request.tags["partition_key"] == expected_partition_key
     mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
     cursor_data = json.loads(sensor_context.cursor)
     assert manifest_key in cursor_data["processed_keys"]
+
+
+def test_valid_manifest_evaluate_tick_returns_run_request(
+    sensor_context,
+    mock_minio_resource,
+    valid_complex_spreadsheet_manifest_dict,
+):
+    """Valid manifest should resolve via evaluate_tick without partition errors."""
+    manifest_key = "manifests/complex.json"
+    mock_minio_resource.list_manifests.return_value = [manifest_key]
+    mock_minio_resource.get_manifest.return_value = (
+        valid_complex_spreadsheet_manifest_dict
+    )
+
+    tick = _evaluate(sensor_context)
+    assert len(tick.run_requests) == 1
+    run_request = tick.run_requests[0]
+    assert isinstance(run_request, RunRequest)
+    assert run_request.partition_key is None
+    expected_partition_key = valid_complex_spreadsheet_manifest_dict["metadata"][
+        "tags"
+    ]["dataset_id"]
+    assert run_request.tags["partition_key"] == expected_partition_key
+    mock_minio_resource.move_to_archive.assert_called_once_with(manifest_key)
 
 
 # =============================================================================
