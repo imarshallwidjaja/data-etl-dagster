@@ -19,7 +19,16 @@ from app.auth.dependencies import (
     login_redirect_handler,
 )
 from app.config import get_settings
-from app.routers import health, landing, manifests, runs, assets, workflows, activity
+from app.routers import (
+    auth,
+    health,
+    landing,
+    manifests,
+    runs,
+    assets,
+    workflows,
+    activity,
+)
 
 # Validate settings at import time so the process fails fast on misconfiguration.
 _settings = get_settings()
@@ -58,6 +67,7 @@ if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 # Include routers
+app.include_router(auth.router)
 app.include_router(health.router)
 app.include_router(landing.router)
 app.include_router(manifests.router)

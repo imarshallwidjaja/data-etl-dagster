@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Login - Data ETL Tooling{% endblock %}
+
+{% block content %}
+<article>
+    <header>
+        <h1>Login</h1>
+    </header>
+
+    {% if error %}
+    <p role="alert" class="error-message"><mark>{{ error }}</mark></p>
+    {% endif %}
+
+    <form method="post" action="/login{% if next %}?next={{ next }}{% endif %}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+        <label for="username">Username</label>
+        <input type="text" id="username" name="username" required autofocus>
+
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required>
+
+        <button type="submit">Sign in</button>
+    </form>
+</article>
+{% endblock %}
