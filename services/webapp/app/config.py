@@ -48,7 +48,10 @@ class Settings(BaseSettings):
     webapp_session_cookie_name: str = "webapp_session"
 
     class Config:
-        env_file = ".env"
+        # Do NOT set env_file here.  The webapp container receives config
+        # via real environment variables (compose `environment:` block).
+        # Reading a CWD .env caused test flakiness when the repo-root
+        # .env contained ENVIRONMENT=ci without WEBAPP_SESSION_SECRET.
         extra = "ignore"
 
     @model_validator(mode="after")
