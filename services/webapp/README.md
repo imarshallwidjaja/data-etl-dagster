@@ -49,8 +49,14 @@ Set environment variables in `.env` or `compose.yaml`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WEBAPP_USERNAME` | `admin` | HTTP Basic Auth username |
-| `WEBAPP_PASSWORD` | `admin` | HTTP Basic Auth password |
+| `ENVIRONMENT` | `development` | Runtime environment (`development`, `ci`, `staging`, `production`) |
+| `WEBAPP_USERNAME` | `admin` | Auth username |
+| `WEBAPP_PASSWORD` | `admin` | Auth password |
+| `WEBAPP_AUTH_MODE` | `session` | `session` or `hybrid` (session + Basic fallback) |
+| `WEBAPP_SESSION_SECRET` | _(none)_ | Signing key for session cookies. **Required** outside `development`. |
+| `WEBAPP_SESSION_MAX_AGE_SECONDS` | `28800` | Absolute session lifetime (seconds) |
+| `WEBAPP_SESSION_SECURE` | `false` | Set `true` to emit `Secure` cookie flag (requires HTTPS) |
+| `WEBAPP_SESSION_COOKIE_NAME` | `webapp_session` | Name of the session cookie |
 | `MINIO_ENDPOINT` | `minio:9000` | MinIO host:port |
 | `MONGO_CONNECTION_STRING` | (see .env) | MongoDB connection URI |
 | `DAGSTER_GRAPHQL_URL` | `http://dagster-webserver:3000/graphql` | Dagster GraphQL |
