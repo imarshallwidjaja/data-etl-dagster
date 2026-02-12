@@ -98,13 +98,13 @@ tests/
 
 ## API Endpoints
 
-### Auth (No Session Required)
+### Auth
 
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/login` | Renders the login form (username, password, CSRF token) |
-| POST | `/login` | Validates credentials, issues session cookie, redirects to `next` or `/` |
-| POST | `/logout` | Clears session and redirects to `/login` (requires CSRF token) |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/login` | None | Renders the login form (username, password, CSRF token) |
+| POST | `/login` | None | Validates credentials, issues session cookie, redirects to `next` or `/` |
+| POST | `/logout` | Session + CSRF | Clears session and redirects to `/login` |
 
 ### Health (No Auth)
 
