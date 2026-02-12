@@ -15,6 +15,7 @@ Versioned, idempotent schema migrations for the metadata ledger.
 | 002 | `002_add_text_search.py` | Text index for keyword search |
 | 003 | `003_activity_logs.py` | Activity logging collection and indexes |
 | 004 | `004_manifests_complex_spreadsheet_metadata.py` | Add complex_spreadsheet to manifest metadata |
+| 005 | `005_activity_logs_auth_actions.py` | Add auth actions, auth resource type, and ip_address to activity_logs |
 
 ## Schema Management Pattern
 
