@@ -43,6 +43,11 @@
             <ul>
                 {% if user %}
                 <li><small>👤 {{ user.display_name }}</small></li>
+                <li>
+                    <form method="post" action="/logout" style="margin:0">
+                        <button type="submit" class="outline secondary" style="padding:0.25rem 0.5rem;margin:0">Logout</button>
+                    </form>
+                </li>
                 {% endif %}
             </ul>
         </nav>
