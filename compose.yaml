@@ -344,6 +344,13 @@ services:
       # Webapp Authentication
       WEBAPP_USERNAME: ${WEBAPP_USERNAME:-admin}
       WEBAPP_PASSWORD: ${WEBAPP_PASSWORD:-admin}
+      # Session / Auth
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      WEBAPP_AUTH_MODE: ${WEBAPP_AUTH_MODE:-session}
+      WEBAPP_SESSION_SECRET: ${WEBAPP_SESSION_SECRET:-}
+      WEBAPP_SESSION_MAX_AGE_SECONDS: ${WEBAPP_SESSION_MAX_AGE_SECONDS:-28800}
+      WEBAPP_SESSION_SECURE: ${WEBAPP_SESSION_SECURE:-false}
+      WEBAPP_SESSION_COOKIE_NAME: ${WEBAPP_SESSION_COOKIE_NAME:-webapp_session}
     depends_on:
       dagster-webserver:
         condition: service_healthy
