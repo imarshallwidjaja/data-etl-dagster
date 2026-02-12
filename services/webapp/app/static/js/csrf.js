@@ -31,17 +31,21 @@
     if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
       var token = getCsrfToken();
       if (token) {
-        // Ensure headers is a plain object (or Headers instance).
-        if (init.headers instanceof Headers) {
-          if (!init.headers.has("X-CSRF-Token")) {
-            init.headers.set("X-CSRF-Token", token);
-          }
+        // Preserve Request headers when init.headers is absent.
+        var headers;
+        if (init.headers) {
+          headers = new Headers(init.headers);
+        } else if (input instanceof Request) {
+          headers = new Headers(input.headers);
         } else {
-          init.headers = Object.assign({}, init.headers || {});
-          if (!init.headers["X-CSRF-Token"]) {
-            init.headers["X-CSRF-Token"] = token;
-          }
+          headers = new Headers();
         }
+
+        if (!headers.has("X-CSRF-Token")) {
+          headers.set("X-CSRF-Token", token);
+        }
+
+        init.headers = headers;
       }
     }
     return _originalFetch.call(this, input, init);

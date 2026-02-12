@@ -20,6 +20,7 @@ from starlette import status
 
 from app.auth.providers import BasicAuthProvider
 from app.auth.session import new_csrf_token, set_session_user
+from app.auth.utils import get_client_ip
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -39,16 +40,6 @@ def _get_auth_provider(settings: Settings = Depends(get_settings)) -> BasicAuthP
         username=settings.webapp_username,
         password=settings.webapp_password,
     )
-
-
-def _get_client_ip(request: Request) -> Optional[str]:
-    """Extract client IP from X-Forwarded-For or request.client."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
 
 
 def _is_safe_next(next_url: str) -> bool:
@@ -127,7 +118,7 @@ async def login_submit(
     # --- Credential check ---------------------------------------------------
     user = auth_provider.authenticate({"username": username, "password": password})
 
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
 
     if user is None:
         # Audit: login_failure
@@ -177,7 +168,7 @@ async def login_submit(
 async def logout(request: Request) -> RedirectResponse:
     """Clear the session and redirect to the login page."""
     username = request.session.get("user", "anonymous")
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
 
     request.session.clear()
 

@@ -16,6 +16,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from starlette.responses import Response
 
 from app.auth.providers import AuthenticatedUser, BasicAuthProvider
+from app.auth.utils import get_client_ip
 from app.config import Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -77,16 +78,6 @@ def wants_json(request: Request) -> bool:
     return False
 
 
-def _get_client_ip(request: Request) -> Optional[str]:
-    """Extract client IP from X-Forwarded-For header or request.client.host."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    if request.client:
-        return request.client.host
-    return None
-
-
 def get_auth_provider(settings: Settings = Depends(get_settings)) -> BasicAuthProvider:
     """Get the authentication provider instance."""
     return BasicAuthProvider(
@@ -138,7 +129,7 @@ async def get_current_user(
             resource_type="auth",
             resource_id=request.url.path,
             details={"method": request.method, "path": request.url.path},
-            ip_address=_get_client_ip(request),
+            ip_address=get_client_ip(request),
         )
     except Exception:
         logger.debug("Failed to log unauthorized_access event", exc_info=True)
@@ -150,5 +141,8 @@ async def get_current_user(
         )
 
     # HTML redirect to login page
-    next_path = quote(request.url.path, safe="")
+    next_raw = request.url.path
+    if request.url.query:
+        next_raw = f"{next_raw}?{request.url.query}"
+    next_path = quote(next_raw, safe="")
     raise _LoginRedirectException(next_path=next_path)
