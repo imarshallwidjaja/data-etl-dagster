@@ -11,9 +11,13 @@
 services:
   # Override webapp to hybrid auth so existing Basic-auth integration tests work
   # alongside new session-auth tests.
+  # WEBAPP_SESSION_SECRET is required when ENVIRONMENT != development; provide a
+  # stable non-production value so the container starts without host .env files.
   webapp:
     environment:
+      ENVIRONMENT: ci
       WEBAPP_AUTH_MODE: hybrid
+      WEBAPP_SESSION_SECRET: test-stack-session-secret-not-for-production
 
   test-runner:
     build:
