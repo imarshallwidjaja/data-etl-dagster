@@ -292,14 +292,20 @@ class TestOpenRedirectBlocked:
             "http://evil.com",
             "//evil.com",
             "https://evil.com/path",
+            r"\evil.com",
+            r"\/evil.com",
+            r"\//evil.com",
         ],
     )
     def test_external_url_blocked(self, evil_next: str):
         """Absolute external URLs in next → redirect to / instead."""
+        from urllib.parse import quote
+
         with TestClient(app, raise_server_exceptions=False) as client:
-            csrf = _extract_csrf(client.get(f"/login?next={evil_next}").text)
+            encoded_next = quote(evil_next, safe="")
+            csrf = _extract_csrf(client.get(f"/login?next={encoded_next}").text)
             resp = client.post(
-                f"/login?next={evil_next}",
+                f"/login?next={encoded_next}",
                 data={
                     "username": "admin",
                     "password": "admin",
@@ -308,9 +314,7 @@ class TestOpenRedirectBlocked:
                 follow_redirects=False,
             )
             assert resp.status_code == 303
-            location = resp.headers["location"]
-            assert not location.startswith("http")
-            assert not location.startswith("//")
+            assert resp.headers["location"] == "/"
 
 
 # ---------------------------------------------------------------------------

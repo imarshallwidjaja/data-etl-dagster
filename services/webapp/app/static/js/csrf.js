@@ -17,7 +17,17 @@
   var _originalFetch = window.fetch;
   window.fetch = function (input, init) {
     init = init || {};
-    var method = (init.method || "GET").toUpperCase();
+    var method = "GET";
+
+    // init.method takes precedence when provided.
+    if (init.method) {
+      method = init.method;
+    } else if (input instanceof Request && input.method) {
+      // If input is a Request object, the method lives on input.method.
+      method = input.method;
+    }
+
+    method = method.toUpperCase();
     if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") {
       var token = getCsrfToken();
       if (token) {
