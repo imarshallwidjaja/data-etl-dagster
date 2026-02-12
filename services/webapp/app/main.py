@@ -12,7 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 
-from app.auth.dependencies import AuthenticatedUser, get_current_user
+from app.auth.dependencies import (
+    AuthenticatedUser,
+    _LoginRedirectException,
+    get_current_user,
+    login_redirect_handler,
+)
 from app.config import get_settings
 from app.routers import health, landing, manifests, runs, assets, workflows, activity
 
@@ -25,6 +30,9 @@ app = FastAPI(
     description="Manage the data-etl-dagster pipeline without direct access to Dagster, MongoDB, or MinIO.",
     version="0.1.0",
 )
+
+# Exception handler: unauthenticated browser requests redirect to /login.
+app.add_exception_handler(_LoginRedirectException, login_redirect_handler)  # type: ignore[arg-type]
 
 # Signed session cookie middleware — stores session data in a tamper-evident
 # cookie (no server-side session store).
