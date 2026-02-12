@@ -10,6 +10,8 @@ from typing import Optional
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, Form, Request
+
+from app.security.csrf import require_csrf
 from fastapi.responses import HTMLResponse, RedirectResponse
 from starlette.responses import Response
 from fastapi.templating import Jinja2Templates
@@ -164,7 +166,7 @@ async def login_submit(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/logout")
+@router.post("/logout", dependencies=[Depends(require_csrf)])
 async def logout(request: Request) -> RedirectResponse:
     """Clear the session and redirect to the login page."""
     username = request.session.get("user", "anonymous")
