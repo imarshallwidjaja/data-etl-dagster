@@ -292,22 +292,23 @@ class TestCSRFEnforcement:
 class TestBasicAuthBehavior:
     """Basic auth behavior depends on the auth mode configured on the server.
 
-    The default test stack runs in ``session`` mode where Basic auth is
-    ignored.  These tests verify that raw Basic auth credentials alone do
-    NOT grant access in the default deployment — the session cookie is the
-    only accepted transport.
+    The test stack runs in ``hybrid`` mode (compose.test.yaml) so that
+    pre-existing tests using HTTP Basic auth continue to work.  These tests
+    verify the Basic-auth fallback path in hybrid mode.
     """
 
-    def test_basic_auth_alone_rejected_in_session_mode(self, webapp_url: str) -> None:
-        """In session mode, /whoami with only Basic auth should return 401."""
+    def test_basic_auth_accepted_in_hybrid_mode(self, webapp_url: str) -> None:
+        """In hybrid mode, /whoami with valid Basic auth should return 200."""
         resp = requests.get(
             f"{webapp_url}/whoami",
             auth=(_USERNAME, _PASSWORD),
             timeout=10,
         )
 
-        # session mode: Basic auth is not a valid transport, expect 401.
-        assert resp.status_code == 401
+        # hybrid mode: Basic auth is accepted as fallback transport.
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["username"] == _USERNAME
 
     def test_basic_auth_bad_password(self, webapp_url: str) -> None:
         """/whoami with wrong Basic auth should always return 401."""

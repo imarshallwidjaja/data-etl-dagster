@@ -9,6 +9,12 @@
 # =============================================================================
 
 services:
+  # Override webapp to hybrid auth so existing Basic-auth integration tests work
+  # alongside new session-auth tests.
+  webapp:
+    environment:
+      WEBAPP_AUTH_MODE: hybrid
+
   test-runner:
     build:
       context: .
