@@ -5,11 +5,20 @@
 # =============================================================================
 
 from functools import lru_cache
+from typing import Literal
+
+from pydantic import model_validator
 from pydantic_settings import BaseSettings
+
+# Stable, explicitly-insecure default for local development only.
+_DEV_SESSION_SECRET = "INSECURE-dev-only-session-secret-do-not-use-in-production"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
+
+    # General
+    environment: Literal["development", "ci", "staging", "production"] = "development"
 
     # MinIO Configuration
     minio_endpoint: str = "minio:9000"
@@ -31,9 +40,28 @@ class Settings(BaseSettings):
     webapp_username: str = "admin"
     webapp_password: str = "admin"
 
+    # Session / Auth
+    webapp_auth_mode: Literal["session", "hybrid"] = "session"
+    webapp_session_secret: str | None = None
+    webapp_session_max_age_seconds: int = 28800
+    webapp_session_secure: bool = False
+    webapp_session_cookie_name: str = "webapp_session"
+
     class Config:
         env_file = ".env"
         extra = "ignore"
+
+    @model_validator(mode="after")
+    def _validate_session_secret(self) -> "Settings":
+        """Enforce WEBAPP_SESSION_SECRET outside development."""
+        if self.environment != "development" and not self.webapp_session_secret:
+            raise ValueError(
+                f"WEBAPP_SESSION_SECRET is required when ENVIRONMENT={self.environment!r}. "
+                "Only ENVIRONMENT=development may omit it."
+            )
+        if self.environment == "development" and not self.webapp_session_secret:
+            self.webapp_session_secret = _DEV_SESSION_SECRET
+        return self
 
 
 @lru_cache

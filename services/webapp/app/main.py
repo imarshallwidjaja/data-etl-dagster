@@ -12,7 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
+from app.config import get_settings
 from app.routers import health, landing, manifests, runs, assets, workflows, activity
+
+# Validate settings at import time so the process fails fast on misconfiguration.
+get_settings()
 
 # Application instance
 app = FastAPI(
