@@ -263,8 +263,13 @@ class TestPostLogout:
                 follow_redirects=False,
             )
 
-            # Now logout
-            resp = client.post("/logout", follow_redirects=False)
+            # Now logout (CSRF required)
+            post_login_csrf = _extract_csrf_meta(client.get("/").text)
+            resp = client.post(
+                "/logout",
+                data={"csrf_token": post_login_csrf},
+                follow_redirects=False,
+            )
             assert resp.status_code == 303
             assert resp.headers["location"] == "/login"
 
@@ -327,7 +332,12 @@ class TestAuditLogging:
                 },
                 follow_redirects=False,
             )
-            client.post("/logout", follow_redirects=False)
+            post_login_csrf = _extract_csrf_meta(client.get("/").text)
+            client.post(
+                "/logout",
+                data={"csrf_token": post_login_csrf},
+                follow_redirects=False,
+            )
 
         _assert_activity_logged(_mock_activity_service, "logout")
 
@@ -346,6 +356,15 @@ def _extract_csrf(html: str) -> str:
         # Try alternate ordering
         match = re.search(r'value="([^"]+)"\s+name="csrf_token"', html)
     assert match, f"csrf_token hidden field not found in HTML:\n{html[:500]}"
+    return match.group(1)
+
+
+def _extract_csrf_meta(html: str) -> str:
+    """Extract the csrf token from the <meta name="csrf-token"> tag."""
+    import re
+
+    match = re.search(r'<meta\s+name="csrf-token"\s+content="([^"]+)"', html)
+    assert match, "csrf-token meta tag not found in HTML"
     return match.group(1)
 
 

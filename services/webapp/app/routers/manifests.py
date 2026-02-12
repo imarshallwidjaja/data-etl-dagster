@@ -18,6 +18,7 @@ from starlette.concurrency import run_in_threadpool
 from libs.models import ComplexSpreadsheetConfig, FileEntry, JoinConfig, TagValue
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
+from app.security.csrf import require_csrf
 from app.services.activity_service import get_activity_service
 from app.services.minio_service import get_minio_service
 from app.services.mongodb_service import get_mongodb_service
@@ -223,7 +224,11 @@ async def get_asset_form(
     )
 
 
-@router.post("/new/{asset_type}", response_model=ManifestCreateResponse)
+@router.post(
+    "/new/{asset_type}",
+    response_model=ManifestCreateResponse,
+    dependencies=[Depends(require_csrf)],
+)
 async def create_manifest(
     asset_type: str,
     request: ManifestCreateRequest,
@@ -327,7 +332,11 @@ async def get_manifest(
     )
 
 
-@router.post("/{batch_id}/delete", response_model=ManifestDeleteResponse)
+@router.post(
+    "/{batch_id}/delete",
+    response_model=ManifestDeleteResponse,
+    dependencies=[Depends(require_csrf)],
+)
 async def delete_manifest(
     batch_id: str,
     http_request: Request,
@@ -365,7 +374,11 @@ async def delete_manifest(
     )
 
 
-@router.post("/{batch_id}/rerun", response_model=ManifestRerunResponse)
+@router.post(
+    "/{batch_id}/rerun",
+    response_model=ManifestRerunResponse,
+    dependencies=[Depends(require_csrf)],
+)
 async def rerun_manifest(
     batch_id: str,
     http_request: Request,
