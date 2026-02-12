@@ -9,6 +9,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
+from app.security.csrf import require_csrf
 from app.services.workflow_registry import get_workflow, list_workflows
 from app.services.mongodb_service import get_mongodb_service
 from app.services.manifest_builder import build_manifest
@@ -238,7 +239,11 @@ async def workflow_success(
     )
 
 
-@router.post("/{workflow_id}/step/{step_index}", response_class=HTMLResponse)
+@router.post(
+    "/{workflow_id}/step/{step_index}",
+    response_class=HTMLResponse,
+    dependencies=[Depends(require_csrf)],
+)
 async def process_step(
     workflow_id: str,
     step_index: int,

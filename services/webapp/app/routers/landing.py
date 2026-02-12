@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field, field_validator
 
 from app.auth.dependencies import AuthenticatedUser, get_current_user
+from app.security.csrf import require_csrf
 from app.services.activity_service import get_activity_service
 from app.services.minio_service import get_minio_service
 
@@ -170,7 +171,9 @@ async def browse_prefix(
     )
 
 
-@router.post("/upload", response_model=UploadResponse)
+@router.post(
+    "/upload", response_model=UploadResponse, dependencies=[Depends(require_csrf)]
+)
 async def upload_file(
     request: Request,
     file: UploadFile = File(...),
@@ -263,7 +266,11 @@ async def download_file(
     )
 
 
-@router.post("/delete/{path:path}", response_model=DeleteResponse)
+@router.post(
+    "/delete/{path:path}",
+    response_model=DeleteResponse,
+    dependencies=[Depends(require_csrf)],
+)
 async def delete_file(
     path: str,
     request: Request,
@@ -302,7 +309,9 @@ async def delete_file(
     )
 
 
-@router.post("/folder", response_model=FolderResponse)
+@router.post(
+    "/folder", response_model=FolderResponse, dependencies=[Depends(require_csrf)]
+)
 async def create_folder(
     request: FolderCreateRequest,
     current_user: AuthenticatedUser = Depends(get_current_user),
@@ -331,7 +340,11 @@ async def create_folder(
     )
 
 
-@router.post("/delete-folder/{path:path}", response_model=FolderResponse)
+@router.post(
+    "/delete-folder/{path:path}",
+    response_model=FolderResponse,
+    dependencies=[Depends(require_csrf)],
+)
 async def delete_folder(
     path: str,
     current_user: AuthenticatedUser = Depends(get_current_user),
