@@ -39,11 +39,17 @@ BLOBS_SCHEMA_V001 = _baseline.BLOBS_SCHEMA_V001
 _activity = load_migration_schema("003_activity_logs.py")
 ACTIVITY_LOGS_SCHEMA_V003 = _activity.ACTIVITY_LOGS_SCHEMA_V003
 
+_activity_v005 = load_migration_schema("005_activity_logs_auth_actions.py")
+ACTIVITY_LOGS_SCHEMA_V005 = _activity_v005.ACTIVITY_LOGS_SCHEMA_V005
+
 _manifests_v004 = load_migration_schema("004_manifests_complex_spreadsheet_metadata.py")
 MANIFESTS_SCHEMA_V004 = _manifests_v004.MANIFESTS_SCHEMA_V004
 
 # Single latest pointer for manifest schema parity checks
 MANIFESTS_SCHEMA_LATEST = MANIFESTS_SCHEMA_V004
+
+# Single latest pointer for activity_logs schema parity checks
+ACTIVITY_LOGS_SCHEMA_LATEST = ACTIVITY_LOGS_SCHEMA_V005
 
 
 class TestAssetSchemaParity:
@@ -237,10 +243,10 @@ class TestActivityLogSchemaParity:
             f for f, info in ActivityLog.model_fields.items() if info.is_required()
         }
         mongo_required = set(
-            ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"].get("required", [])
+            ACTIVITY_LOGS_SCHEMA_LATEST["$jsonSchema"].get("required", [])
         )
 
-        skippable_fields = {"timestamp", "details"}
+        skippable_fields = {"timestamp", "details", "ip_address"}
         missing_in_mongo = pydantic_required - mongo_required - skippable_fields
 
         assert not missing_in_mongo, (
@@ -255,7 +261,7 @@ class TestActivityLogSchemaParity:
 
         pydantic_values = set(get_args(ActivityAction))
         mongo_values = set(
-            ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"]["properties"]["action"]["enum"]
+            ACTIVITY_LOGS_SCHEMA_LATEST["$jsonSchema"]["properties"]["action"]["enum"]
         )
 
         assert pydantic_values == mongo_values, (
@@ -269,7 +275,7 @@ class TestActivityLogSchemaParity:
 
         pydantic_values = set(get_args(ActivityResourceType))
         mongo_values = set(
-            ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"]["properties"]["resource_type"][
+            ACTIVITY_LOGS_SCHEMA_LATEST["$jsonSchema"]["properties"]["resource_type"][
                 "enum"
             ]
         )
@@ -280,9 +286,27 @@ class TestActivityLogSchemaParity:
 
     def test_activity_log_timestamp_is_date(self):
         """Test that timestamp field is validated as bsonType: date."""
-        timestamp_schema = ACTIVITY_LOGS_SCHEMA_V003["$jsonSchema"]["properties"][
+        timestamp_schema = ACTIVITY_LOGS_SCHEMA_LATEST["$jsonSchema"]["properties"][
             "timestamp"
         ]
         assert timestamp_schema.get("bsonType") == "date", (
             f"Expected timestamp bsonType 'date', got {timestamp_schema}"
         )
+
+    def test_activity_log_ip_address_is_string(self):
+        """Test that ip_address field exists in schema and is bsonType string."""
+        properties = ACTIVITY_LOGS_SCHEMA_LATEST["$jsonSchema"]["properties"]
+        assert "ip_address" in properties, (
+            "Expected ip_address in activity_logs schema properties"
+        )
+        ip_schema = properties["ip_address"]
+        # Accept either bsonType: "string" or bsonType: ["string", "null"]
+        bson_type = ip_schema.get("bsonType")
+        if isinstance(bson_type, list):
+            assert "string" in bson_type, (
+                f"Expected 'string' in ip_address bsonType list, got {bson_type}"
+            )
+        else:
+            assert bson_type == "string", (
+                f"Expected ip_address bsonType 'string', got {bson_type}"
+            )
