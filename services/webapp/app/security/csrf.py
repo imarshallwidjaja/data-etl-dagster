@@ -15,6 +15,7 @@
 
 import hmac
 import logging
+from typing import Any
 
 from fastapi import HTTPException, Request, status
 
@@ -56,7 +57,13 @@ async def require_csrf(request: Request) -> None:
             or "multipart/form-data" in content_type
         ):
             form = await request.form()
-            submitted = form.get("csrf_token", "")  # type: ignore[assignment]
+            raw: Any = form.get("csrf_token", "")
+
+            # FormData values can be strings or UploadFile. Treat non-strings as invalid.
+            if isinstance(raw, str):
+                submitted = raw
+            else:
+                submitted = ""
 
     if not submitted or not hmac.compare_digest(submitted, session_csrf):
         logger.warning(

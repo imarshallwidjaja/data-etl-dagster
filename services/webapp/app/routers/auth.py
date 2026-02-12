@@ -55,6 +55,12 @@ def _is_safe_next(next_url: str) -> bool:
     """Return True only if *next_url* is a relative path (no scheme/netloc)."""
     if not next_url:
         return False
+
+    # Backslashes are unsafe: user agents may normalize them to forward slashes
+    # in Location handling (e.g. "\\/evil.com" → "//evil.com").
+    if "\\" in next_url:
+        return False
+
     parsed = urlparse(next_url)
     # Block absolute URLs: any scheme or netloc → unsafe.
     # Also block protocol-relative URLs (//evil.com).

@@ -6,6 +6,7 @@
 # =============================================================================
 
 import logging
+import asyncio
 from typing import Optional
 from urllib.parse import quote
 
@@ -130,12 +131,13 @@ async def get_current_user(
         from app.services.activity_service import get_activity_service
 
         svc = get_activity_service()
-        svc.log_activity(
+        await asyncio.to_thread(
+            svc.log_activity,
             user="anonymous",
             action="unauthorized_access",
             resource_type="auth",
             resource_id=request.url.path,
-            details={"method": request.method, "path": str(request.url)},
+            details={"method": request.method, "path": request.url.path},
             ip_address=_get_client_ip(request),
         )
     except Exception:
